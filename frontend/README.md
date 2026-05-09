@@ -18,3 +18,25 @@ P0 目标：
 - 写作苗圃
 - 历史反馈
 - 个人画像 / Memory
+
+## 本地运行
+
+```bash
+npm install
+npm run dev
+```
+
+默认访问 `http://127.0.0.1:3000`。当前阶段仅使用 Next.js 本地 mock API：
+
+- `GET /api/mock/profile`
+- `GET /api/mock/content`
+- `GET /api/mock/seeds`
+- `GET /api/mock/sprout`
+- `GET /api/mock/feedback`
+
+## 校验
+
+```bash
+npm run lint
+npm run build
+```

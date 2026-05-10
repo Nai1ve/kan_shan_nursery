@@ -149,6 +149,22 @@ paths:
             application/json:
               schema:
                 $ref: ../schemas/profile.json#/$defs/MemorySummary
+  /memory/injection/{interest_id}:
+    get:
+      summary: Get visible memory injection summary for writing/content services
+      parameters:
+        - name: interest_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Combined global and interest memory for visible injection
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/MemoryInjectionSummary
   /memory/update-requests:
     get:
       summary: List memory update requests
@@ -161,6 +177,31 @@ paths:
                 type: array
                 items:
                   $ref: ../schemas/profile.json#/$defs/MemoryUpdateRequest
+    post:
+      summary: Create memory update request without applying it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [interestId, targetField, suggestedValue, reason]
+              properties:
+                interestId:
+                  type: string
+                targetField:
+                  type: string
+                suggestedValue:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Created pending memory update request
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/MemoryUpdateRequest
   /memory/update-requests/{request_id}/apply:
     post:
       summary: Apply memory update request

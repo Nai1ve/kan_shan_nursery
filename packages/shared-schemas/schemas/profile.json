@@ -74,6 +74,18 @@
         }
       }
     },
+    "MemoryInjectionSummary": {
+      "type": "object",
+      "required": ["interestId", "interestMemory", "globalMemory", "displaySummary", "editable"],
+      "additionalProperties": false,
+      "properties": {
+        "interestId": { "type": "string" },
+        "interestMemory": { "$ref": "#/$defs/MemorySummary" },
+        "globalMemory": { "$ref": "#/$defs/GlobalMemory" },
+        "displaySummary": { "type": "string" },
+        "editable": { "type": "boolean" }
+      }
+    },
     "MemoryUpdateRequest": {
       "type": "object",
       "required": ["id", "interestId", "targetField", "suggestedValue", "reason", "status", "createdAt"],

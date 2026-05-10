@@ -35,9 +35,50 @@
 - `PUT /memory/me/global`
 - `GET /memory/me/interests/{interest_id}`
 - `PUT /memory/me/interests/{interest_id}`
+- `GET /memory/injection/{interest_id}`
 - `GET /memory/update-requests`
+- `POST /memory/update-requests`
 - `POST /memory/update-requests/{request_id}/apply`
 - `POST /memory/update-requests/{request_id}/reject`
+
+## 当前实现
+
+P0 使用内存仓储，进程重启后恢复默认演示画像。代码按 `profile` 和 `memory` 子模块拆分，便于后续把 Memory 独立成服务或替换为数据库仓储。
+
+默认兴趣画像覆盖：
+
+```text
+Agent 工程化、AI Coding、RAG / 检索、后端工程、程序员成长、金融风控、医学 AI、产品设计、内容创作、关注流精选、偶遇输入
+```
+
+启动：
+
+```bash
+cd services/profile-service
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload
+```
+
+测试：
+
+```bash
+python3 -m unittest discover -s services/profile-service/tests -v
+python3 -m py_compile services/profile-service/app/*.py services/profile-service/app/profile/*.py services/profile-service/app/memory/*.py services/profile-service/tests/*.py
+```
+
+示例：
+
+```bash
+curl http://127.0.0.1:8010/profiles/me
+curl http://127.0.0.1:8010/memory/injection/ai-coding
+```
+
+Memory 更新请求规则：
+
+- `POST /memory/update-requests` 只创建待确认请求。
+- `apply` 才会写入全局 Memory 或兴趣 Memory。
+- `reject` 只改变请求状态，不修改 Memory。
+- `memoryOverride` 属于写作 session，不由本服务直接覆盖长期 Memory。
 
 ## 数据落点
 

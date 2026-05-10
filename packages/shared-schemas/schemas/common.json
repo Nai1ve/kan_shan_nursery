@@ -54,6 +54,19 @@
         "error": { "$ref": "#/$defs/ErrorBody" }
       }
     },
+    "GatewaySuccessResponse": {
+      "type": "object",
+      "required": ["request_id", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "data": {},
+        "meta": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
     "CacheMeta": {
       "type": "object",
       "required": ["hit", "key"],

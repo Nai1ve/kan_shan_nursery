@@ -26,16 +26,100 @@
 
 - `GET /health`
 - `GET /api/v1/profile/me`
+- `PUT /api/v1/profile/me`
+- `GET /api/v1/profile/interests`
+- `GET /api/v1/memory/injection/{interest_id}`
+- `GET /api/v1/memory/update-requests`
+- `POST /api/v1/memory/update-requests`
+- `POST /api/v1/memory/update-requests/{request_id}/apply`
+- `POST /api/v1/memory/update-requests/{request_id}/reject`
 - `GET /api/v1/content`
 - `GET /api/v1/content/cards?categoryId=xxx`
 - `POST /api/v1/content/categories/{categoryId}/refresh`
 - `GET /api/v1/seeds`
 - `POST /api/v1/seeds`
 - `POST /api/v1/seeds/from-card`
+- `GET /api/v1/seeds/{seed_id}`
+- `PATCH /api/v1/seeds/{seed_id}`
+- `POST /api/v1/seeds/{seed_id}/questions`
+- `PATCH /api/v1/seeds/{seed_id}/questions/{question_id}`
+- `POST /api/v1/seeds/{seed_id}/materials`
+- `POST /api/v1/seeds/{seed_id}/materials/agent-supplement`
+- `PATCH /api/v1/seeds/{seed_id}/materials/{material_id}`
+- `DELETE /api/v1/seeds/{seed_id}/materials/{material_id}`
+- `POST /api/v1/seeds/{target_seed_id}/merge`
+- `POST /api/v1/llm/tasks/{task_type}`
 - `POST /api/v1/sprout/start`
 - `GET /api/v1/sprout/opportunities`
 - `POST /api/v1/writing/sessions`
 - `GET /api/v1/feedback/articles`
+
+## 当前实现
+
+P0 网关使用统一 envelope：
+
+```json
+{
+  "request_id": "req-xxx",
+  "data": {}
+}
+```
+
+失败统一为：
+
+```json
+{
+  "request_id": "req-xxx",
+  "error": {
+    "code": "SERVICE_NOT_READY",
+    "message": "Service is not ready: content",
+    "detail": {}
+  }
+}
+```
+
+同时响应头会带 `X-Request-Id`。如果请求头传入 `X-Request-Id`，网关会透传给下游服务。
+
+默认已就绪服务（v0.4 P0 闭环完成后）：
+
+```text
+profile, seed, zhihu, llm, content, sprout, writing, feedback
+```
+
+可通过环境变量覆盖（用于在某个下游临时不可用时降级）：
+
+```text
+GATEWAY_READY_SERVICES=profile,seed,zhihu,llm
+```
+
+启动：
+
+```bash
+cd services/api-gateway
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+测试：
+
+```bash
+python3 -m unittest discover -s services/api-gateway/tests -v
+python3 -m py_compile services/api-gateway/app/*.py services/api-gateway/tests/*.py
+```
+
+环境变量：
+
+```text
+PROFILE_SERVICE_URL=http://127.0.0.1:8010
+CONTENT_SERVICE_URL=http://127.0.0.1:8020
+SEED_SERVICE_URL=http://127.0.0.1:8030
+SPROUT_SERVICE_URL=http://127.0.0.1:8040
+WRITING_SERVICE_URL=http://127.0.0.1:8050
+FEEDBACK_SERVICE_URL=http://127.0.0.1:8060
+ZHIHU_ADAPTER_URL=http://127.0.0.1:8070
+LLM_SERVICE_URL=http://127.0.0.1:8080
+GATEWAY_REQUEST_TIMEOUT_SECONDS=20
+```
 
 ## 允许修改
 

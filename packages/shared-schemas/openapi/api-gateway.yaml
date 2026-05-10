@@ -4,110 +4,368 @@ info:
   version: 0.1.0
 servers:
   - url: http://127.0.0.1:8000
+components:
+  schemas:
+    GatewaySuccessResponse:
+      $ref: ../schemas/common.json#/$defs/GatewaySuccessResponse
+    ErrorResponse:
+      $ref: ../schemas/common.json#/$defs/ErrorResponse
 paths:
   /health:
     get:
-      summary: Health check
+      summary: Health check with downstream readiness
       responses:
         '200':
-          description: Gateway is healthy
+          description: Gateway health envelope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewaySuccessResponse'
   /api/v1/profile/me:
     get:
-      summary: Get current profile through gateway
+      summary: Proxy current profile
       responses:
         '200':
-          description: Current profile
+          description: Profile envelope
           content:
             application/json:
               schema:
-                $ref: ../schemas/profile.json#/$defs/ProfileData
+                $ref: '#/components/schemas/GatewaySuccessResponse'
     put:
-      summary: Update current profile through gateway
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: ../schemas/profile.json#/$defs/ProfileData
+      summary: Proxy profile update
       responses:
         '200':
-          description: Updated profile
-          content:
-            application/json:
-              schema:
-                $ref: ../schemas/profile.json#/$defs/ProfileData
+          description: Updated profile envelope
+  /api/v1/profile/interests:
+    get:
+      summary: Proxy interest memory list
+      responses:
+        '200':
+          description: Interest memory envelope
+  /api/v1/memory/injection/{interest_id}:
+    get:
+      summary: Proxy visible memory injection summary
+      parameters:
+        - name: interest_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Memory injection envelope
+  /api/v1/memory/update-requests:
+    get:
+      summary: Proxy memory update requests
+      responses:
+        '200':
+          description: Memory update request envelope
+    post:
+      summary: Proxy memory update request creation
+      responses:
+        '200':
+          description: Created memory update request envelope
+  /api/v1/memory/update-requests/{request_id}/apply:
+    post:
+      summary: Proxy apply memory update request
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Applied request envelope
+  /api/v1/memory/update-requests/{request_id}/reject:
+    post:
+      summary: Proxy reject memory update request
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rejected request envelope
   /api/v1/content:
     get:
-      summary: Content bootstrap
+      summary: Proxy content bootstrap
       responses:
         '200':
-          description: Categories and cards
+          description: Content envelope
+        '503':
+          description: content-service is not ready
           content:
             application/json:
               schema:
-                $ref: ../schemas/content.json#/$defs/ContentBootstrap
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/content/cards:
+    get:
+      summary: Proxy content cards
+      parameters:
+        - name: categoryId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content cards envelope
+  /api/v1/content/cards/{card_id}:
+    get:
+      summary: Proxy one content card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content card envelope
+  /api/v1/content/cards/{card_id}/sources/{source_id}:
+    get:
+      summary: Proxy one content source
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: source_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content source envelope
+  /api/v1/content/cards/{card_id}/summarize:
+    post:
+      summary: Proxy content card summarize
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Content summary envelope
+  /api/v1/content/categories/{category_id}/refresh:
+    post:
+      summary: Proxy category refresh
+      parameters:
+        - name: category_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Refresh result envelope
   /api/v1/seeds:
     get:
-      summary: List idea seeds
+      summary: Proxy seed list
       responses:
         '200':
-          description: Idea seeds
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: ../schemas/seed.json#/$defs/IdeaSeed
+          description: Seed list envelope
     post:
-      summary: Create manual idea seed
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: ../schemas/seed.json#/$defs/IdeaSeed
+      summary: Proxy manual seed creation
       responses:
         '200':
-          description: Created idea seed
-          content:
-            application/json:
-              schema:
-                $ref: ../schemas/seed.json#/$defs/IdeaSeed
+          description: Created seed envelope
   /api/v1/seeds/from-card:
     post:
-      summary: Create or update seed from content card
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: ../schemas/seed.json#/$defs/SeedFromCardRequest
+      summary: Proxy create or update seed from content card
       responses:
         '200':
-          description: Created or updated seed
-          content:
-            application/json:
-              schema:
-                $ref: ../schemas/seed.json#/$defs/IdeaSeed
+          description: Seed envelope
+  /api/v1/seeds/{seed_id}:
+    get:
+      summary: Proxy get seed
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+    patch:
+      summary: Proxy seed update
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated seed envelope
+  /api/v1/seeds/{seed_id}/questions:
+    post:
+      summary: Proxy add seed question
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+  /api/v1/seeds/{seed_id}/questions/{question_id}:
+    patch:
+      summary: Proxy mark seed question
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: question_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+  /api/v1/seeds/{seed_id}/materials:
+    post:
+      summary: Proxy add watering material
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+  /api/v1/seeds/{seed_id}/materials/{material_id}:
+    patch:
+      summary: Proxy update watering material
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: material_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+    delete:
+      summary: Proxy delete watering material
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: material_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+  /api/v1/seeds/{seed_id}/materials/agent-supplement:
+    post:
+      summary: Proxy Agent material supplement
+      parameters:
+        - name: seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Seed envelope
+  /api/v1/seeds/{target_seed_id}/merge:
+    post:
+      summary: Proxy seed merge
+      parameters:
+        - name: target_seed_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Merged seed envelope
+  /api/v1/llm/tasks/{task_type}:
+    post:
+      summary: Proxy LLM task
+      parameters:
+        - name: task_type
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: LLM task envelope
+  /api/v1/sprout/start:
+    post:
+      summary: Proxy sprout start
+      responses:
+        '200':
+          description: Sprout result envelope
+        '503':
+          description: sprout-service is not ready
+  /api/v1/sprout/opportunities:
+    get:
+      summary: Proxy sprout opportunities
+      responses:
+        '200':
+          description: Sprout opportunities envelope
   /api/v1/writing/sessions:
     post:
-      summary: Create writing session
+      summary: Proxy create writing session
       responses:
         '200':
-          description: Writing session
-          content:
-            application/json:
-              schema:
-                $ref: ../schemas/writing.json#/$defs/WritingSession
+          description: Writing session envelope
+        '503':
+          description: writing-service is not ready
+  /api/v1/writing/sessions/{session_id}:
+    get:
+      summary: Proxy get writing session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Writing session envelope
+    patch:
+      summary: Proxy update writing session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Writing session envelope
   /api/v1/feedback/articles:
     get:
-      summary: List feedback articles
+      summary: Proxy feedback articles
       responses:
         '200':
-          description: Feedback articles
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: ../schemas/feedback.json#/$defs/FeedbackArticle
+          description: Feedback article envelope
+        '503':
+          description: feedback-service is not ready

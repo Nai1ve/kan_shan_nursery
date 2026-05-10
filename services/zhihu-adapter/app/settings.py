@@ -11,6 +11,7 @@ class Settings:
     zhihu_app_secret: str = ""
     zhihu_access_token: str = ""
     zhihu_access_secret: str = ""
+    cache_backend: str = "memory"
     redis_url: str = "redis://localhost:6379/0"
     demo_user_id: str = "demo-user"
 
@@ -24,6 +25,7 @@ def get_settings() -> Settings:
         zhihu_app_secret=os.getenv("ZHIHU_APP_SECRET", ""),
         zhihu_access_token=os.getenv("ZHIHU_ACCESS_TOKEN", ""),
         zhihu_access_secret=os.getenv("ZHIHU_ACCESS_SECRET", ""),
+        cache_backend=os.getenv("ZHIHU_CACHE_BACKEND", "memory"),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         demo_user_id=os.getenv("DEMO_USER_ID", "demo-user"),
     )

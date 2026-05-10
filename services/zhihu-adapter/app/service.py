@@ -2,7 +2,7 @@ import json
 from typing import Any, Callable
 
 from . import mappers, mock_data
-from .cache import MemoryCache
+from .cache import CacheBackend, build_cache
 from .live_client import LiveZhihuClient
 from .security import stable_hash
 from .settings import Settings, get_settings
@@ -38,9 +38,9 @@ class QuotaExceeded(Exception):
 
 
 class ZhihuAdapterService:
-    def __init__(self, settings: Settings | None = None, cache: MemoryCache | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, cache: CacheBackend | None = None) -> None:
         self.settings = settings or get_settings()
-        self.cache = cache or MemoryCache()
+        self.cache = cache or build_cache(self.settings)
         self.live = LiveZhihuClient(self.settings)
 
     def _live_enabled(self) -> bool:

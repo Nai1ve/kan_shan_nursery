@@ -88,7 +88,7 @@ quota:{endpoint}:{user_id}:{yyyyMMdd}
 - `app/security.py`：Community HMAC 签名和稳定 hash。
 - `app/live_client.py`：Community / OAuth / Data Platform 的标准库 live client。
 - `app/mappers.py`：官方 raw 字段到标准 DTO 的映射。
-- `app/cache.py`：P0 本地内存缓存，语义对齐 Redis 短缓存。
+- `app/cache.py`：Redis 短缓存后端和测试用内存后端。
 - `app/service.py`：mock/live provider、quota、cache wrapper。
 - `app/main.py`：FastAPI 路由。
 - `tests/test_core.py`：不依赖 FastAPI 的核心逻辑测试。
@@ -107,6 +107,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8070 --reload
 
 ```text
 PROVIDER_MODE=mock
+ZHIHU_CACHE_BACKEND=memory
 ```
 
 live 模式需要本地 `.env` 或 shell 环境提供：
@@ -117,6 +118,8 @@ ZHIHU_APP_KEY=
 ZHIHU_APP_SECRET=
 ZHIHU_ACCESS_TOKEN=
 ZHIHU_ACCESS_SECRET=
+ZHIHU_CACHE_BACKEND=redis
+REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
 不要提交真实密钥。

@@ -5,7 +5,6 @@ import {
   Check,
   Copy,
   Droplets,
-  ExternalLink,
   History,
   Home,
   Leaf,
@@ -122,7 +121,6 @@ export function KanshanApp() {
   const [selectedCategory, setSelectedCategory] = useState("ai-coding");
   const [selectedSeedId, setSelectedSeedId] = useState("seed-ai-coding-moat");
   const [writingStep, setWritingStep] = useState(0);
-  const [sourceDrawer, setSourceDrawer] = useState<{ source: ContentSource; card: WorthReadingCard } | null>(null);
   const [questionCard, setQuestionCard] = useState<WorthReadingCard | null>(null);
   const [newSeedOpen, setNewSeedOpen] = useState(false);
   const [wateringSeedId, setWateringSeedId] = useState<string | null>(null);
@@ -144,6 +142,10 @@ export function KanshanApp() {
       if (!mounted) return;
 
       const initialState: DemoState = {
+        hasEntered: false,
+        activeTab: "today",
+        selectedCategoryId: "ai-coding",
+        selectedSeedId: "seed-ai-coding-moat",
         profile,
         categories: content.categories,
         cards: content.cards,
@@ -152,10 +154,17 @@ export function KanshanApp() {
         feedbackArticles,
         reactions: {},
         expandedCardIds: [],
+        expandedSourceIds: {},
+        categoryRefreshState: {},
         sproutStarted: false,
       };
 
-      setData(readStoredState(initialState));
+      const nextState = readStoredState(initialState);
+      setData(nextState);
+      setEntered(nextState.hasEntered);
+      setActiveTab(nextState.activeTab);
+      setSelectedCategory(nextState.selectedCategoryId);
+      setSelectedSeedId(nextState.selectedSeedId);
     }
 
     loadMockData().catch(() => {
@@ -184,7 +193,13 @@ export function KanshanApp() {
 
   function enterApp(mode: "zhihu" | "onboarding" | "demo") {
     setEntered(true);
-    setActiveTab(mode === "onboarding" ? "onboarding" : "today");
+    const nextTab = mode === "onboarding" ? "onboarding" : "today";
+    setActiveTab(nextTab);
+    updateData((current) => ({
+      ...current,
+      hasEntered: true,
+      activeTab: nextTab,
+    }));
     if (mode === "zhihu") {
       updateData((current) => ({
         ...current,
@@ -196,7 +211,18 @@ export function KanshanApp() {
 
   function goTab(tab: TabId) {
     setActiveTab(tab);
+    updateData((current) => ({ ...current, activeTab: tab }));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function selectCategory(categoryId: string) {
+    setSelectedCategory(categoryId);
+    updateData((current) => ({ ...current, selectedCategoryId: categoryId }));
+  }
+
+  function selectSeed(seedId: string) {
+    selectSeed(seedId);
+    updateData((current) => ({ ...current, selectedSeedId: seedId }));
   }
 
   function ensureSeedFromCard(card: WorthReadingCard, reaction: SeedReaction, note?: string) {
@@ -270,21 +296,29 @@ export function KanshanApp() {
   function markQuestion(seedId: string, questionId: string, status: SeedQuestion["status"]) {
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((seed) =>
-        seed.id === seedId
-          ? recalcSeed({
-              ...seed,
-              questions: seed.questions.map((question) => (question.id === questionId ? { ...question, status } : question)),
-              updatedAt: now(),
-            })
-          : seed,
-      ),
+      seeds: current.seeds.map((seed) => {
+        if (seed.id !== seedId) return seed;
+        const targetQuestion = seed.questions.find((question) => question.id === questionId);
+        return recalcSeed({
+          ...seed,
+          questions: seed.questions.map((question) => (question.id === questionId ? { ...question, status } : question)),
+          wateringMaterials: targetQuestion
+            ? seed.wateringMaterials.map((material) =>
+                material.type === "open_question" && material.content === targetQuestion.question
+                  ? { ...material, adopted: status === "resolved" }
+                  : material,
+              )
+            : seed.wateringMaterials,
+          updatedAt: now(),
+        });
+      }),
     }));
+    showToast(status === "resolved" ? "疑问已标记为已解决" : "疑问已标记为仍需补资料");
   }
 
   function addSeedFromCard(card: WorthReadingCard) {
     const seedId = ensureSeedFromCard(card, "supplement", "我想把这条内容先沉淀成可继续培养的观点种子。");
-    setSelectedSeedId(seedId);
+    selectSeed(seedId);
     showToast("已加入种子库");
   }
 
@@ -324,7 +358,7 @@ export function KanshanApp() {
       updatedAt: now(),
     });
     updateData((current) => ({ ...current, seeds: [newSeed, ...current.seeds] }));
-    setSelectedSeedId(newSeed.id);
+    selectSeed(newSeed.id);
     setNewSeedOpen(false);
     showToast("新种子已创建，进入待浇水状态");
   }
@@ -410,12 +444,34 @@ export function KanshanApp() {
     showToast("Agent 已回答待解决问题，并写入事实证据");
   }
 
+  function supplementMaterialWithAgent(seedId: string, type: Extract<WateringMaterialType, "evidence" | "counterargument">) {
+    const seed = data?.seeds.find((item) => item.id === seedId);
+    if (!seed) return;
+    const material =
+      type === "evidence"
+        ? {
+            type,
+            title: "Agent 补充事实证据",
+            content: `围绕“${seed.sourceTitle}”，Agent 建议补充一条可验证事实：先引用原始来源中的具体场景，再说明它如何支撑“${seed.coreClaim}”。这条材料应在正式接 API 后替换成真实回答或原文片段。`,
+            sourceLabel: "继续浇水 / Agent 补证据",
+            adopted: true,
+          }
+        : {
+            type,
+            title: "Agent 找到反方质疑",
+            content: `针对“${seed.coreClaim}”，反方可能会质疑：${seed.counterArguments[0] ?? "当前材料是否足够支持这个判断？"} 建议在文章中明确适用边界，并补充一个不成立的场景。`,
+            sourceLabel: "继续浇水 / Agent 找反方",
+            adopted: true,
+          };
+    addMaterial(seedId, material);
+  }
+
   function mergeSeeds(targetId: string, sourceId: string) {
     updateData((current) => {
       const target = current.seeds.find((seed) => seed.id === targetId);
       const source = current.seeds.find((seed) => seed.id === sourceId);
       if (!target || !source) return current;
-      const merged = recalcSeed({
+      const [merged] = ensureUniqueMaterialIds([recalcSeed({
         ...target,
         possibleAngles: unique([...target.possibleAngles, ...source.possibleAngles]),
         counterArguments: unique([...target.counterArguments, ...source.counterArguments]),
@@ -424,7 +480,7 @@ export function KanshanApp() {
         questions: [...target.questions, ...source.questions],
         userNote: `${target.userNote}\n合并补充：${source.userNote}`,
         updatedAt: now(),
-      });
+      })]);
       return { ...current, seeds: current.seeds.filter((seed) => seed.id !== sourceId).map((seed) => (seed.id === targetId ? merged : seed)) };
     });
     setMergeSeedId(null);
@@ -440,7 +496,7 @@ export function KanshanApp() {
       sproutStarted: true,
       sproutOpportunities: mergeOpportunities(generated, current.sproutOpportunities),
     }));
-    if (seedId) setSelectedSeedId(seedId);
+    if (seedId) selectSeed(seedId);
     goTab("sprout");
     showToast("已开始：历史种子 × 今日热点 × 用户画像");
   }
@@ -496,7 +552,7 @@ export function KanshanApp() {
         ? current.seeds.map((item) => (item.id === seedId ? { ...item, status: "writing", updatedAt: now() } : item))
         : [{ ...seed, status: "writing", updatedAt: now() }, ...current.seeds],
     }));
-    setSelectedSeedId(seedId);
+    selectSeed(seedId);
     setWritingStep(0);
     goTab("write");
     showToast("已进入写作苗圃，Memory 已按兴趣分类注入");
@@ -575,28 +631,9 @@ export function KanshanApp() {
       updatedAt: now(),
     });
     updateData((current) => ({ ...current, seeds: [newSeed, ...current.seeds] }));
-    setSelectedSeedId(newSeed.id);
+    selectSeed(newSeed.id);
     goTab("seeds");
     showToast("已从历史反馈生成二次文章种子");
-  }
-
-  function applyMemoryUpdate(article: FeedbackArticle) {
-    updateData((current) => ({
-      ...current,
-      profile: {
-        ...current.profile,
-        interestMemories: current.profile.interestMemories.map((memory) =>
-          memory.interestId === article.interestId
-            ? {
-                ...memory,
-                writingReminder: `${memory.writingReminder} 历史反馈提醒：${article.memoryAction}`,
-                feedbackSummary: article.performanceSummary,
-              }
-            : memory,
-        ),
-      },
-    }));
-    showToast("反馈已写入对应兴趣 Memory");
   }
 
   function saveProfile(profile: ProfileData) {
@@ -611,8 +648,43 @@ export function KanshanApp() {
 
   const selectedCards = useMemo(() => {
     if (!data) return [];
-    return data.cards.filter((card) => card.categoryId === selectedCategory);
+    return cardsForCategory(data.cards, selectedCategory, data.categoryRefreshState[selectedCategory]);
   }, [data, selectedCategory]);
+
+  const selectedCategoryRefresh = data?.categoryRefreshState[selectedCategory];
+
+  function refreshSelectedCategory() {
+    if (!data) return;
+    const currentCards = data.cards.filter((card) => card.categoryId === selectedCategory);
+    if (!currentCards.length) return;
+    const current = data.categoryRefreshState[selectedCategory];
+    const nextCount = (current?.refreshCount ?? 0) + 1;
+    const baseIds = current?.visibleCardIds?.length ? current.visibleCardIds : currentCards.map((card) => card.id);
+    const rotated = rotateIds(baseIds, 1);
+    updateData((state) => ({
+      ...state,
+      categoryRefreshState: {
+        ...state.categoryRefreshState,
+        [selectedCategory]: {
+          refreshCount: nextCount,
+          refreshedAt: now(),
+          visibleCardIds: rotated,
+        },
+      },
+      expandedSourceIds: {},
+    }));
+    showToast(`已刷新${sectionTitle(data.categories, selectedCategory)}，本地状态已保留`);
+  }
+
+  function toggleSource(cardId: string, sourceId: string) {
+    updateData((current) => ({
+      ...current,
+      expandedSourceIds: {
+        ...current.expandedSourceIds,
+        [cardId]: current.expandedSourceIds[cardId] === sourceId ? "" : sourceId,
+      },
+    }));
+  }
 
   const selectedSeed = useMemo(() => {
     if (!data) return null;
@@ -634,10 +706,6 @@ export function KanshanApp() {
     return findMemory(data.profile, writingSeed.interestId);
   }, [data, writingSeed]);
 
-  if (!entered) {
-    return <LoginScreen onEnter={enterApp} />;
-  }
-
   if (!data) {
     return (
       <main className="loading-screen">
@@ -645,6 +713,10 @@ export function KanshanApp() {
         <span>正在加载看山小苗圃 mock 数据...</span>
       </main>
     );
+  }
+
+  if (!entered) {
+    return <LoginScreen onEnter={enterApp} />;
   }
 
   const activeHero = heroMap[activeTab];
@@ -712,10 +784,12 @@ export function KanshanApp() {
             cards={selectedCards}
             reactions={data.reactions}
             expandedCardIds={data.expandedCardIds}
+            expandedSourceIds={data.expandedSourceIds}
+            refreshState={selectedCategoryRefresh}
             selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            showToast={showToast}
-            onOpenSource={(card, source) => setSourceDrawer({ card, source })}
+            setSelectedCategory={selectCategory}
+            onRefresh={refreshSelectedCategory}
+            onToggleSource={toggleSource}
             onToggleSummary={(cardId) => {
               updateData((current) => ({
                 ...current,
@@ -734,10 +808,9 @@ export function KanshanApp() {
           <SeedsSection
             seeds={data.seeds}
             selectedSeed={selectedSeed}
-            setSelectedSeedId={setSelectedSeedId}
+            setSelectedSeedId={selectSeed}
             openNewSeed={() => setNewSeedOpen(true)}
             openWatering={(seedId) => setWateringSeedId(seedId)}
-            startSprout={startSprout}
             startWriting={startWriting}
             openMerge={(seedId) => setMergeSeedId(seedId)}
           />
@@ -775,14 +848,12 @@ export function KanshanApp() {
             articles={data.feedbackArticles}
             syncFeedback={syncFeedback}
             generateSecondArticle={generateSecondArticle}
-            applyMemoryUpdate={applyMemoryUpdate}
             openComments={setCommentArticle}
           />
         ) : null}
         {activeTab === "profile" ? <ProfileSection profile={data.profile} categories={data.categories} onSave={saveProfile} /> : null}
       </main>
 
-      {sourceDrawer ? <SourceDrawer payload={sourceDrawer} onClose={() => setSourceDrawer(null)} /> : null}
       {questionCard ? (
         <QuestionDialog
           card={questionCard}
@@ -801,6 +872,7 @@ export function KanshanApp() {
           onEdit={(material, patch) => updateMaterial(wateringSeed.id, material.id, patch)}
           onDelete={(materialId) => deleteMaterial(wateringSeed.id, materialId)}
           onResolve={resolveOpenQuestion}
+          onAgentSupplement={(type) => supplementMaterialWithAgent(wateringSeed.id, type)}
         />
       ) : null}
       {mergeSeedId ? (
@@ -938,10 +1010,12 @@ function TodaySection({
   cards,
   reactions,
   expandedCardIds,
+  expandedSourceIds,
+  refreshState,
   selectedCategory,
   setSelectedCategory,
-  showToast,
-  onOpenSource,
+  onRefresh,
+  onToggleSource,
   onToggleSummary,
   onReact,
   onQuestion,
@@ -952,10 +1026,12 @@ function TodaySection({
   cards: WorthReadingCard[];
   reactions: Record<string, SeedReaction>;
   expandedCardIds: string[];
+  expandedSourceIds: Record<string, string>;
+  refreshState?: DemoState["categoryRefreshState"][string];
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
-  showToast: (message: string) => void;
-  onOpenSource: (card: WorthReadingCard, source: ContentSource) => void;
+  onRefresh: () => void;
+  onToggleSource: (cardId: string, sourceId: string) => void;
   onToggleSummary: (cardId: string) => void;
   onReact: (card: WorthReadingCard, reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
   onQuestion: (card: WorthReadingCard) => void;
@@ -970,7 +1046,7 @@ function TodaySection({
             <h2 className="panel-title">今日看什么</h2>
             <p className="panel-subtitle">选择兴趣小类、关注流或偶遇输入，只展示当前分类下的内容。</p>
           </div>
-          <button className="btn primary" onClick={() => showToast("已刷新当前分类输入，保留本地表态和种子状态")} type="button">
+          <button className="btn primary" onClick={onRefresh} type="button">
             <RefreshCw size={14} />
             刷新输入
           </button>
@@ -996,7 +1072,14 @@ function TodaySection({
                 <h3>{sectionTitle(categories, selectedCategory)}</h3>
                 <p>{sectionDescription(selectedCategory)}</p>
               </div>
-              <span className="tag blue">当前分类</span>
+              <div className="tag-row">
+                <span className="tag blue">当前分类</span>
+                {refreshState ? (
+                  <span className="tag green">
+                    刚刚刷新 · 第 {refreshState.refreshCount} 次 · {formatTime(refreshState.refreshedAt)}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="grid-2">
               {cards.map((card, index) => (
@@ -1006,7 +1089,8 @@ function TodaySection({
                   key={card.id}
                   reaction={reactions[card.id]}
                   expanded={expandedCardIds.includes(card.id)}
-                  onOpenSource={(source) => onOpenSource(card, source)}
+                  expandedSourceId={expandedSourceIds[card.id] || ""}
+                  onToggleSource={(sourceId) => onToggleSource(card.id, sourceId)}
                   onToggleSummary={() => onToggleSummary(card.id)}
                   onReact={(reaction) => onReact(card, reaction)}
                   onQuestion={() => onQuestion(card)}
@@ -1027,7 +1111,8 @@ function ContentCard({
   featured,
   reaction,
   expanded,
-  onOpenSource,
+  expandedSourceId,
+  onToggleSource,
   onToggleSummary,
   onReact,
   onQuestion,
@@ -1038,7 +1123,8 @@ function ContentCard({
   featured: boolean;
   reaction?: SeedReaction;
   expanded: boolean;
-  onOpenSource: (source: ContentSource) => void;
+  expandedSourceId: string;
+  onToggleSource: (sourceId: string) => void;
   onToggleSummary: () => void;
   onReact: (reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
   onQuestion: () => void;
@@ -1063,7 +1149,12 @@ function ContentCard({
         <div className={featured ? "source-list" : "source-chip-list"}>
           {card.originalSources.map((source) =>
             featured ? (
-              <button className="source-card source-button" key={source.sourceId} onClick={() => onOpenSource(source)} type="button">
+              <button
+                className={`source-card source-button ${expandedSourceId === source.sourceId ? "selected" : ""}`}
+                key={source.sourceId}
+                onClick={() => onToggleSource(source.sourceId)}
+                type="button"
+              >
                 <div className="source-meta">
                   <span>{source.sourceType}</span>
                   {source.meta.map((item) => (
@@ -1075,13 +1166,19 @@ function ContentCard({
                 <p>贡献：{source.contribution}</p>
               </button>
             ) : (
-              <button className="source-chip" key={source.sourceId} onClick={() => onOpenSource(source)} type="button">
-                <ExternalLink size={13} />
+              <button
+                className={`source-chip ${expandedSourceId === source.sourceId ? "selected" : ""}`}
+                key={source.sourceId}
+                onClick={() => onToggleSource(source.sourceId)}
+                type="button"
+              >
+                <BookOpen size={13} />
                 {source.sourceType}
               </button>
             ),
           )}
         </div>
+        {expandedSourceId ? <InlineSourcePanel source={card.originalSources.find((source) => source.sourceId === expandedSourceId)} /> : null}
       </div>
 
       <InfoBlock title="内容摘要" text={card.contentSummary} />
@@ -1128,7 +1225,6 @@ function SeedsSection({
   setSelectedSeedId,
   openNewSeed,
   openWatering,
-  startSprout,
   startWriting,
   openMerge,
 }: {
@@ -1137,7 +1233,6 @@ function SeedsSection({
   setSelectedSeedId: (id: string) => void;
   openNewSeed: () => void;
   openWatering: (id: string) => void;
-  startSprout: (id: string) => void;
   startWriting: (id: string) => void;
   openMerge: (id: string) => void;
 }) {
@@ -1202,10 +1297,7 @@ function SeedsSection({
                   <Droplets size={14} />
                   继续浇水
                 </button>
-                <button className="btn primary" onClick={() => startSprout(selectedSeed.id)} type="button">
-                  今日发芽
-                </button>
-                <button className="btn ghost" onClick={() => startWriting(selectedSeed.id)} type="button">
+                <button className="btn primary" onClick={() => startWriting(selectedSeed.id)} type="button">
                   开始写作
                 </button>
                 <button className="btn ghost" onClick={() => openMerge(selectedSeed.id)} type="button">
@@ -1722,7 +1814,7 @@ function WritingStageContent({
             <Save size={14} />
             保存为草稿
           </button>
-          <button className="btn ghost" onClick={() => copyText(finalDraftText(seed, session), showToast)} type="button">
+          <button className="btn ghost" onClick={() => copyText(finalDraftText(seed, session, memory), showToast)} type="button">
             <Copy size={14} />
             复制最终稿
           </button>
@@ -1736,13 +1828,11 @@ function HistorySection({
   articles,
   syncFeedback,
   generateSecondArticle,
-  applyMemoryUpdate,
   openComments,
 }: {
   articles: FeedbackArticle[];
   syncFeedback: () => void;
   generateSecondArticle: (article: FeedbackArticle) => void;
-  applyMemoryUpdate: (article: FeedbackArticle) => void;
   openComments: (article: FeedbackArticle) => void;
 }) {
   return (
@@ -1772,9 +1862,6 @@ function HistorySection({
                 <div className="action-row">
                   <button className="btn primary" onClick={() => generateSecondArticle(article)} type="button">
                     生成二次文章
-                  </button>
-                  <button className="btn ghost" onClick={() => applyMemoryUpdate(article)} type="button">
-                    更新 Memory
                   </button>
                   <button className="btn ghost" onClick={() => openComments(article)} type="button">
                     查看评论摘要
@@ -1907,37 +1994,30 @@ function ProfileSection({
   );
 }
 
-function SourceDrawer({ payload, onClose }: { payload: { source: ContentSource; card: WorthReadingCard }; onClose: () => void }) {
+function InlineSourcePanel({ source }: { source?: ContentSource }) {
+  if (!source) return null;
+
   return (
-    <div className="overlay">
-      <aside className="drawer">
-        <div className="modal-header">
-          <div>
-            <span className="tag blue">{payload.source.sourceType}</span>
-            <h2>{payload.source.title}</h2>
-          </div>
-          <button className="icon-btn" onClick={onClose} type="button" aria-label="关闭来源详情">
-            <X size={18} />
-          </button>
+    <div className="source-detail-panel">
+      <div className="source-detail-head">
+        <div>
+          <span className="tag blue">{source.sourceType}</span>
+          <h4>{source.title}</h4>
         </div>
-        <div className="drawer-body">
-          <InfoBlock title="所属卡片" text={payload.card.title} />
-          <InfoBlock title="作者 / 来源" text={payload.source.author ?? "未知"} />
-          <InfoBlock title="发布时间" text={payload.source.publishedAt ?? "未知"} />
-          <InfoBlock title="权威与热度" text={payload.source.authorityMeta ?? payload.source.meta.join(" / ")} />
-          <InfoBlock title="原文要点" text={payload.source.rawExcerpt} />
-          <InfoBlock title="对当前卡片的贡献" text={payload.source.contribution} />
-          <div className="action-row">
-            <a className="btn primary" href={payload.source.sourceUrl ?? "#"} rel="noreferrer" target="_blank">
-              <ExternalLink size={14} />
-              打开 mock 来源
-            </a>
-            <button className="btn ghost" onClick={onClose} type="button">
-              关闭
-            </button>
-          </div>
-        </div>
-      </aside>
+        <span className="tag green">API 原文 mock</span>
+      </div>
+      <div className="source-detail-grid">
+        <InfoBlock title="作者 / 来源" text={source.author ?? "未知"} />
+        <InfoBlock title="发布时间" text={source.publishedAt ?? "未知"} />
+        <InfoBlock title="权威与热度" text={source.authorityMeta ?? source.meta.join(" / ")} />
+        <InfoBlock title="Source ID" text={source.sourceId} />
+      </div>
+      <InfoBlock title="原文要点" text={source.rawExcerpt} />
+      <div className="source-full-content">
+        <div className="field-title">完整内容：</div>
+        <p>{source.fullContent}</p>
+      </div>
+      <InfoBlock title="对当前卡片的贡献" text={source.contribution} />
     </div>
   );
 }
@@ -1955,6 +2035,7 @@ function QuestionDialog({
 }) {
   const [question, setQuestion] = useState(`这个判断的反方证据是什么？`);
   const [answer, setAnswer] = useState<{ seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] } | null>(null);
+  const [markedStatus, setMarkedStatus] = useState<SeedQuestion["status"] | "">("");
 
   return (
     <div className="overlay">
@@ -1979,20 +2060,28 @@ function QuestionDialog({
               <div className="tag-row">
                 <span className="tag green">Agent 初步回答</span>
                 <span className="tag blue">已回写浇水材料</span>
+                {markedStatus === "resolved" ? <span className="tag green">已解决</span> : null}
+                {markedStatus === "needs_material" ? <span className="tag orange">仍需补资料</span> : null}
               </div>
               <p>{answer.agentAnswer}</p>
               <p className="field-text">引用来源：{answer.citedSourceIds.join("、")}</p>
               <div className="action-row tight-row">
                 <button
-                  className="btn ghost compact"
-                  onClick={() => onMark(answer.seedId, answer.questionId, "resolved")}
+                  className={`btn ghost compact ${markedStatus === "resolved" ? "selected" : ""}`}
+                  onClick={() => {
+                    onMark(answer.seedId, answer.questionId, "resolved");
+                    setMarkedStatus("resolved");
+                  }}
                   type="button"
                 >
                   标记已解决
                 </button>
                 <button
-                  className="btn ghost compact"
-                  onClick={() => onMark(answer.seedId, answer.questionId, "needs_material")}
+                  className={`btn ghost compact ${markedStatus === "needs_material" ? "selected" : ""}`}
+                  onClick={() => {
+                    onMark(answer.seedId, answer.questionId, "needs_material");
+                    setMarkedStatus("needs_material");
+                  }}
                   type="button"
                 >
                   仍需补资料
@@ -2001,7 +2090,15 @@ function QuestionDialog({
             </div>
           ) : null}
           <div className="action-row">
-            <button className="btn primary" onClick={() => setAnswer(onAnswer(question))} type="button" disabled={!question.trim()}>
+            <button
+              className="btn primary"
+              onClick={() => {
+                setAnswer(onAnswer(question));
+                setMarkedStatus("");
+              }}
+              type="button"
+              disabled={!question.trim()}
+            >
               <MessageCircleQuestion size={14} />
               让 Agent 回答并记录
             </button>
@@ -2101,6 +2198,7 @@ function WateringModal({
   onEdit,
   onDelete,
   onResolve,
+  onAgentSupplement,
 }: {
   seed: IdeaSeed;
   onClose: () => void;
@@ -2109,6 +2207,7 @@ function WateringModal({
   onEdit: (material: WateringMaterial, patch: Partial<WateringMaterial>) => void;
   onDelete: (materialId: string) => void;
   onResolve: (seedId: string, material: WateringMaterial) => void;
+  onAgentSupplement: (type: Extract<WateringMaterialType, "evidence" | "counterargument">) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<WateringMaterialType, string>>({
     evidence: "",
@@ -2166,6 +2265,11 @@ function WateringModal({
                   >
                     添加
                   </button>
+                  {type === "evidence" || type === "counterargument" ? (
+                    <button className="btn ghost compact" onClick={() => onAgentSupplement(type)} type="button">
+                      {type === "evidence" ? "Agent 补证据" : "Agent 找反方"}
+                    </button>
+                  ) : null}
                   <div className="material-list">
                     {materials.map((material) => (
                       <MaterialItem
@@ -2455,14 +2559,20 @@ function readStoredState(initialState: DemoState): DemoState {
     return {
       ...initialState,
       ...stored,
+      hasEntered: stored.hasEntered ?? false,
+      activeTab: stored.activeTab ?? initialState.activeTab,
+      selectedCategoryId: stored.selectedCategoryId ?? initialState.selectedCategoryId,
+      selectedSeedId: stored.selectedSeedId ?? initialState.selectedSeedId,
       profile: stored.profile ?? initialState.profile,
       categories: initialState.categories,
       cards: initialState.cards,
-      seeds: stored.seeds?.length ? stored.seeds : initialState.seeds,
+      seeds: ensureUniqueMaterialIds(stored.seeds?.length ? stored.seeds : initialState.seeds),
       sproutOpportunities: stored.sproutOpportunities?.length ? stored.sproutOpportunities : initialState.sproutOpportunities,
       feedbackArticles: stored.feedbackArticles?.length ? stored.feedbackArticles : initialState.feedbackArticles,
       reactions: stored.reactions ?? {},
       expandedCardIds: stored.expandedCardIds ?? [],
+      expandedSourceIds: stored.expandedSourceIds ?? {},
+      categoryRefreshState: stored.categoryRefreshState ?? {},
       sproutStarted: stored.sproutStarted ?? false,
     };
   } catch {
@@ -2546,6 +2656,24 @@ function buildMaterial(type: WateringMaterialType, title: string, content: strin
   };
 }
 
+function ensureUniqueMaterialIds(seeds: IdeaSeed[]) {
+  return seeds.map((seed) => {
+    const seen = new Set<string>();
+    return {
+      ...seed,
+      wateringMaterials: seed.wateringMaterials.map((material) => {
+        if (!material.id || seen.has(material.id)) {
+          const next = { ...material, id: createId("material", `${material.type}-${material.title}`) };
+          seen.add(next.id);
+          return next;
+        }
+        seen.add(material.id);
+        return material;
+      }),
+    };
+  });
+}
+
 function recalcSeed(seed: IdeaSeed): IdeaSeed {
   const adoptedTypes = new Set(seed.wateringMaterials.filter((material) => material.adopted).map((material) => material.type));
   const resolvedQuestions = seed.questions.filter((question) => question.status === "resolved").length;
@@ -2609,6 +2737,41 @@ function sectionDescription(category: string) {
   if (category === "following") return "来自你关注的人和圈子动态，优先筛选观点密度高、讨论价值高的内容。";
   if (category === "serendipity") return "保留少量远端关联信息，避免推荐只在同温层内自我强化。";
   return "基于你的兴趣画像、阅读反应、热榜、搜索和关注流信号筛选。";
+}
+
+function cardsForCategory(cards: WorthReadingCard[], categoryId: string, refreshState?: DemoState["categoryRefreshState"][string]) {
+  const categoryCards = cards.filter((card) => card.categoryId === categoryId);
+  const ordered = refreshState?.visibleCardIds?.length
+    ? [...categoryCards].sort((a, b) => orderIndex(refreshState.visibleCardIds, a.id) - orderIndex(refreshState.visibleCardIds, b.id))
+    : categoryCards;
+
+  if (!refreshState?.refreshCount) return ordered;
+
+  return ordered.map((card, index) => ({
+    ...card,
+    relevanceScore: Math.min(99, card.relevanceScore + refreshState.refreshCount + index),
+    tags: [
+      ...card.tags.filter((tag) => !tag.label.startsWith("刷新")),
+      { label: `刷新 ${refreshState.refreshCount}`, tone: "green" as Tone },
+    ],
+  }));
+}
+
+function orderIndex(ids: string[], id: string) {
+  const index = ids.indexOf(id);
+  return index === -1 ? ids.length : index;
+}
+
+function rotateIds(ids: string[], step: number) {
+  if (ids.length <= 1) return ids;
+  const offset = step % ids.length;
+  return [...ids.slice(offset), ...ids.slice(0, offset)];
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "刚刚";
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
 function scaleValues(index: number) {
@@ -2705,7 +2868,9 @@ function copyText(text: string, showToast: (message: string) => void) {
 }
 
 function createId(prefix: string, seed: string) {
-  return `${prefix}-${seed.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-${Date.now().toString(36)}`;
+  const normalized = seed.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+  const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${normalized}-${suffix}`;
 }
 
 function now() {

@@ -765,6 +765,11 @@ button.card:hover {
   background: var(--primary-soft);
 }
 
+.source-button.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
 .source-chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -790,7 +795,59 @@ button.card:hover {
   background: var(--primary-soft);
 }
 
+.source-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
 .source-card p {
+  color: var(--muted);
+}
+
+.source-detail-panel {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: 0 12px 26px rgba(22, 114, 246, 0.1);
+  padding: 14px;
+}
+
+.source-detail-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.source-detail-head h4 {
+  margin: 8px 0 0;
+  font-size: 17px;
+}
+
+.source-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.source-full-content {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.source-full-content p {
+  white-space: pre-line;
   color: var(--muted);
 }
 
@@ -1314,7 +1371,8 @@ button.card:hover {
 
   .grid-2,
   .grid-3,
-  .material-board {
+  .material-board,
+  .source-detail-grid {
     grid-template-columns: 1fr;
   }
 

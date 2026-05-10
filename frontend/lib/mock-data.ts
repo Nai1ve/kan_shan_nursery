@@ -329,6 +329,12 @@ function makeSources(categoryId: string, title: string, index: number): ContentS
       authorityMeta: `热度 ${82 - (index % 5) * 4}`,
       meta: ["2 小时前", `热度 ${82 - (index % 5) * 4}`],
       rawExcerpt: `围绕“${base}”的讨论正在升温，评论区出现了支持与反对两类判断。`,
+      fullContent: [
+        `问题背景：${base} 近期在${category}相关讨论中持续出现。提问者关心的不只是结论，而是这个判断背后的适用范围、证据质量和反方意见。`,
+        `核心信息：讨论区把问题拆成两层，一层是当前可观察到的趋势，另一层是趋势能否长期成立。支持者认为这个议题已经影响真实工作流，反对者则提醒不要把局部案例推广成行业规律。`,
+        `可引用细节：热榜下的高赞互动集中在“为什么值得现在讨论”“这个问题和普通用户有什么关系”“写作者应该补充哪些经验”三个方向。`,
+        `对写作的启发：适合作为文章开头的时效背景，但不能直接当作论证结论；进入写作前还需要补充具体案例、反方回应和个人观察。`,
+      ].join("\n\n"),
       contribution: "提供时效背景和社区分歧入口。",
     },
     {
@@ -341,6 +347,12 @@ function makeSources(categoryId: string, title: string, index: number): ContentS
       authorityMeta: `赞同 ${(2.1 + (index % 4) * 0.6).toFixed(1)}k`,
       meta: ["昨天", `赞同 ${(2.1 + (index % 4) * 0.6).toFixed(1)}k`],
       rawExcerpt: `作者从${category}角度解释了为什么这个问题不能只看表层结论。`,
+      fullContent: [
+        `回答主线：作者从${category}的实际场景切入，先界定“${base}”不是一个单点能力问题，而是输入质量、执行流程、验证责任共同作用的结果。`,
+        `关键论据：回答中把正方观点拆成三个支撑点：真实需求已经出现、旧方法存在明显成本、AI 或自动化能力需要被放进完整流程里评估。`,
+        `边界提醒：作者没有把这个判断说满，强调不同团队、不同风险场景和不同使用深度会得到不同结论。`,
+        `对写作的启发：可以抽取其中的结构作为论证骨架，但需要用自己的项目经验替换泛化表述。`,
+      ].join("\n\n"),
       contribution: "提供正方论证材料和可引用表述。",
     },
     {
@@ -353,6 +365,12 @@ function makeSources(categoryId: string, title: string, index: number): ContentS
       authorityMeta: "精选 18 条",
       meta: ["今天", "精选 18 条"],
       rawExcerpt: "评论区集中质疑这个判断是否过度概括，并要求补充真实案例。",
+      fullContent: [
+        `评论焦点：反方评论主要质疑“${base}”是否被过度概括，以及当前材料是否足以支撑这么强的结论。`,
+        `典型问题：有人要求补充失败案例，有人认为不同业务场景差异很大，也有人提醒写作者不要只引用支持自己观点的材料。`,
+        `潜在反方：如果未来工具能力继续增强，当前的瓶颈是否会自然消失？如果只看少数高赞回答，会不会忽略沉默的大多数使用场景？`,
+        `对写作的启发：适合作为文章中“我知道这个观点可能被这样反驳”的段落来源。`,
+      ].join("\n\n"),
       contribution: "作为后续写作中的反方回应入口。",
     },
   ];
@@ -366,7 +384,9 @@ function material(
   adopted: boolean,
 ): WateringMaterial {
   return {
-    id: `material-${title.slice(0, 8)}-${type}`,
+    id: `material-${type}-${sourceLabel}-${title}-${content.slice(0, 18)}`
+      .replace(/[^a-zA-Z0-9\u4e00-\u9fa5-]+/g, "-")
+      .slice(0, 96),
     type,
     title,
     content,

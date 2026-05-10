@@ -29,6 +29,7 @@ export interface ContentSource {
   authorityMeta?: string;
   meta: string[];
   rawExcerpt: string;
+  fullContent: string;
   contribution: string;
 }
 
@@ -186,7 +187,17 @@ export interface WritingSession {
   publishedArticleId?: string;
 }
 
+export interface CategoryRefreshState {
+  refreshCount: number;
+  refreshedAt: string;
+  visibleCardIds: string[];
+}
+
 export interface DemoState {
+  hasEntered: boolean;
+  activeTab: TabId;
+  selectedCategoryId: string;
+  selectedSeedId: string;
   profile: ProfileData;
   categories: InputCategory[];
   cards: WorthReadingCard[];
@@ -195,6 +206,8 @@ export interface DemoState {
   feedbackArticles: FeedbackArticle[];
   reactions: Record<string, SeedReaction>;
   expandedCardIds: string[];
+  expandedSourceIds: Record<string, string>;
+  categoryRefreshState: Record<string, CategoryRefreshState>;
   sproutStarted: boolean;
   writingSession?: WritingSession;
 }

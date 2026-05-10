@@ -15,6 +15,8 @@ class Settings:
     redis_url: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
     cache_ttl_seconds: int = int(os.getenv("LLM_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
     request_timeout_seconds: float = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "20"))
+    trace_dir: str = os.getenv("LLM_TRACE_DIR", "output/llm-trace")
+    trace_enabled: bool = os.getenv("LLM_TRACE_ENABLED", "1") not in {"0", "false", "False"}
 
 
 def get_settings() -> Settings:

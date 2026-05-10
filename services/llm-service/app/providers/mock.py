@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .base import Provider, ProviderResult
+
 
 def _pick_title(input_data: dict[str, Any]) -> str:
     seed = input_data.get("seed") or {}
@@ -20,7 +22,9 @@ def _sources(input_data: dict[str, Any]) -> list[dict[str, Any]]:
     return explicit_sources or card.get("originalSources") or []
 
 
-def run_mock_task(task_type: str, input_data: dict[str, Any]) -> dict[str, Any]:
+def run_mock_task(task_type: str, input_data: dict[str, Any], persona: str | None = None) -> dict[str, Any]:
+    if task_type == "roundtable-review" and persona:
+        return _roundtable_persona(persona, input_data)
     handlers = {
         "summarize-content": _summarize_content,
         "extract-controversies": _extract_controversies,
@@ -37,6 +41,20 @@ def run_mock_task(task_type: str, input_data: dict[str, Any]) -> dict[str, Any]:
         return handlers[task_type](input_data)
     except KeyError as exc:
         raise ValueError(f"Unsupported taskType: {task_type}") from exc
+
+
+class MockProvider:
+    name = "mock"
+
+    def run(
+        self,
+        task_type: str,
+        input_data: dict[str, Any],
+        prompt: str,
+        persona: str | None = None,
+    ) -> ProviderResult:
+        output = run_mock_task(task_type, input_data, persona)
+        return ProviderResult(output=output, provider_meta={"provider": self.name, "persona": persona})
 
 
 def _summarize_content(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -96,7 +114,7 @@ def _generate_writing_angles(input_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _answer_seed_question(input_data: dict[str, Any]) -> dict[str, Any]:
-    question = input_data.get("question") or (input_data.get("userQuestion") or "这个观点是否成立？")
+    question = input_data.get("question") or input_data.get("userQuestion") or "这个观点是否成立？"
     claim = _pick_claim(input_data)
     needs_material = any(word in question for word in ["证据", "数据", "来源", "可靠", "证明"])
     return {
@@ -179,24 +197,46 @@ def _draft(input_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _roundtable_review(input_data: dict[str, Any]) -> dict[str, Any]:
+    claim = _pick_claim(input_data)
     return {
         "reviews": [
-            {
-                "role": "logic_reviewer",
-                "summary": "主张清楚，但论据层次还可以更分明。",
-                "problems": ["事实证据和个人经验混在一起。"],
-                "suggestions": ["把公共材料放前，个人经验放后。"],
-                "severity": "medium",
-            },
-            {
-                "role": "opponent_reader",
-                "summary": "反方会追问样本是否充分。",
-                "problems": ["缺少适用边界。"],
-                "suggestions": ["补一段‘在什么情况下我不这么认为’。"],
-                "severity": "medium",
-            },
-        ]
+            _roundtable_persona("logic_reviewer", input_data)["reviews"][0] | {"_synthesized": True},
+            _roundtable_persona("opponent_reader", input_data)["reviews"][0] | {"_synthesized": True},
+        ],
+        "summary": f"针对“{claim}”，逻辑清晰但反方回应不足，建议补一段适用边界。",
     }
+
+
+def _roundtable_persona(persona: str, input_data: dict[str, Any]) -> dict[str, Any]:
+    claim = _pick_claim(input_data)
+    catalog = {
+        "logic_reviewer": {
+            "summary": f"主张“{claim}”清楚，但论据层次还可以更分明。",
+            "problems": ["事实证据和个人经验混在一起。", "结论的适用条件没有显式声明。"],
+            "suggestions": ["把公共材料放前，个人经验放后。", "在结尾加一段 '在什么情况下我不这么认为'。"],
+            "severity": "medium",
+        },
+        "human_editor": {
+            "summary": "整体可读，但缺少真实细节，读起来略像 AI 模板。",
+            "problems": ["没有具体场景或时间地点。", "排比偏多。"],
+            "suggestions": ["选一段加入项目踩坑细节。", "把排比改成两到三句具体陈述。"],
+            "severity": "medium",
+        },
+        "opponent_reader": {
+            "summary": "反方角度看，结论可能过度外推。",
+            "problems": ["样本是否充分没有说明。", "没有承认反例。"],
+            "suggestions": ["补一段 '反方可能这样反驳'。", "明确写出适用边界。"],
+            "severity": "high",
+        },
+        "community_editor": {
+            "summary": "标题和开头可以更贴合知乎语境。",
+            "problems": ["标题偏抽象，不够吸引点击。", "开头缺少代入感。"],
+            "suggestions": ["标题改成提问式。", "开头加一句 '我最近遇到的事'。"],
+            "severity": "low",
+        },
+    }
+    review = catalog.get(persona) or catalog["logic_reviewer"]
+    return {"reviews": [{"role": persona, **review}]}
 
 
 def _feedback_summary(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -205,3 +245,6 @@ def _feedback_summary(input_data: dict[str, Any]) -> dict[str, Any]:
         "signals": ["点赞来自认同观点", "评论集中追问证据", "收藏说明主题有长期价值"],
         "secondArticleIdeas": ["把本文的一个反方质疑展开成后续文章", "补一篇个人项目复盘作为案例"],
     }
+
+
+__all__ = ["MockProvider", "run_mock_task"]

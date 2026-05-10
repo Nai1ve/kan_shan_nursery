@@ -29,3 +29,12 @@ def load_prompt(task_type: str, prompt_version: str) -> str:
         "你是看山小苗圃的创作辅助 Agent。"
         "请只基于输入信息输出结构化 JSON，不替用户决定立场。"
     )
+
+
+def load_persona_prompt(prompt_version: str, relative_path: str | None) -> str | None:
+    if not relative_path:
+        return None
+    path = PROMPT_ROOT / prompt_version / relative_path
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")

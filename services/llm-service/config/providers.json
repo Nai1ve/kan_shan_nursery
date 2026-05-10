@@ -1,0 +1,38 @@
+{
+  "providers": {
+    "mock": {
+      "type": "mock"
+    },
+    "zhihu_direct": {
+      "type": "zhihu_direct"
+    },
+    "openai_compat": {
+      "type": "openai_compat",
+      "requires_env": ["OPENAI_COMPAT_BASE_URL", "OPENAI_COMPAT_API_KEY"]
+    }
+  },
+  "routing": {
+    "default": {"provider": "mock", "fallback": null},
+    "per_task": {
+      "summarize-content":      {"provider": "zhihu_direct", "fallback": "mock"},
+      "extract-controversies":  {"provider": "zhihu_direct", "fallback": "mock"},
+      "generate-writing-angles":{"provider": "zhihu_direct", "fallback": "mock"},
+      "answer-seed-question":   {"provider": "zhihu_direct", "fallback": "mock"},
+      "supplement-material":    {"provider": "zhihu_direct", "fallback": "mock"},
+      "sprout-opportunities":   {"provider": "zhihu_direct", "fallback": "mock"},
+      "argument-blueprint":     {"provider": "zhihu_direct", "fallback": "mock"},
+      "draft":                  {"provider": "zhihu_direct", "fallback": "mock"},
+      "feedback-summary":       {"provider": "zhihu_direct", "fallback": "mock"},
+      "roundtable-review": {
+        "mode": "multi_persona",
+        "fallback": "mock",
+        "personas": [
+          {"id": "logic_reviewer",   "provider": "zhihu_direct", "persona_prompt": "personas/logic_reviewer.md"},
+          {"id": "human_editor",     "provider": "zhihu_direct", "persona_prompt": "personas/human_editor.md"},
+          {"id": "opponent_reader",  "provider": "zhihu_direct", "persona_prompt": "personas/opponent_reader.md"},
+          {"id": "community_editor", "provider": "zhihu_direct", "persona_prompt": "personas/community_editor.md"}
+        ]
+      }
+    }
+  }
+}

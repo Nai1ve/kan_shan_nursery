@@ -651,6 +651,11 @@ button.card:hover {
   gap: 12px;
 }
 
+.expandable-card {
+  cursor: pointer;
+}
+
+.expanded-card,
 .featured-card {
   grid-column: 1 / -1;
   background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
@@ -1018,6 +1023,20 @@ button.card:hover {
   padding: 12px;
 }
 
+.answer-thread {
+  display: grid;
+  gap: 12px;
+}
+
+.answer-flow-done {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #b8d7c4;
+  border-radius: var(--radius);
+  background: #f0faf4;
+  padding: 12px;
+}
+
 .outline-item {
   display: grid;
   gap: 8px;
@@ -1035,6 +1054,23 @@ button.card:hover {
 
 .memory-injection p {
   color: #405148;
+}
+
+.memory-injection-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.memory-injection-head h3 {
+  margin-bottom: 4px;
+}
+
+.memory-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .roundtable {
@@ -1372,8 +1408,13 @@ button.card:hover {
   .grid-2,
   .grid-3,
   .material-board,
-  .source-detail-grid {
+  .source-detail-grid,
+  .memory-edit-grid {
     grid-template-columns: 1fr;
+  }
+
+  .memory-injection-head {
+    display: grid;
   }
 
   .seed-list {

@@ -21,7 +21,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import type { ComponentType, Dispatch, SetStateAction } from "react";
+import type { ComponentType, Dispatch, KeyboardEvent, MouseEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   fetchContent,
@@ -263,7 +263,10 @@ export function KanshanApp() {
 
   function answerQuestion(card: WorthReadingCard, question: string) {
     const seedId = ensureSeedFromCard(card, "question", `我的疑问：${question}`);
-    const answer = buildAgentAnswer(card, question);
+    const currentSeed = data?.seeds.find((seed) => seed.id === seedId);
+    const turnIndex = currentSeed?.questions.length ?? 0;
+    const answer = buildAgentAnswer(card, question, turnIndex);
+    const answerMaterialType: WateringMaterialType = /反方|质疑|漏洞|风险|不足|边界/.test(question) ? "counterargument" : "evidence";
     const questionId = createId("question", card.id);
     const questionRecord: SeedQuestion = {
       id: questionId,
@@ -282,7 +285,7 @@ export function KanshanApp() {
           questions: [questionRecord, ...seed.questions],
           wateringMaterials: [
             buildMaterial("open_question", "用户疑问", question, "有疑问按钮", false),
-            buildMaterial("evidence", "Agent 初步回答", answer, "Agent 问答", true),
+            buildMaterial(answerMaterialType, turnIndex ? "Agent 继续追问回答" : "Agent 初步回答", answer, "Agent 问答", true),
             ...seed.wateringMaterials,
           ],
           updatedAt: now(),
@@ -533,18 +536,7 @@ export function KanshanApp() {
   function startWriting(seedId: string, seedOverride?: IdeaSeed) {
     const seed = seedOverride ?? data?.seeds.find((item) => item.id === seedId);
     if (!seed) return;
-    const session: WritingSession = {
-      sessionId: createId("writing", seedId),
-      seedId,
-      interestId: seed.interestId,
-      articleType: "deep_analysis",
-      coreClaim: seed.coreClaim,
-      tone: "balanced",
-      confirmed: false,
-      adoptedSuggestions: [],
-      draftStatus: "claim_confirming",
-      savedDraft: false,
-    };
+    const session = createWritingSession(seed, data?.profile);
     updateData((current) => ({
       ...current,
       writingSession: session,
@@ -559,10 +551,17 @@ export function KanshanApp() {
   }
 
   function updateWritingSession(patch: Partial<WritingSession>) {
-    updateData((current) => ({
-      ...current,
-      writingSession: current.writingSession ? { ...current.writingSession, ...patch } : current.writingSession,
-    }));
+    updateData((current) => {
+      const fallbackSeed = current.seeds.find((seed) => seed.id === selectedSeedId) ?? current.seeds[0];
+      return {
+        ...current,
+        writingSession: current.writingSession
+          ? { ...current.writingSession, ...patch }
+          : fallbackSeed
+            ? { ...createWritingSession(fallbackSeed, current.profile), ...patch }
+            : undefined,
+      };
+    });
   }
 
   function publishWriting() {
@@ -701,10 +700,16 @@ export function KanshanApp() {
     return data.seeds.find((seed) => seed.id === data.writingSession?.seedId) ?? selectedSeed;
   }, [data, selectedSeed]);
 
-  const writingMemory = useMemo(() => {
+  const writingBaseMemory = useMemo(() => {
     if (!data || !writingSeed) return null;
     return findMemory(data.profile, writingSeed.interestId);
   }, [data, writingSeed]);
+
+  const writingMemory = useMemo(() => {
+    if (!writingBaseMemory || !writingSeed) return null;
+    const override = data?.writingSession?.memoryOverride;
+    return override?.interestId === writingSeed.interestId ? override : writingBaseMemory;
+  }, [data, writingBaseMemory, writingSeed]);
 
   if (!data) {
     return (
@@ -830,10 +835,11 @@ export function KanshanApp() {
             }}
           />
         ) : null}
-        {activeTab === "write" && writingSeed && writingMemory ? (
+        {activeTab === "write" && writingSeed && writingMemory && writingBaseMemory ? (
           <WritingSection
             seed={writingSeed}
             memory={writingMemory}
+            baseMemory={writingBaseMemory}
             session={data.writingSession}
             step={writingStep}
             setStep={setWritingStep}
@@ -1131,8 +1137,32 @@ function ContentCard({
   onAddSeed: () => void;
   onWrite: () => void;
 }) {
+  const cardExpanded = featured || expanded;
+
+  function handleCardClick(event: MouseEvent<HTMLElement>) {
+    if (featured) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select")) return;
+    onToggleSummary();
+  }
+
+  function handleCardKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (featured) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select")) return;
+    event.preventDefault();
+    onToggleSummary();
+  }
+
   return (
-    <article className={`card structured-card ${featured ? "featured-card" : ""}`}>
+    <article
+      className={`card structured-card ${featured ? "featured-card" : "expandable-card"} ${expanded && !featured ? "expanded-card" : ""}`}
+      data-expanded={cardExpanded}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      tabIndex={featured ? undefined : 0}
+    >
       <div className="tag-row">
         {card.tags.map((tag) => (
           <span className={`tag ${tag.tone}`} key={`${card.id}-${tag.label}`}>
@@ -1140,15 +1170,16 @@ function ContentCard({
           </span>
         ))}
         {reaction ? <span className="tag green">已记录：{reactionLabel(reaction)}</span> : null}
+        {!featured ? <span className={`tag ${expanded ? "green" : "blue"}`}>{expanded ? "完整卡片已展开" : "点击卡片展开完整来源"}</span> : null}
       </div>
       <h3>标题：{card.title}</h3>
       <InfoBlock title="推荐理由" text={card.recommendationReason} />
 
       <div className="field-block">
         <div className="field-title">原始内容来源：</div>
-        <div className={featured ? "source-list" : "source-chip-list"}>
+        <div className={cardExpanded ? "source-list" : "source-chip-list"}>
           {card.originalSources.map((source) =>
-            featured ? (
+            cardExpanded ? (
               <button
                 className={`source-card source-button ${expandedSourceId === source.sourceId ? "selected" : ""}`}
                 key={source.sourceId}
@@ -1197,7 +1228,7 @@ function ContentCard({
       <ListBlock title="可写角度" items={card.writingAngles} />
       <div className="action-row">
         <button className={`btn ghost ${expanded ? "selected" : ""}`} onClick={onToggleSummary} type="button">
-          总结一下
+          {featured ? "总结一下" : expanded ? "收起卡片" : "展开卡片"}
         </button>
         <button className={`btn ghost ${reaction === "agree" ? "selected" : ""}`} onClick={() => onReact("agree")} type="button">
           我认同
@@ -1411,6 +1442,7 @@ function SproutSection({
 function WritingSection({
   seed,
   memory,
+  baseMemory,
   session,
   step,
   setStep,
@@ -1421,6 +1453,7 @@ function WritingSection({
 }: {
   seed: IdeaSeed;
   memory: MemorySummary;
+  baseMemory: MemorySummary;
   session?: WritingSession;
   step: number;
   setStep: Dispatch<SetStateAction<number>>;
@@ -1437,6 +1470,7 @@ function WritingSection({
     adoptedSuggestions: [],
     draftStatus: "claim_confirming" as const,
     savedDraft: false,
+    memoryOverride: memory,
   };
 
   return (
@@ -1469,7 +1503,15 @@ function WritingSection({
 
         <article className="panel writing-stage">
           <div className="stage-content">
-            <MemoryInjection memory={memory} />
+            <MemoryInjection
+              baseMemory={baseMemory}
+              memory={memory}
+              onChange={(nextMemory) => updateSession({ memoryOverride: nextMemory })}
+              onReset={() => {
+                updateSession({ memoryOverride: baseMemory });
+                showToast("已恢复画像默认 Memory 注入");
+              }}
+            />
             <WritingStageContent
               seed={seed}
               memory={memory}
@@ -2034,8 +2076,38 @@ function QuestionDialog({
   onMark: (seedId: string, questionId: string, status: SeedQuestion["status"]) => void;
 }) {
   const [question, setQuestion] = useState(`这个判断的反方证据是什么？`);
-  const [answer, setAnswer] = useState<{ seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] } | null>(null);
-  const [markedStatus, setMarkedStatus] = useState<SeedQuestion["status"] | "">("");
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [answerThread, setAnswerThread] = useState<
+    { seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] }[]
+  >([]);
+  const [markedStatuses, setMarkedStatuses] = useState<Record<string, SeedQuestion["status"]>>({});
+  const latestAnswer = answerThread[answerThread.length - 1];
+  const latestStatus = latestAnswer ? markedStatuses[latestAnswer.questionId] : "";
+  const flowResolved = latestStatus === "resolved";
+
+  function submitQuestion() {
+    const nextQuestion = latestAnswer ? followUpQuestion.trim() : question.trim();
+    if (!nextQuestion || flowResolved) return;
+    const nextAnswer = onAnswer(nextQuestion);
+    setAnswerThread((current) => [...current, nextAnswer]);
+    setMarkedStatuses((current) => {
+      const next = { ...current };
+      delete next[nextAnswer.questionId];
+      return next;
+    });
+    setFollowUpQuestion("");
+  }
+
+  function markAnswer(
+    answer: { seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] },
+    status: SeedQuestion["status"],
+  ) {
+    onMark(answer.seedId, answer.questionId, status);
+    setMarkedStatuses((current) => ({ ...current, [answer.questionId]: status }));
+    if (status === "needs_material") {
+      setFollowUpQuestion(`请继续补充“${answer.question}”背后的事实证据、反方材料和可引用来源。`);
+    }
+  }
 
   return (
     <div className="overlay">
@@ -2053,54 +2125,75 @@ function QuestionDialog({
           <InfoBlock title="关联卡片" text={card.title} />
           <div className="field">
             <label>我的具体疑问</label>
-            <textarea className="textarea" value={question} onChange={(event) => setQuestion(event.target.value)} />
+            <textarea className="textarea" value={question} onChange={(event) => setQuestion(event.target.value)} disabled={!!latestAnswer} />
           </div>
-          {answer ? (
-            <div className="answer-box">
-              <div className="tag-row">
-                <span className="tag green">Agent 初步回答</span>
-                <span className="tag blue">已回写浇水材料</span>
-                {markedStatus === "resolved" ? <span className="tag green">已解决</span> : null}
-                {markedStatus === "needs_material" ? <span className="tag orange">仍需补资料</span> : null}
-              </div>
-              <p>{answer.agentAnswer}</p>
-              <p className="field-text">引用来源：{answer.citedSourceIds.join("、")}</p>
-              <div className="action-row tight-row">
-                <button
-                  className={`btn ghost compact ${markedStatus === "resolved" ? "selected" : ""}`}
-                  onClick={() => {
-                    onMark(answer.seedId, answer.questionId, "resolved");
-                    setMarkedStatus("resolved");
-                  }}
-                  type="button"
-                >
-                  标记已解决
-                </button>
-                <button
-                  className={`btn ghost compact ${markedStatus === "needs_material" ? "selected" : ""}`}
-                  onClick={() => {
-                    onMark(answer.seedId, answer.questionId, "needs_material");
-                    setMarkedStatus("needs_material");
-                  }}
-                  type="button"
-                >
-                  仍需补资料
-                </button>
-              </div>
+          {answerThread.length ? (
+            <div className="answer-thread">
+              {answerThread.map((answer, index) => {
+                const status = markedStatuses[answer.questionId];
+                const isLatest = answer.questionId === latestAnswer?.questionId;
+                return (
+                  <div className="answer-box" key={answer.questionId}>
+                    <div className="tag-row">
+                      <span className="tag green">{index === 0 ? "Agent 初步回答" : `第 ${index + 1} 轮追问`}</span>
+                      <span className="tag blue">已回写浇水材料</span>
+                      {status === "resolved" ? <span className="tag green">已解决</span> : null}
+                      {status === "needs_material" ? <span className="tag orange">仍需补资料</span> : null}
+                    </div>
+                    <p>
+                      <strong>问题：</strong>
+                      {answer.question}
+                    </p>
+                    <p>{answer.agentAnswer}</p>
+                    <p className="field-text">引用来源：{answer.citedSourceIds.join("、")}</p>
+                    {isLatest && !flowResolved ? (
+                      <div className="action-row tight-row">
+                        <button
+                          className={`btn ghost compact ${status === "resolved" ? "selected" : ""}`}
+                          onClick={() => markAnswer(answer, "resolved")}
+                          type="button"
+                        >
+                          标记已解决
+                        </button>
+                        <button
+                          className={`btn ghost compact ${status === "needs_material" ? "selected" : ""}`}
+                          onClick={() => markAnswer(answer, "needs_material")}
+                          type="button"
+                        >
+                          仍需补资料
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {flowResolved ? (
+                <div className="answer-flow-done">
+                  <span className="tag green">流程已结束</span>
+                  <p>当前疑问已经标记解决。后续如果有新问题，可以重新从卡片点击“有疑问”开启新的追问线程。</p>
+                </div>
+              ) : (
+                <div className="field">
+                  <label>继续追问 / 新问题</label>
+                  <textarea
+                    className="textarea"
+                    value={followUpQuestion}
+                    onChange={(event) => setFollowUpQuestion(event.target.value)}
+                    placeholder="例如：请继续补充真实案例、反方证据或可引用来源。"
+                  />
+                </div>
+              )}
             </div>
           ) : null}
           <div className="action-row">
             <button
               className="btn primary"
-              onClick={() => {
-                setAnswer(onAnswer(question));
-                setMarkedStatus("");
-              }}
+              onClick={submitQuestion}
               type="button"
-              disabled={!question.trim()}
+              disabled={flowResolved || (latestAnswer ? !followUpQuestion.trim() : !question.trim())}
             >
               <MessageCircleQuestion size={14} />
-              让 Agent 回答并记录
+              {latestAnswer ? "继续追问并记录" : "让 Agent 回答并记录"}
             </button>
             <button className="btn ghost" onClick={onClose} type="button">
               完成
@@ -2462,25 +2555,81 @@ function FinalDraft({ seed, session, memory }: { seed: IdeaSeed; memory: MemoryS
   );
 }
 
-function MemoryInjection({ memory }: { memory: MemorySummary }) {
+function MemoryInjection({
+  baseMemory,
+  memory,
+  onChange,
+  onReset,
+}: {
+  baseMemory: MemorySummary;
+  memory: MemorySummary;
+  onChange: (memory: MemorySummary) => void;
+  onReset: () => void;
+}) {
+  const preferredPerspective = memory.preferredPerspective.join("、");
+
+  function updateMemory(patch: Partial<MemorySummary>) {
+    onChange({ ...memory, ...patch });
+  }
+
   return (
     <div className="memory-injection">
       <div className="tag-row">
         <span className="tag blue">已匹配兴趣分类画像：{memory.interestName}</span>
         <span className="tag green">Memory 已注入</span>
+        <span className="tag purple">本次写作可编辑</span>
       </div>
-      <h3>本次写作使用的画像 Memory</h3>
-      <p>
-        <strong>偏好视角：</strong>
-        {memory.preferredPerspective.join("、")}。
-        <br />
-        <strong>证据偏好：</strong>
-        {memory.evidencePreference}。
-        <br />
-        <strong>写作提醒：</strong>
-        {memory.writingReminder}
-        {memory.feedbackSummary ? ` 历史反馈：${memory.feedbackSummary}` : ""}
-      </p>
+      <div className="memory-injection-head">
+        <div>
+          <h3>本次写作使用的画像 Memory</h3>
+          <p>修改只写入当前写作 session，不会直接覆盖全局个人画像。</p>
+        </div>
+        <button className="btn ghost compact" onClick={onReset} type="button" disabled={JSON.stringify(baseMemory) === JSON.stringify(memory)}>
+          恢复画像默认
+        </button>
+      </div>
+      <div className="memory-edit-grid">
+        <div className="field">
+          <label>偏好视角</label>
+          <textarea
+            className="textarea compact-textarea"
+            value={preferredPerspective}
+            onChange={(event) =>
+              updateMemory({
+                preferredPerspective: event.target.value
+                  .split(/[、,\n]/)
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          <label>证据偏好</label>
+          <textarea
+            className="textarea compact-textarea"
+            value={memory.evidencePreference}
+            onChange={(event) => updateMemory({ evidencePreference: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label>写作提醒</label>
+          <textarea
+            className="textarea compact-textarea"
+            value={memory.writingReminder}
+            onChange={(event) => updateMemory({ writingReminder: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label>历史反馈注入</label>
+          <textarea
+            className="textarea compact-textarea"
+            value={memory.feedbackSummary ?? ""}
+            onChange={(event) => updateMemory({ feedbackSummary: event.target.value })}
+            placeholder="可补充本次写作需要特别注意的读者反馈。"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -2611,10 +2760,33 @@ function buildSeedFromCard(card: WorthReadingCard, categories: InputCategory[], 
   });
 }
 
-function buildAgentAnswer(card: WorthReadingCard, question: string) {
+function createWritingSession(seed: IdeaSeed, profile?: ProfileData): WritingSession {
+  return {
+    sessionId: createId("writing", seed.id),
+    seedId: seed.id,
+    interestId: seed.interestId,
+    articleType: "deep_analysis",
+    coreClaim: seed.coreClaim,
+    memoryOverride: profile ? findMemory(profile, seed.interestId) : undefined,
+    tone: "balanced",
+    confirmed: false,
+    adoptedSuggestions: [],
+    draftStatus: "claim_confirming",
+    savedDraft: false,
+  };
+}
+
+function buildAgentAnswer(card: WorthReadingCard, question: string, turnIndex = 0) {
   const sourceNames = card.originalSources.map((source) => source.sourceType).join("、");
   const counter = card.controversies[0] ?? "目前缺少反方材料";
-  return `针对“${question}”，Agent 基于 ${sourceNames} 的初步判断是：这个问题不能直接下结论。正方材料支持“${card.writingAngles[0]}”，但仍需回应“${counter}”。建议把它沉淀为反方回应材料，并在写作前补一个真实案例。`;
+  const evidence = card.originalSources[turnIndex % card.originalSources.length];
+  if (turnIndex === 0) {
+    return `针对“${question}”，Agent 基于 ${sourceNames} 的初步判断是：这个问题不能直接下结论。正方材料支持“${card.writingAngles[0]}”，但仍需回应“${counter}”。建议把它沉淀为反方回应材料，并在写作前补一个真实案例。`;
+  }
+  if (turnIndex % 2 === 1) {
+    return `第 ${turnIndex + 1} 轮继续求证：我会优先从“${evidence.sourceType}”补材料。当前可引用的方向是“${evidence.rawExcerpt}”。它能帮助回答“${question}”，但仍需要把来源中的具体场景和你的个人经验连接起来，否则文章容易停留在概念判断。`;
+  }
+  return `第 ${turnIndex + 1} 轮继续求证：围绕“${question}”，更值得补的是反方边界。可以把“${counter}”作为文章中必须回应的问题，再用“${evidence.contribution}”说明为什么你的主张不是绝对结论，而是有适用条件的判断。`;
 }
 
 function buildSproutOpportunity(seed: IdeaSeed, index: number): SproutOpportunity {

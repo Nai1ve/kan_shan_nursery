@@ -179,6 +179,7 @@ export interface WritingSession {
   interestId: string;
   articleType: string;
   coreClaim: string;
+  memoryOverride?: MemorySummary;
   tone: "balanced" | "sharp" | "steady";
   confirmed: boolean;
   adoptedSuggestions: string[];

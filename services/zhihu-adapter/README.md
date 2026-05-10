@@ -82,3 +82,50 @@ quota:{endpoint}:{user_id}:{yyyyMMdd}
 - 缓存命中不增加 quota。
 - 热榜、知乎搜索、全网搜索、故事、关注动态都能映射到 `ZhihuContentItem`。
 - 真实发布/评论/点赞必须支持 mock/live 开关，默认 mock。
+
+## 当前实现
+
+- `app/security.py`：Community HMAC 签名和稳定 hash。
+- `app/live_client.py`：Community / OAuth / Data Platform 的标准库 live client。
+- `app/mappers.py`：官方 raw 字段到标准 DTO 的映射。
+- `app/cache.py`：P0 本地内存缓存，语义对齐 Redis 短缓存。
+- `app/service.py`：mock/live provider、quota、cache wrapper。
+- `app/main.py`：FastAPI 路由。
+- `tests/test_core.py`：不依赖 FastAPI 的核心逻辑测试。
+
+## 本地运行
+
+```bash
+cd services/zhihu-adapter
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8070 --reload
+```
+
+默认 mock 模式：
+
+```text
+PROVIDER_MODE=mock
+```
+
+live 模式需要本地 `.env` 或 shell 环境提供：
+
+```text
+PROVIDER_MODE=live
+ZHIHU_APP_KEY=
+ZHIHU_APP_SECRET=
+ZHIHU_ACCESS_TOKEN=
+ZHIHU_ACCESS_SECRET=
+```
+
+不要提交真实密钥。
+
+## 测试
+
+当前核心测试不依赖第三方包：
+
+```bash
+python3 -m unittest discover -s services/zhihu-adapter/tests -v
+python3 -m py_compile services/zhihu-adapter/app/*.py services/zhihu-adapter/tests/*.py
+```

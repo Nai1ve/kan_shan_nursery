@@ -36,6 +36,51 @@
 - `POST /llm/tasks/roundtable-review`
 - `POST /llm/tasks/feedback-summary`
 
+## 当前实现
+
+服务入口统一为：
+
+```text
+POST /llm/tasks/{task_type}
+```
+
+请求体仍保留 `taskType`，网关调用时需要和 path 中的 `{task_type}` 一致。这样可以同时支持前端按独立 endpoint 调用，也能让服务内部复用同一套校验和缓存逻辑。
+
+启动：
+
+```bash
+cd services/llm-service
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
+```
+
+测试：
+
+```bash
+python3 -m unittest discover -s services/llm-service/tests -v
+python3 -m py_compile services/llm-service/app/*.py services/llm-service/tests/*.py
+```
+
+环境变量：
+
+```text
+LLM_PROVIDER_MODE=mock | zhihu
+ZHIHU_ADAPTER_URL=http://127.0.0.1:8070
+LLM_DEFAULT_MODEL=zhida-thinking-1p5
+LLM_CACHE_BACKEND=memory | redis
+REDIS_URL=redis://127.0.0.1:6379/0
+```
+
+P0 默认 `mock` + `memory`，便于离线测试。联调或部署时可以切到 `zhihu` + `redis`，真实直答仍通过 `zhihu-adapter` 发起，`llm-service` 不直接持有知乎 Data Platform 密钥。
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:8080/llm/tasks/answer-seed-question \
+  -H 'Content-Type: application/json' \
+  -d '{"taskType":"answer-seed-question","input":{"question":"这个判断有没有可靠证据？"}}'
+```
+
 ## 缓存
 
 ```text

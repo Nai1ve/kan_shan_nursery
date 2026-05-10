@@ -121,7 +121,8 @@
       "properties": {
         "cardId": { "type": "string" },
         "reaction": { "$ref": "#/$defs/SeedReaction" },
-        "userNote": { "type": "string" }
+        "userNote": { "type": "string" },
+        "card": { "$ref": "content.json#/$defs/WorthReadingCard" }
       }
     }
   }

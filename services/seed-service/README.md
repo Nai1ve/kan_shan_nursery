@@ -39,6 +39,33 @@
 - `POST /seeds/{seed_id}/materials/agent-supplement`
 - `POST /seeds/{target_seed_id}/merge`
 
+## 当前实现
+
+P0 使用内存仓储，进程重启后数据会丢失。服务实现保持和 `packages/shared-schemas/schemas/seed.json` 对齐，后续替换为数据库仓储时只需要替换 repository 层。
+
+启动：
+
+```bash
+cd services/seed-service
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8030 --reload
+```
+
+测试：
+
+```bash
+python3 -m unittest discover -s services/seed-service/tests -v
+python3 -m py_compile services/seed-service/app/*.py services/seed-service/tests/*.py
+```
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:8030/seeds/from-card \
+  -H 'Content-Type: application/json' \
+  -d '{"cardId":"card-ai-coding-001","reaction":"agree","userNote":"这个方向值得写"}'
+```
+
 ## 计算规则
 
 ```text

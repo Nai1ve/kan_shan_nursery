@@ -1,0 +1,20 @@
+{
+  "sessionId": "writing-seed-ai-coding-moat",
+  "seedId": "seed-ai-coding-moat",
+  "interestId": "ai-coding",
+  "articleType": "deep_analysis",
+  "coreClaim": "AI 编程工具的护城河，可能不在会写代码。",
+  "memoryOverride": {
+    "interestId": "ai-coding",
+    "interestName": "AI Coding",
+    "knowledgeLevel": "intermediate",
+    "preferredPerspective": ["工程交付", "研发工作流", "程序员成长"],
+    "evidencePreference": "case",
+    "writingReminder": "需要补充具体工程场景，并回应长上下文模型是否削弱壁垒的反方质疑。"
+  },
+  "tone": "balanced",
+  "confirmed": false,
+  "adoptedSuggestions": [],
+  "draftStatus": "claim_confirming",
+  "savedDraft": false
+}

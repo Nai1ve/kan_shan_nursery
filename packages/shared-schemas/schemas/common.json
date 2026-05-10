@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/common.json",
+  "title": "Kanshan Common Schemas",
+  "type": "object",
+  "$defs": {
+    "RequestId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["req_20260510_000001"]
+    },
+    "IsoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Tone": {
+      "type": "string",
+      "enum": ["blue", "green", "orange", "purple", "red"]
+    },
+    "Tag": {
+      "type": "object",
+      "required": ["label", "tone"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "tone": { "$ref": "#/$defs/Tone" }
+      }
+    },
+    "Metric": {
+      "type": "object",
+      "required": ["label", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "value": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "ErrorBody": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "detail": { "type": ["string", "object", "array", "null"] }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": ["request_id", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "request_id": { "$ref": "#/$defs/RequestId" },
+        "error": { "$ref": "#/$defs/ErrorBody" }
+      }
+    },
+    "CacheMeta": {
+      "type": "object",
+      "required": ["hit", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "hit": { "type": "boolean" },
+        "key": { "type": "string" },
+        "ttlSeconds": { "type": "integer", "minimum": 0 },
+        "fallback": { "type": "boolean", "default": false }
+      }
+    },
+    "QuotaMeta": {
+      "type": "object",
+      "required": ["endpoint", "usedToday"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": { "type": "string" },
+        "usedToday": { "type": "integer", "minimum": 0 },
+        "limitToday": { "type": ["integer", "null"], "minimum": 1 },
+        "warning": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

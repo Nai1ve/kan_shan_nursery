@@ -1,0 +1,113 @@
+openapi: 3.1.0
+info:
+  title: Kanshan API Gateway
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8000
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Gateway is healthy
+  /api/v1/profile/me:
+    get:
+      summary: Get current profile through gateway
+      responses:
+        '200':
+          description: Current profile
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+    put:
+      summary: Update current profile through gateway
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/ProfileData
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+  /api/v1/content:
+    get:
+      summary: Content bootstrap
+      responses:
+        '200':
+          description: Categories and cards
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/content.json#/$defs/ContentBootstrap
+  /api/v1/seeds:
+    get:
+      summary: List idea seeds
+      responses:
+        '200':
+          description: Idea seeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../schemas/seed.json#/$defs/IdeaSeed
+    post:
+      summary: Create manual idea seed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/seed.json#/$defs/IdeaSeed
+      responses:
+        '200':
+          description: Created idea seed
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/seed.json#/$defs/IdeaSeed
+  /api/v1/seeds/from-card:
+    post:
+      summary: Create or update seed from content card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/seed.json#/$defs/SeedFromCardRequest
+      responses:
+        '200':
+          description: Created or updated seed
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/seed.json#/$defs/IdeaSeed
+  /api/v1/writing/sessions:
+    post:
+      summary: Create writing session
+      responses:
+        '200':
+          description: Writing session
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/writing.json#/$defs/WritingSession
+  /api/v1/feedback/articles:
+    get:
+      summary: List feedback articles
+      responses:
+        '200':
+          description: Feedback articles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../schemas/feedback.json#/$defs/FeedbackArticle

@@ -1,0 +1,40 @@
+{
+  "id": "card-ai-coding-moat",
+  "categoryId": "ai-coding",
+  "tags": [
+    { "label": "知乎搜索", "tone": "blue" },
+    { "label": "高质量讨论", "tone": "green" }
+  ],
+  "title": "AI Coding 产品的壁垒到底在哪里？",
+  "recommendationReason": "多个高赞回答都在讨论代码生成能力是否会同质化，与你已有观点种子高度相关。",
+  "contentSummary": "讨论集中在模型能力、IDE 入口、私有代码库上下文、企业研发流程接入等方向。",
+  "controversies": [
+    "模型能力是否足以形成壁垒？",
+    "上下文积累是否真的难迁移？"
+  ],
+  "writingAngles": [
+    "AI 编程工具的护城河，可能不在会写代码。",
+    "企业真正需要的是代码生成，还是可控交付？"
+  ],
+  "originalSources": [
+    {
+      "sourceId": "zhihu-search-123",
+      "sourceType": "zhihu_search",
+      "sourceUrl": "https://www.zhihu.com/answer/123",
+      "title": "AI Coding 工具如何形成长期壁垒？",
+      "author": "知乎用户",
+      "publishedAt": "2026-05-10T10:00:00+08:00",
+      "authorityMeta": "AuthorityLevel 2",
+      "meta": ["VoteUp 128", "Comment 15"],
+      "rawExcerpt": "代码生成正在变成基础能力，企业流程接入更关键。",
+      "fullContent": "代码生成能力会逐渐同质化，真正长期的差异可能来自上下文、流程和组织数据。",
+      "contribution": "支撑卡片中关于工作流入口和上下文资产的判断。"
+    }
+  ],
+  "relevanceScore": 91,
+  "authorityScore": 82,
+  "popularityScore": 76,
+  "controversyScore": 69,
+  "createdAt": "2026-05-10T10:30:00+08:00",
+  "featured": true
+}

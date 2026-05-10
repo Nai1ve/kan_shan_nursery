@@ -1,0 +1,20 @@
+openapi: 3.1.0
+info:
+  title: Kanshan Common API Components
+  version: 0.1.0
+paths: {}
+components:
+  schemas:
+    ErrorResponse:
+      $ref: ../schemas/common.json#/$defs/ErrorResponse
+    CacheMeta:
+      $ref: ../schemas/common.json#/$defs/CacheMeta
+    QuotaMeta:
+      $ref: ../schemas/common.json#/$defs/QuotaMeta
+  responses:
+    Error:
+      description: Unified error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -1,0 +1,25 @@
+{
+  "nickname": "看山编辑",
+  "accountStatus": "已模拟关联知乎账号",
+  "role": "技术创作者 / Java 后端转 AI Agent",
+  "interests": ["Agent 工程化", "AI Coding", "RAG"],
+  "avoidances": "不要替我决定立场；不要生成空泛、油滑、过度平衡的 AI 味文章。",
+  "globalMemory": {
+    "longTermBackground": "有 Java 后端开发经验，关注 AI Agent 工程化落地。",
+    "contentPreference": "偏好工程复盘、问题拆解、反方质疑、真实案例。",
+    "writingStyle": "清晰、克制、偏工程师复盘视角。",
+    "recommendationStrategy": "按兴趣小类展开，关注流和偶遇输入作为平级入口。",
+    "riskReminder": "容易写成逻辑完整但缺少个人经历的文章。"
+  },
+  "interestMemories": [
+    {
+      "interestId": "ai-coding",
+      "interestName": "AI Coding",
+      "knowledgeLevel": "intermediate",
+      "preferredPerspective": ["工程交付", "研发工作流", "程序员成长"],
+      "evidencePreference": "case",
+      "writingReminder": "需要补充具体工程场景，并回应长上下文模型是否削弱壁垒的反方质疑。",
+      "feedbackSummary": "读者更喜欢真实项目场景，而不是工具功能罗列。"
+    }
+  ]
+}

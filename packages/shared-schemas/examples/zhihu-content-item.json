@@ -1,0 +1,22 @@
+{
+  "sourceType": "zhihu_search",
+  "sourceId": "123456789",
+  "contentType": "Article",
+  "title": "RAG 评测方法综述",
+  "url": "https://zhuanlan.zhihu.com/p/123456789",
+  "author": "张三",
+  "authorAvatar": "https://picx.zhimg.com/example.jpg",
+  "authorBadgeText": "",
+  "publishedAt": "2024-03-10T10:40:00+08:00",
+  "summary": "本文介绍了主流 RAG 评测框架，包括 RAGAS、TruLens 等。",
+  "authorityLevel": "2",
+  "likeCount": 128,
+  "commentCount": 15,
+  "rankingScore": 0.98,
+  "relevanceScore": 0.98,
+  "selectedComments": [],
+  "searchHashId": "1234567890",
+  "raw": {
+    "ContentID": "123456789"
+  }
+}

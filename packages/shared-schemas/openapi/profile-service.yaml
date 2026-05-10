@@ -1,0 +1,187 @@
+openapi: 3.1.0
+info:
+  title: Kanshan Profile Service API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8010
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+  /profiles/me:
+    get:
+      summary: Get current profile
+      responses:
+        '200':
+          description: Current profile
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+    put:
+      summary: Update current profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/ProfileData
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+  /profiles/onboarding:
+    post:
+      summary: Save onboarding profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/ProfileData
+      responses:
+        '200':
+          description: Saved profile
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+  /profiles/me/interests:
+    get:
+      summary: List interest memories
+      responses:
+        '200':
+          description: Interest memories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../schemas/profile.json#/$defs/MemorySummary
+  /profiles/me/interests/{interest_id}:
+    put:
+      summary: Update one interest memory
+      parameters:
+        - name: interest_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/MemorySummary
+      responses:
+        '200':
+          description: Updated interest memory
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/MemorySummary
+  /memory/me:
+    get:
+      summary: Get full memory view
+      responses:
+        '200':
+          description: Current profile and memory
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/ProfileData
+  /memory/me/global:
+    put:
+      summary: Update global memory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/GlobalMemory
+      responses:
+        '200':
+          description: Updated global memory
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/GlobalMemory
+  /memory/me/interests/{interest_id}:
+    get:
+      summary: Get one interest memory
+      parameters:
+        - name: interest_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Interest memory
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/MemorySummary
+    put:
+      summary: Update one interest memory
+      parameters:
+        - name: interest_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/profile.json#/$defs/MemorySummary
+      responses:
+        '200':
+          description: Updated interest memory
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/profile.json#/$defs/MemorySummary
+  /memory/update-requests:
+    get:
+      summary: List memory update requests
+      responses:
+        '200':
+          description: Pending memory update requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../schemas/profile.json#/$defs/MemoryUpdateRequest
+  /memory/update-requests/{request_id}/apply:
+    post:
+      summary: Apply memory update request
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Applied request
+  /memory/update-requests/{request_id}/reject:
+    post:
+      summary: Reject memory update request
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rejected request

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/sprout.json",
+  "title": "Sprout Schemas",
+  "type": "object",
+  "$defs": {
+    "SproutStatus": {
+      "type": "string",
+      "enum": ["new", "supplemented", "angle_changed", "dismissed", "writing"]
+    },
+    "SproutOpportunity": {
+      "type": "object",
+      "required": [
+        "id",
+        "seedId",
+        "interestId",
+        "score",
+        "tags",
+        "activatedSeed",
+        "triggerTopic",
+        "whyWorthWriting",
+        "suggestedTitle",
+        "suggestedAngle",
+        "suggestedMaterials"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "seedId": { "type": "string" },
+        "interestId": { "type": "string" },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "common.json#/$defs/Tag" }
+        },
+        "activatedSeed": { "type": "string" },
+        "triggerTopic": { "type": "string" },
+        "whyWorthWriting": { "type": "string" },
+        "suggestedTitle": { "type": "string" },
+        "suggestedAngle": { "type": "string" },
+        "suggestedMaterials": { "type": "string" },
+        "status": { "$ref": "#/$defs/SproutStatus" }
+      }
+    },
+    "SproutRun": {
+      "type": "object",
+      "required": ["id", "userId", "status", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "interestId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "running", "completed", "failed"] },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" },
+        "completedAt": { "$ref": "common.json#/$defs/IsoDateTime" },
+        "opportunities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SproutOpportunity" }
+        }
+      }
+    }
+  }
+}

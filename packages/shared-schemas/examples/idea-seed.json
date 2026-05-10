@@ -1,0 +1,50 @@
+{
+  "id": "seed-ai-coding-moat",
+  "interestId": "ai-coding",
+  "title": "AI 编程工具的护城河，可能不在会写代码",
+  "interestName": "AI Coding",
+  "source": "知乎搜索 / 高质量讨论",
+  "sourceTitle": "AI Coding 产品的壁垒到底在哪里？",
+  "sourceSummary": "讨论集中在模型能力、IDE 入口、私有代码库上下文、企业研发流程接入等方向。",
+  "sourceUrl": "https://www.zhihu.com/answer/123",
+  "sourceType": "zhihu_search",
+  "userReaction": "supplement",
+  "userNote": "我想把它沉淀成一颗可以继续培养的观点种子。",
+  "coreClaim": "AI 编程工具的护城河，可能不在会写代码。",
+  "possibleAngles": [
+    "AI 编程工具的护城河，可能不在会写代码。",
+    "企业真正需要的是代码生成，还是可控交付？"
+  ],
+  "counterArguments": [
+    "长上下文模型是否会削弱上下文壁垒？",
+    "IDE 入口是否会被平台垄断？"
+  ],
+  "requiredMaterials": ["补充个人经验", "补充反方回应", "补充可引用来源"],
+  "wateringMaterials": [
+    {
+      "id": "material-evidence-001",
+      "type": "evidence",
+      "title": "来源证据",
+      "content": "代码生成正在变成基础能力，企业流程接入更关键。",
+      "sourceLabel": "知乎搜索",
+      "adopted": true,
+      "createdAt": "2026-05-10T10:35:00+08:00"
+    }
+  ],
+  "questions": [
+    {
+      "id": "question-001",
+      "threadId": "thread-001",
+      "question": "长上下文模型会不会削弱这个壁垒？",
+      "agentAnswer": "需要区分模型能力和组织流程接入，长上下文会降低单次理解成本，但未必替代企业流程资产。",
+      "citedSourceIds": ["zhihu-search-123"],
+      "status": "answered",
+      "createdAt": "2026-05-10T10:40:00+08:00"
+    }
+  ],
+  "status": "water_needed",
+  "maturityScore": 63,
+  "createdFromCardId": "card-ai-coding-moat",
+  "createdAt": "2026-05-10T10:35:00+08:00",
+  "updatedAt": "2026-05-10T10:40:00+08:00"
+}

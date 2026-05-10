@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/seed.json",
+  "title": "Idea Seed Schemas",
+  "type": "object",
+  "$defs": {
+    "SeedReaction": {
+      "type": "string",
+      "enum": ["agree", "disagree", "question", "supplement", "want_to_write", "manual"]
+    },
+    "SeedStatus": {
+      "type": "string",
+      "enum": ["dormant", "water_needed", "sproutable", "high_timeliness", "writing", "published", "expired"]
+    },
+    "WateringMaterialType": {
+      "type": "string",
+      "enum": ["evidence", "counterargument", "personal_experience", "open_question"]
+    },
+    "WateringMaterial": {
+      "type": "object",
+      "required": ["id", "type", "title", "content", "adopted", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "$ref": "#/$defs/WateringMaterialType" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "sourceLabel": { "type": "string" },
+        "adopted": { "type": "boolean" },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" }
+      }
+    },
+    "SeedQuestion": {
+      "type": "object",
+      "required": ["id", "question", "agentAnswer", "citedSourceIds", "status", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "threadId": { "type": "string" },
+        "parentQuestionId": { "type": "string" },
+        "question": { "type": "string" },
+        "agentAnswer": { "type": "string" },
+        "citedSourceIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": { "type": "string", "enum": ["answered", "resolved", "needs_material"] },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" }
+      }
+    },
+    "IdeaSeed": {
+      "type": "object",
+      "required": [
+        "id",
+        "interestId",
+        "title",
+        "interestName",
+        "source",
+        "sourceTitle",
+        "sourceSummary",
+        "sourceType",
+        "userReaction",
+        "userNote",
+        "coreClaim",
+        "possibleAngles",
+        "counterArguments",
+        "requiredMaterials",
+        "wateringMaterials",
+        "questions",
+        "status",
+        "maturityScore",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "interestId": { "type": "string" },
+        "title": { "type": "string" },
+        "interestName": { "type": "string" },
+        "source": { "type": "string" },
+        "sourceTitle": { "type": "string" },
+        "sourceSummary": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "sourceType": { "type": "string" },
+        "userReaction": { "$ref": "#/$defs/SeedReaction" },
+        "userNote": { "type": "string" },
+        "coreClaim": { "type": "string" },
+        "possibleAngles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counterArguments": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requiredMaterials": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "wateringMaterials": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WateringMaterial" }
+        },
+        "questions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SeedQuestion" }
+        },
+        "status": { "$ref": "#/$defs/SeedStatus" },
+        "maturityScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "activationScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "createdFromCardId": { "type": "string" },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "common.json#/$defs/IsoDateTime" }
+      }
+    },
+    "SeedFromCardRequest": {
+      "type": "object",
+      "required": ["cardId", "reaction"],
+      "additionalProperties": false,
+      "properties": {
+        "cardId": { "type": "string" },
+        "reaction": { "$ref": "#/$defs/SeedReaction" },
+        "userNote": { "type": "string" }
+      }
+    }
+  }
+}

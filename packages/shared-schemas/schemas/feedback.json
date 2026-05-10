@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/feedback.json",
+  "title": "Feedback Schemas",
+  "type": "object",
+  "$defs": {
+    "FeedbackArticle": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "interestId",
+        "status",
+        "statusTone",
+        "performanceSummary",
+        "commentInsights",
+        "memoryAction",
+        "metrics"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "interestId": { "type": "string" },
+        "linkedSeedId": { "type": "string" },
+        "status": { "type": "string" },
+        "statusTone": { "type": "string", "enum": ["green", "orange", "blue"] },
+        "performanceSummary": { "type": "string" },
+        "commentInsights": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "memoryAction": { "type": "string" },
+        "metrics": {
+          "type": "array",
+          "items": { "$ref": "common.json#/$defs/Metric" }
+        }
+      }
+    },
+    "CommentSummary": {
+      "type": "object",
+      "required": ["supportingViews", "counterArguments", "supplementaryMaterials", "secondArticleAngles"],
+      "additionalProperties": false,
+      "properties": {
+        "supportingViews": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counterArguments": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "supplementaryMaterials": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "secondArticleAngles": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

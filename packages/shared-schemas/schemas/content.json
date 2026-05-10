@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/content.json",
+  "title": "Content Input Schemas",
+  "type": "object",
+  "$defs": {
+    "InputCategoryKind": {
+      "type": "string",
+      "enum": ["interest", "following", "serendipity"]
+    },
+    "InputCategory": {
+      "type": "object",
+      "required": ["id", "name", "meta", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "meta": { "type": "string" },
+        "kind": { "$ref": "#/$defs/InputCategoryKind" },
+        "active": { "type": "boolean" }
+      }
+    },
+    "ContentSource": {
+      "type": "object",
+      "required": ["sourceId", "sourceType", "title", "meta", "rawExcerpt", "fullContent", "contribution"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": { "type": "string" },
+        "sourceType": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "authorityMeta": { "type": "string" },
+        "meta": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rawExcerpt": { "type": "string" },
+        "fullContent": { "type": "string" },
+        "contribution": { "type": "string" }
+      }
+    },
+    "WorthReadingCard": {
+      "type": "object",
+      "required": [
+        "id",
+        "categoryId",
+        "tags",
+        "title",
+        "recommendationReason",
+        "contentSummary",
+        "controversies",
+        "writingAngles",
+        "originalSources",
+        "relevanceScore",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "common.json#/$defs/Tag" }
+        },
+        "title": { "type": "string" },
+        "recommendationReason": { "type": "string" },
+        "contentSummary": { "type": "string" },
+        "controversies": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "writingAngles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "originalSources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ContentSource" }
+        },
+        "relevanceScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "authorityScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "popularityScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "controversyScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" },
+        "featured": { "type": "boolean" }
+      }
+    },
+    "CategoryRefreshState": {
+      "type": "object",
+      "required": ["refreshCount", "refreshedAt", "visibleCardIds"],
+      "additionalProperties": false,
+      "properties": {
+        "refreshCount": { "type": "integer", "minimum": 0 },
+        "refreshedAt": { "$ref": "common.json#/$defs/IsoDateTime" },
+        "visibleCardIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "ContentBootstrap": {
+      "type": "object",
+      "required": ["categories", "cards"],
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/InputCategory" }
+        },
+        "cards": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WorthReadingCard" }
+        }
+      }
+    }
+  }
+}

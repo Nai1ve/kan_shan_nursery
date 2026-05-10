@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/llm.json",
+  "title": "LLM Task Schemas",
+  "type": "object",
+  "$defs": {
+    "LlmTaskType": {
+      "type": "string",
+      "enum": [
+        "summarize-content",
+        "extract-controversies",
+        "generate-writing-angles",
+        "answer-seed-question",
+        "supplement-material",
+        "sprout-opportunities",
+        "argument-blueprint",
+        "draft",
+        "roundtable-review",
+        "feedback-summary"
+      ]
+    },
+    "LlmTaskRequest": {
+      "type": "object",
+      "required": ["taskType", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "taskType": { "$ref": "#/$defs/LlmTaskType" },
+        "input": { "type": "object" },
+        "promptVersion": { "type": "string", "default": "v1" },
+        "schemaVersion": { "type": "string", "default": "v1" }
+      }
+    },
+    "LlmTaskResponse": {
+      "type": "object",
+      "required": ["taskType", "schemaVersion", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "taskType": { "$ref": "#/$defs/LlmTaskType" },
+        "schemaVersion": { "type": "string" },
+        "output": { "type": "object" },
+        "cache": { "$ref": "common.json#/$defs/CacheMeta" },
+        "fallback": { "type": "boolean", "default": false }
+      }
+    },
+    "RoundtableReview": {
+      "type": "object",
+      "required": ["role", "summary", "problems", "suggestions", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["logic_reviewer", "human_editor", "opponent_reader", "community_editor"]
+        },
+        "summary": { "type": "string" },
+        "problems": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] }
+      }
+    }
+  }
+}

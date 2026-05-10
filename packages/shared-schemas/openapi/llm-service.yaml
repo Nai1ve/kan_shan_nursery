@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+  title: Kanshan LLM Service API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+  /llm/tasks/summarize-content:
+    post:
+      summary: Summarize content sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/extract-controversies:
+    post:
+      summary: Extract controversies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/generate-writing-angles:
+    post:
+      summary: Generate writing angles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/answer-seed-question:
+    post:
+      summary: Answer seed question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/supplement-material:
+    post:
+      summary: Generate watering material
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/sprout-opportunities:
+    post:
+      summary: Generate sprout opportunities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/argument-blueprint:
+    post:
+      summary: Generate argument blueprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/draft:
+    post:
+      summary: Generate draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/roundtable-review:
+    post:
+      summary: Generate roundtable review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse
+  /llm/tasks/feedback-summary:
+    post:
+      summary: Summarize feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/llm.json#/$defs/LlmTaskRequest
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/llm.json#/$defs/LlmTaskResponse

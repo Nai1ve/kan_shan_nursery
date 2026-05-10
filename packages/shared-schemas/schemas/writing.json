@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/writing.json",
+  "title": "Writing Schemas",
+  "type": "object",
+  "$defs": {
+    "WritingTone": {
+      "type": "string",
+      "enum": ["balanced", "sharp", "steady"]
+    },
+    "DraftStatus": {
+      "type": "string",
+      "enum": ["claim_confirming", "blueprint_ready", "draft_ready", "reviewing", "finalized", "published"]
+    },
+    "WritingSession": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "seedId",
+        "interestId",
+        "articleType",
+        "coreClaim",
+        "tone",
+        "confirmed",
+        "adoptedSuggestions",
+        "draftStatus",
+        "savedDraft"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string" },
+        "seedId": { "type": "string" },
+        "interestId": { "type": "string" },
+        "articleType": { "type": "string" },
+        "coreClaim": { "type": "string" },
+        "memoryOverride": { "$ref": "profile.json#/$defs/MemorySummary" },
+        "tone": { "$ref": "#/$defs/WritingTone" },
+        "confirmed": { "type": "boolean" },
+        "adoptedSuggestions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "draftStatus": { "$ref": "#/$defs/DraftStatus" },
+        "savedDraft": { "type": "boolean" },
+        "publishedArticleId": { "type": "string" }
+      }
+    },
+    "ArgumentBlueprint": {
+      "type": "object",
+      "required": ["centralClaim", "background", "arguments", "counterArgument", "responseStrategy"],
+      "additionalProperties": false,
+      "properties": {
+        "centralClaim": { "type": "string" },
+        "background": { "type": "string" },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "explanationPoints"],
+            "additionalProperties": false,
+            "properties": {
+              "title": { "type": "string" },
+              "explanationPoints": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "counterArgument": { "type": "string" },
+        "responseStrategy": { "type": "string" },
+        "suggestedPersonalExperience": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

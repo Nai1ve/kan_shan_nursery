@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kanshan.local/schemas/profile.json",
+  "title": "Profile and Memory Schemas",
+  "type": "object",
+  "$defs": {
+    "MemorySummary": {
+      "type": "object",
+      "required": [
+        "interestId",
+        "interestName",
+        "knowledgeLevel",
+        "preferredPerspective",
+        "evidencePreference",
+        "writingReminder"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "interestId": { "type": "string" },
+        "interestName": { "type": "string" },
+        "knowledgeLevel": { "type": "string" },
+        "preferredPerspective": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidencePreference": { "type": "string" },
+        "writingReminder": { "type": "string" },
+        "feedbackSummary": { "type": "string" }
+      }
+    },
+    "GlobalMemory": {
+      "type": "object",
+      "required": [
+        "longTermBackground",
+        "contentPreference",
+        "writingStyle",
+        "recommendationStrategy",
+        "riskReminder"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "longTermBackground": { "type": "string" },
+        "contentPreference": { "type": "string" },
+        "writingStyle": { "type": "string" },
+        "recommendationStrategy": { "type": "string" },
+        "riskReminder": { "type": "string" }
+      }
+    },
+    "ProfileData": {
+      "type": "object",
+      "required": [
+        "nickname",
+        "accountStatus",
+        "role",
+        "interests",
+        "avoidances",
+        "globalMemory",
+        "interestMemories"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "nickname": { "type": "string" },
+        "accountStatus": { "type": "string" },
+        "role": { "type": "string" },
+        "interests": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "avoidances": { "type": "string" },
+        "globalMemory": { "$ref": "#/$defs/GlobalMemory" },
+        "interestMemories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MemorySummary" }
+        }
+      }
+    },
+    "MemoryUpdateRequest": {
+      "type": "object",
+      "required": ["id", "interestId", "targetField", "suggestedValue", "reason", "status", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "interestId": { "type": "string" },
+        "targetField": { "type": "string" },
+        "suggestedValue": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "applied", "rejected"] },
+        "createdAt": { "$ref": "common.json#/$defs/IsoDateTime" }
+      }
+    }
+  }
+}

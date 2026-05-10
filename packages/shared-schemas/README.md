@@ -33,6 +33,40 @@
 - `writing`：`WritingSession`、Memory override、draft 状态。
 - `feedback`：`FeedbackArticle`、comment summary、second seed payload。
 
+## 目录结构
+
+```text
+schemas/
+  common.json
+  profile.json
+  content.json
+  zhihu.json
+  seed.json
+  sprout.json
+  writing.json
+  feedback.json
+  llm.json
+examples/
+  profile-data.json
+  worth-reading-card.json
+  zhihu-content-item.json
+  idea-seed.json
+  writing-session.json
+  llm-task-response.json
+openapi/
+  common.yaml
+  profile-service.yaml
+  api-gateway.yaml
+  llm-service.yaml
+```
+
+## 使用方式
+
+- 服务实现以 `schemas/*.json` 的 `$defs` 作为 Pydantic / TypeScript 字段来源。
+- GLM 实现 `profile-service` 和 `api-gateway` 时优先参考 `openapi/profile-service.yaml` 与 `openapi/api-gateway.yaml`。
+- Codex 实现 `llm-service` 时优先参考 `openapi/llm-service.yaml`。
+- mock repository 和测试样例优先复用 `examples/*.json`。
+
 ## 允许修改
 
 - `packages/shared-schemas/**`
@@ -53,3 +87,4 @@
 - 每个 P0 服务 README 中提到的 DTO 都能在 shared schema 中找到。
 - schema 字段命名和 `frontend/lib/types.ts` 不冲突。
 - schema 变更同步更新对应服务 README。
+- `schemas/*.json` 和 `examples/*.json` 必须能被标准 JSON parser 解析。

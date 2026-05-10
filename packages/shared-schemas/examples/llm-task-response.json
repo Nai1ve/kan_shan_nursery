@@ -1,0 +1,16 @@
+{
+  "taskType": "answer-seed-question",
+  "schemaVersion": "v1",
+  "output": {
+    "answer": "这个问题需要拆成模型能力和组织流程两层。模型可以降低单次代码理解成本，但企业研发流程、权限、历史上下文和交付责任仍然需要产品系统承接。",
+    "materialType": "counterargument",
+    "citedSourceIds": ["zhihu-search-123"]
+  },
+  "cache": {
+    "hit": false,
+    "key": "zhihu:direct_answer:zhida-thinking-1p5:abc123:stream_false",
+    "ttlSeconds": 21600,
+    "fallback": true
+  },
+  "fallback": true
+}

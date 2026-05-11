@@ -22,7 +22,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ._yaml import parse_yaml
+try:
+    import yaml  # PyYAML
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise RuntimeError(
+        "PyYAML is required. Install with `pip install PyYAML` "
+        "(or run pip install -r services/<svc>/requirements.txt)."
+    ) from exc
 
 
 REPO_ROOT_HINTS = ("services", "packages", "docs", ".git")
@@ -110,7 +116,12 @@ def _default_config_path() -> Path:
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return parse_yaml(path.read_text(encoding="utf-8"))
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: top level must be a mapping, got {type(data).__name__}")
+    return data
 
 
 def _pick(*values: Any) -> Any:

@@ -7,6 +7,9 @@ name = "kanshan-shared"
 version = "0.1.0"
 description = "Kanshan nursery shared Python utilities (config, logging, helpers)."
 requires-python = ">=3.10"
+dependencies = [
+    "PyYAML>=6.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["kanshan_shared*"]

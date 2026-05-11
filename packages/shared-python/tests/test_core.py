@@ -8,8 +8,9 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import yaml
+
 from kanshan_shared import KanshanConfig, configure_logging, get_logger, load_config
-from kanshan_shared._yaml import parse_yaml
 from kanshan_shared.logger import reset_for_tests
 
 
@@ -19,8 +20,10 @@ def write_yaml(tmp: pathlib.Path, body: str) -> pathlib.Path:
     return path
 
 
-class YamlParserTests(unittest.TestCase):
-    def test_parse_nested_mapping_and_list(self) -> None:
+class YamlBaselineTests(unittest.TestCase):
+    """Sanity checks on the PyYAML dependency itself (not our parser)."""
+
+    def test_pyyaml_parses_nested_mapping_and_list(self) -> None:
         text = """
 zhihu:
   community:
@@ -28,24 +31,10 @@ zhihu:
     writable_ring_ids:
       - "111"
       - "222"
-    base_url: https://openapi.zhihu.com
-""".strip("\n")
-        parsed = parse_yaml(text)
+"""
+        parsed = yaml.safe_load(text)
         self.assertEqual(parsed["zhihu"]["community"]["app_key"], "abc")
         self.assertEqual(parsed["zhihu"]["community"]["writable_ring_ids"], ["111", "222"])
-        self.assertEqual(parsed["zhihu"]["community"]["base_url"], "https://openapi.zhihu.com")
-
-    def test_inline_comment_is_stripped(self) -> None:
-        parsed = parse_yaml("key: value # trailing")
-        self.assertEqual(parsed["key"], "value")
-
-    def test_coerce_bool_int_float_null(self) -> None:
-        parsed = parse_yaml("a: true\nb: 42\nc: 1.5\nd: null\ne:")
-        self.assertIs(parsed["a"], True)
-        self.assertEqual(parsed["b"], 42)
-        self.assertEqual(parsed["c"], 1.5)
-        self.assertIsNone(parsed["d"])
-        self.assertIsNone(parsed["e"])
 
 
 class ConfigLoaderTests(unittest.TestCase):

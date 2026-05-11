@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from .seed_fixtures import initial_seeds
+
 
 class SeedRepository:
-    def __init__(self) -> None:
+    def __init__(self, *, preload: bool = True) -> None:
         self._seeds: dict[str, dict[str, Any]] = {}
+        if preload:
+            for seed in initial_seeds():
+                self._seeds[seed["id"]] = seed
 
     def list(self) -> list[dict[str, Any]]:
         return list(self._seeds.values())

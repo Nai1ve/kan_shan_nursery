@@ -5,7 +5,12 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.repository import SeedRepository
 from app.service import SeedService
+
+
+def make_service() -> SeedService:
+    return SeedService(SeedRepository(preload=False))
 
 
 def sample_card(card_id: str = "card-ai-coding-001") -> dict:
@@ -32,7 +37,7 @@ def sample_card(card_id: str = "card-ai-coding-001") -> dict:
 
 class SeedServiceTests(unittest.TestCase):
     def test_from_card_creates_once_and_updates_existing_seed(self) -> None:
-        service = SeedService()
+        service = make_service()
         first = service.from_card(
             {"cardId": "card-ai-coding-001", "reaction": "agree", "card": sample_card(), "userNote": "先认同"}
         )
@@ -44,7 +49,7 @@ class SeedServiceTests(unittest.TestCase):
         self.assertEqual(len(service.list_seeds()), 1)
 
     def test_question_thread_writes_question_and_materials(self) -> None:
-        service = SeedService()
+        service = make_service()
         seed = service.from_card({"cardId": "card-ai-coding-001", "reaction": "question", "card": sample_card()})
 
         updated = service.add_question(seed["id"], {"question": "这个判断有没有可靠证据？"})
@@ -57,7 +62,7 @@ class SeedServiceTests(unittest.TestCase):
         self.assertGreater(updated["maturityScore"], seed["maturityScore"])
 
     def test_mark_question_changes_status_and_open_question_adoption(self) -> None:
-        service = SeedService()
+        service = make_service()
         seed = service.from_card({"cardId": "card-ai-coding-001", "reaction": "question", "card": sample_card()})
         with_question = service.add_question(seed["id"], {"question": "反方会怎么质疑这个结论？"})
         question_id = with_question["questions"][0]["id"]
@@ -69,7 +74,7 @@ class SeedServiceTests(unittest.TestCase):
         self.assertTrue(open_questions[0]["adopted"])
 
     def test_material_crud_and_maturity_recalculation(self) -> None:
-        service = SeedService()
+        service = make_service()
         seed = service.from_card({"cardId": "card-ai-coding-001", "reaction": "agree", "card": sample_card()})
 
         with_material = service.add_material(
@@ -90,7 +95,7 @@ class SeedServiceTests(unittest.TestCase):
         self.assertLessEqual(deleted["maturityScore"], with_material["maturityScore"])
 
     def test_agent_supplement_and_merge(self) -> None:
-        service = SeedService()
+        service = make_service()
         target = service.from_card({"cardId": "card-ai-coding-001", "reaction": "agree", "card": sample_card()})
         source = service.create_manual_seed(
             {
@@ -116,6 +121,18 @@ class SeedServiceTests(unittest.TestCase):
         self.assertIn("counterargument", [item["type"] for item in supplemented["wateringMaterials"]])
         self.assertRaises(Exception, service.get_seed, source["id"])
         self.assertGreaterEqual(len(merged["wateringMaterials"]), 4)
+
+
+class SeedFixtureTests(unittest.TestCase):
+    def test_default_repo_preloads_two_demo_seeds(self) -> None:
+        service = SeedService()
+        ids = {seed["id"] for seed in service.list_seeds()}
+        self.assertIn("seed-ai-coding-moat", ids)
+        self.assertIn("seed-agent-quality", ids)
+
+    def test_preload_disabled_starts_empty(self) -> None:
+        service = SeedService(SeedRepository(preload=False))
+        self.assertEqual(service.list_seeds(), [])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+
+import sys
+from pathlib import Path
+
+_SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
+if str(_SHARED_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SHARED_ROOT))
+
+from kanshan_shared import configure_logging, get_logger, load_config
 from typing import Any
 
 try:
@@ -11,6 +20,10 @@ from .service import OpportunityNotFound, RunNotFound, SproutService
 
 
 app = FastAPI(title="Kanshan Sprout Service", version="0.1.0")
+_config = load_config()
+configure_logging("sprout-service", _config.logging)
+logger = get_logger("kanshan.sprout_service.main")
+
 service = SproutService()
 
 

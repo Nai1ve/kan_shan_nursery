@@ -192,6 +192,11 @@ export function KanshanApp() {
   }
 
   function enterApp(mode: "zhihu" | "onboarding" | "demo") {
+    if (mode === "zhihu") {
+      const adapterUrl = process.env.NEXT_PUBLIC_ZHIHU_ADAPTER_URL || "http://127.0.0.1:8070";
+      window.location.href = `${adapterUrl}/zhihu/oauth/authorize?redirect=true`;
+      return;
+    }
     setEntered(true);
     const nextTab = mode === "onboarding" ? "onboarding" : "today";
     setActiveTab(nextTab);
@@ -200,13 +205,7 @@ export function KanshanApp() {
       hasEntered: true,
       activeTab: nextTab,
     }));
-    if (mode === "zhihu") {
-      updateData((current) => ({
-        ...current,
-        profile: { ...current.profile, accountStatus: "已模拟关联知乎账号 · 关注流已同步" },
-      }));
-    }
-    showToast(mode === "onboarding" ? "进入首次画像采集" : mode === "zhihu" ? "已模拟关联知乎账号" : "进入演示模式");
+    showToast(mode === "onboarding" ? "进入首次画像采集" : "进入演示模式");
   }
 
   function goTab(tab: TabId) {

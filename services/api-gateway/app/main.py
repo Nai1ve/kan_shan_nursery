@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+_SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
+if str(_SHARED_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SHARED_ROOT))
+
+from kanshan_shared import configure_logging, get_logger, load_config
 
 try:
     from fastapi import FastAPI, Request
@@ -12,6 +20,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from .errors import GatewayError
 from .service import GatewayService
 
+
+_config = load_config()
+configure_logging("api-gateway", _config.logging)
+logger = get_logger("kanshan.gateway.main")
 
 app = FastAPI(title="Kanshan API Gateway", version="0.1.0")
 gateway = GatewayService()
@@ -49,12 +61,31 @@ def run_proxy(
     payload: dict[str, Any] | None = None,
 ) -> JSONResponse:
     request_id_value = request_id(request)
+    logger.info(
+        "gateway_proxy",
+        extra={
+            "requestId": request_id_value,
+            "service": service_name,
+            "method": method,
+            "path": path,
+        },
+    )
     try:
         return json_response(
             request_id_value,
             gateway.proxy(request_id_value, service_name, method, path, params, payload),
         )
     except GatewayError as error:
+        logger.warning(
+            "gateway_proxy_error",
+            extra={
+                "requestId": request_id_value,
+                "service": service_name,
+                "path": path,
+                "errorCode": error.code,
+                "httpStatus": error.status_code,
+            },
+        )
         return gateway_error_response(error, request_id_value)
 
 

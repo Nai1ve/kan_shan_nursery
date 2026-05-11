@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+
+import sys
+from pathlib import Path
+
+_SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
+if str(_SHARED_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SHARED_ROOT))
+
+from kanshan_shared import configure_logging, get_logger, load_config
 from typing import Any
 
 try:
@@ -13,6 +22,10 @@ from app.profile.service import ProfileService
 
 
 app = FastAPI(title="Kanshan Profile Service", version="0.1.0")
+_config = load_config()
+configure_logging("profile-service", _config.logging)
+logger = get_logger("kanshan.profile_service.main")
+
 repository = ProfileRepository()
 profile_service = ProfileService(repository)
 memory_service = MemoryService(repository)

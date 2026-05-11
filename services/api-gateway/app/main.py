@@ -14,6 +14,7 @@ from kanshan_shared import configure_logging, get_logger, load_config
 try:
     from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
+    from fastapi.middleware.cors import CORSMiddleware
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
@@ -26,6 +27,19 @@ configure_logging("api-gateway", _config.logging)
 logger = get_logger("kanshan.gateway.main")
 
 app = FastAPI(title="Kanshan API Gateway", version="0.1.0")
+origins = [
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    "http://192.168.1.115:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 gateway = GatewayService()
 
 

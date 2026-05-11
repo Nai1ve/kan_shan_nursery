@@ -27,3 +27,8 @@ tmp/
 output/
 .idea/
 .vscode/
+
+# local secrets — never commit
+services/config.yaml
+services/**/config.yaml
+config.local.yaml

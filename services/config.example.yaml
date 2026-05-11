@@ -1,0 +1,51 @@
+# 看山小苗圃 · 服务本地凭证配置示例
+# 把此文件复制为 services/config.yaml 后填入真实值。
+# services/config.yaml 已在 .gitignore，不会被提交。
+
+provider_mode: mock          # mock / live。所有 zhihu live 调用都受此开关。
+
+zhihu:
+  community:
+    # 用户 token：知乎个人主页 → "..." → 复制链接，取 people/ 后那串
+    app_key: ""
+    # ring/moltbook 申请的密钥
+    app_secret: ""
+    # 文档列出的白名单圈子，发想法 / 评论 / 点赞前会校验
+    writable_ring_ids:
+      - "2001009660925334090"   # OpenClaw 人类观察员
+      - "2015023739549529606"   # A2A for Reconnect
+      - "2029619126742656657"   # 黑客松脑洞补给站
+    default_ring_id: "2029619126742656657"
+    base_url: "https://openapi.zhihu.com"
+
+  oauth:
+    # 黑客松 / 商务渠道申请，注意 OAuth 的 app_id 和 app_key 与 community 是两组不同凭证
+    app_id: ""
+    app_key: ""
+    redirect_uri: "http://127.0.0.1:8070/zhihu/oauth/callback"
+    base_url: "https://openapi.zhihu.com"
+    # access_token 由 /zhihu/oauth/callback 流程写入；这里可以预填一个用于测试
+    access_token: ""
+    access_token_expires_at: 0   # unix 秒，0 表示未知
+
+  data_platform:
+    # https://developer.zhihu.com/ 个人中心
+    access_secret: ""
+    base_url: "https://developer.zhihu.com"
+    default_model: "zhida-thinking-1p5"   # 直答模型档位
+
+  quota:
+    # 每日每用户配额。命中缓存不扣额度，回源成功才 +1
+    hot_list: 100
+    zhihu_search: 1000
+    global_search: 1000
+    direct_answer: 100
+
+cache:
+  backend: memory          # memory / redis
+  redis_url: redis://127.0.0.1:6379/0
+
+logging:
+  # 结构化日志输出。jsonl 文件给评测脚本读，console 给人读
+  jsonl_dir: output/logs
+  console_level: INFO      # DEBUG / INFO / WARNING / ERROR

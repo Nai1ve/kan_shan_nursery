@@ -1,11 +1,23 @@
+from __future__ import annotations
+
 import json
+import logging
 from typing import Any, Callable
 
 from . import mappers, mock_data
 from .cache import CacheBackend, build_cache
-from .live_client import LiveZhihuClient
+from .errors import (
+    QuotaExceeded,
+    ZhihuApiError,
+    ZhihuInvalidRequest,
+    ZhihuRingNotWritable,
+)
+from .live_client import ClientBundle
 from .security import stable_hash
 from .settings import Settings, get_settings
+
+
+logger = logging.getLogger("kanshan.zhihu.service")
 
 
 TTL_SECONDS = {
@@ -22,32 +34,34 @@ TTL_SECONDS = {
     "user_followers": 30 * 60,
 }
 
-QUOTA_LIMITS = {
-    "hot_list": 100,
-    "zhihu_search": 1000,
-    "global_search": 1000,
-    "direct_answer": 100,
-}
-
-
-class QuotaExceeded(Exception):
-    def __init__(self, endpoint: str, limit: int) -> None:
-        super().__init__(f"{endpoint} quota exceeded: {limit}/day")
-        self.endpoint = endpoint
-        self.limit = limit
-
 
 class ZhihuAdapterService:
-    def __init__(self, settings: Settings | None = None, cache: CacheBackend | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        cache: CacheBackend | None = None,
+        clients: ClientBundle | None = None,
+    ) -> None:
         self.settings = settings or get_settings()
         self.cache = cache or build_cache(self.settings)
-        self.live = LiveZhihuClient(self.settings)
+        self.clients = clients or ClientBundle(self.settings)
+
+    @property
+    def _quota_limits(self) -> dict[str, int]:
+        q = self.settings.zhihu.quota
+        return {
+            "hot_list": q.hot_list,
+            "zhihu_search": q.zhihu_search,
+            "global_search": q.global_search,
+            "direct_answer": q.direct_answer,
+        }
 
     def _live_enabled(self) -> bool:
         return self.settings.provider_mode == "live"
 
     def _result(self, items: Any, cache_key: str, hit: bool, endpoint: str, fallback: bool = False) -> dict[str, Any]:
-        limit = QUOTA_LIMITS.get(endpoint)
+        limit = self._quota_limits.get(endpoint)
+        used = self.cache.get_quota(endpoint, self.settings.demo_user_id)
         return {
             "items": items,
             "cache": {
@@ -58,26 +72,58 @@ class ZhihuAdapterService:
             },
             "quota": {
                 "endpoint": endpoint,
-                "usedToday": self.cache.get_quota(endpoint, self.settings.demo_user_id),
+                "usedToday": used,
                 "limitToday": limit,
-                "warning": bool(limit and self.cache.get_quota(endpoint, self.settings.demo_user_id) >= int(limit * 0.8)),
+                "warning": bool(limit and used >= int(limit * 0.8)),
             },
         }
 
     def _cached(self, endpoint: str, cache_key: str, loader: Callable[[], Any]) -> dict[str, Any]:
         cached = self.cache.get(cache_key)
         if cached is not None:
+            logger.info(
+                "zhihu_cache_hit",
+                extra={"endpoint": endpoint, "cacheKey": cache_key, "providerMode": self.settings.provider_mode},
+            )
             return self._result(cached, cache_key, True, endpoint)
 
-        limit = QUOTA_LIMITS.get(endpoint)
-        if limit is not None and self.cache.get_quota(endpoint, self.settings.demo_user_id) >= limit:
+        limit = self._quota_limits.get(endpoint)
+        used = self.cache.get_quota(endpoint, self.settings.demo_user_id)
+        if limit is not None and used >= limit:
+            logger.warning(
+                "zhihu_quota_exceeded",
+                extra={"endpoint": endpoint, "limit": limit, "usedToday": used},
+            )
             raise QuotaExceeded(endpoint, limit)
 
-        items = loader()
+        logger.info(
+            "zhihu_call_started",
+            extra={"endpoint": endpoint, "cacheKey": cache_key, "providerMode": self.settings.provider_mode},
+        )
+        try:
+            items = loader()
+        except ZhihuApiError as error:
+            logger.error(
+                "zhihu_call_failed",
+                extra={
+                    "endpoint": endpoint,
+                    "errorCode": error.code,
+                    "errorMessage": error.message,
+                },
+            )
+            raise
+
         self.cache.set(cache_key, items, TTL_SECONDS.get(endpoint, 60))
+        new_used = used
         if limit is not None:
-            self.cache.increment_quota(endpoint, self.settings.demo_user_id)
+            new_used = self.cache.increment_quota(endpoint, self.settings.demo_user_id)
+        logger.info(
+            "zhihu_call_succeeded",
+            extra={"endpoint": endpoint, "cacheKey": cache_key, "quotaUsedToday": new_used},
+        )
         return self._result(items, cache_key, False, endpoint)
+
+    # ---- Data Platform endpoints --------------------------------------------------
 
     def hot_list(self, limit: int = 30) -> dict[str, Any]:
         normalized_limit = 30 if limit <= 0 or limit > 30 else limit
@@ -86,20 +132,24 @@ class ZhihuAdapterService:
             "hot_list",
             key,
             lambda: mappers.map_hot_list(
-                self.live.data_get("/api/v1/content/hot_list", {"Limit": normalized_limit})
+                self.clients.data_platform.get("/api/v1/content/hot_list", {"Limit": normalized_limit})
                 if self._live_enabled()
                 else mock_data.hot_list()
             )[:normalized_limit],
         )
 
     def zhihu_search(self, query: str, count: int = 10) -> dict[str, Any]:
+        if not query:
+            raise ZhihuInvalidRequest("query is required")
         normalized_count = 10 if count <= 0 else min(count, 10)
         key = f"zhihu:zhihu_search:{stable_hash(query)}:{normalized_count}"
         return self._cached(
             "zhihu_search",
             key,
             lambda: mappers.map_search(
-                self.live.data_get("/api/v1/content/zhihu_search", {"Query": query, "Count": normalized_count})
+                self.clients.data_platform.get(
+                    "/api/v1/content/zhihu_search", {"Query": query, "Count": normalized_count}
+                )
                 if self._live_enabled()
                 else mock_data.zhihu_search(query, normalized_count),
                 "zhihu_search",
@@ -107,13 +157,17 @@ class ZhihuAdapterService:
         )
 
     def global_search(self, query: str, count: int = 10) -> dict[str, Any]:
+        if not query:
+            raise ZhihuInvalidRequest("query is required")
         normalized_count = 10 if count <= 0 else min(count, 20)
         key = f"zhihu:global_search:{stable_hash(query)}:{normalized_count}"
         return self._cached(
             "global_search",
             key,
             lambda: mappers.map_search(
-                self.live.data_get("/api/v1/content/global_search", {"Query": query, "Count": normalized_count})
+                self.clients.data_platform.get(
+                    "/api/v1/content/global_search", {"Query": query, "Count": normalized_count}
+                )
                 if self._live_enabled()
                 else mock_data.global_search(query, normalized_count),
                 "global_search",
@@ -121,24 +175,29 @@ class ZhihuAdapterService:
         )
 
     def direct_answer(self, payload: dict[str, Any]) -> dict[str, Any]:
-        model = payload.get("model", "zhida-thinking-1p5")
+        model = payload.get("model", self.settings.zhihu.data_platform.default_model)
         messages = payload.get("messages", [])
         stream = bool(payload.get("stream", False))
         if stream:
-            raise ValueError("P0 only supports stream=false")
-        key = f"zhihu:direct_answer:{model}:{stable_hash(json.dumps(messages, ensure_ascii=False, sort_keys=True))}:stream_false"
+            raise ZhihuInvalidRequest("P0 only supports stream=false")
+        if not messages:
+            raise ZhihuInvalidRequest("messages must not be empty")
+        key = (
+            f"zhihu:direct_answer:{model}:"
+            f"{stable_hash(json.dumps(messages, ensure_ascii=False, sort_keys=True))}:stream_false"
+        )
         result = self._cached(
             "direct_answer",
             key,
             lambda: mappers.map_direct_answer(
-                self.live.data_post("/v1/chat/completions", payload) if self._live_enabled() else mock_data.direct_answer(model)
+                self.clients.data_platform.post("/v1/chat/completions", {**payload, "model": model})
+                if self._live_enabled()
+                else mock_data.direct_answer(model)
             ),
         )
-        return {
-            **result["items"],
-            "cache": result["cache"],
-            "quota": result["quota"],
-        }
+        return {**result["items"], "cache": result["cache"], "quota": result["quota"]}
+
+    # ---- Community endpoints ------------------------------------------------------
 
     def ring_detail(self, ring_id: str, page_num: int = 1, page_size: int = 20) -> dict[str, Any]:
         normalized_size = min(max(page_size, 1), 50)
@@ -147,7 +206,7 @@ class ZhihuAdapterService:
             "ring_detail",
             key,
             lambda: mappers.map_ring_detail(
-                self.live.community_get(
+                self.clients.community.get(
                     "/openapi/ring/detail",
                     {"ring_id": ring_id, "page_num": page_num, "page_size": normalized_size},
                 )
@@ -162,7 +221,7 @@ class ZhihuAdapterService:
             "comment_list",
             key,
             lambda: (
-                self.live.community_get(
+                self.clients.community.get(
                     "/openapi/comment/list",
                     {"content_type": content_type, "content_token": content_token},
                 )
@@ -178,59 +237,109 @@ class ZhihuAdapterService:
             "story_list",
             "zhihu:story_list",
             lambda: mappers.map_story_list(
-                self.live.community_get("/openapi/hackathon_story/list", {}) if self._live_enabled() else mock_data.story_list()
+                self.clients.community.get("/openapi/hackathon_story/list", {})
+                if self._live_enabled()
+                else mock_data.story_list()
             ),
         )
 
     def story_detail(self, work_id: str) -> dict[str, Any]:
+        if not work_id:
+            raise ZhihuInvalidRequest("work_id is required")
         key = f"zhihu:story_detail:{work_id}"
         return self._cached(
             "story_detail",
             key,
             lambda: mappers.map_story_detail(
-                self.live.community_get("/openapi/hackathon_story/detail", {"work_id": work_id})
+                self.clients.community.get("/openapi/hackathon_story/detail", {"work_id": work_id})
                 if self._live_enabled()
                 else mock_data.story_detail(work_id)
             ),
         )
+
+    def publish_pin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_writable_ring(payload.get("ring_id"))
+        if self._live_enabled():
+            return self.clients.community.post("/openapi/publish/pin", payload)
+        return {"mode": self.settings.provider_mode, "contentToken": "mock-pin-token", "request": payload}
+
+    def create_comment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not payload.get("content_token") or not payload.get("content_type"):
+            raise ZhihuInvalidRequest("content_token and content_type are required")
+        if self._live_enabled():
+            return self.clients.community.post("/openapi/comment/create", payload)
+        return {"mode": self.settings.provider_mode, "commentId": "mock-comment-id", "request": payload}
+
+    def reaction(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("action_type") != "like":
+            raise ZhihuInvalidRequest("only action_type=like is supported")
+        if self._live_enabled():
+            return self.clients.community.post("/openapi/reaction", payload)
+        return {"mode": self.settings.provider_mode, "success": True, "request": payload}
+
+    # ---- OAuth endpoints ----------------------------------------------------------
+
+    def authorize_url(self) -> dict[str, Any]:
+        return {"url": self.clients.oauth.authorize_url(), "redirectUri": self.settings.zhihu.oauth.redirect_uri}
+
+    def exchange_oauth_code(self, code: str) -> dict[str, Any]:
+        if not code:
+            raise ZhihuInvalidRequest("code is required")
+        token = self.clients.oauth.exchange_code_for_token(code)
+        logger.info(
+            "zhihu_oauth_exchanged",
+            extra={"tokenType": token.get("token_type"), "expiresIn": token.get("expires_in")},
+        )
+        return token
 
     def following_feed(self) -> dict[str, Any]:
         key = f"zhihu:user_moments:{self.settings.demo_user_id}"
         return self._cached(
             "following_feed",
             key,
-            lambda: mappers.map_following_feed(self.live.oauth_get("/user/moments") if self._live_enabled() else mock_data.following_feed()),
+            lambda: mappers.map_following_feed(
+                self.clients.oauth.get("/user/moments")
+                if self._live_enabled()
+                else mock_data.following_feed()
+            ),
         )
 
     def user_followed(self, page: int = 0, per_page: int = 10) -> dict[str, Any]:
         key = f"zhihu:user_followed:{self.settings.demo_user_id}:{page}:{per_page}"
-        items = [{"uid": 1, "hash_id": "mock-author", "fullname": "关注作者", "headline": "AI Coding 观察者"}]
         return self._cached(
             "user_followed",
             key,
-            lambda: self.live.oauth_get("/user/followed", {"page": page, "per_page": per_page}) if self._live_enabled() else items,
+            lambda: (
+                self.clients.oauth.get("/user/followed", {"page": page, "per_page": per_page})
+                if self._live_enabled()
+                else [
+                    {"uid": 1, "hash_id": "mock-author", "fullname": "关注作者", "headline": "AI Coding 观察者"},
+                ]
+            ),
         )
 
     def user_followers(self, page: int = 0, per_page: int = 10) -> dict[str, Any]:
         key = f"zhihu:user_followers:{self.settings.demo_user_id}:{page}:{per_page}"
-        items = [{"uid": 2, "hash_id": "mock-reader", "fullname": "读者 A", "headline": "技术读者"}]
         return self._cached(
             "user_followers",
             key,
-            lambda: self.live.oauth_get("/user/followers", {"page": page, "per_page": per_page}) if self._live_enabled() else items,
+            lambda: (
+                self.clients.oauth.get("/user/followers", {"page": page, "per_page": per_page})
+                if self._live_enabled()
+                else [
+                    {"uid": 2, "hash_id": "mock-reader", "fullname": "读者 A", "headline": "技术读者"},
+                ]
+            ),
         )
 
-    def publish_pin(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if self._live_enabled():
-            return self.live.community_post("/openapi/publish/pin", payload)
-        return {"mode": self.settings.provider_mode, "contentToken": "mock-pin-token", "request": payload}
+    # ---- guards -------------------------------------------------------------------
 
-    def create_comment(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if self._live_enabled():
-            return self.live.community_post("/openapi/comment/create", payload)
-        return {"mode": self.settings.provider_mode, "commentId": "mock-comment-id", "request": payload}
-
-    def reaction(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if self._live_enabled():
-            return self.live.community_post("/openapi/reaction", payload)
-        return {"mode": self.settings.provider_mode, "success": True, "request": payload}
+    def _require_writable_ring(self, ring_id: str | None) -> None:
+        whitelist = self.settings.zhihu.community.writable_ring_ids
+        if not whitelist:
+            return
+        if not ring_id or str(ring_id) not in whitelist:
+            raise ZhihuRingNotWritable(
+                f"ring_id not in writable list: {ring_id}",
+                detail={"writableRingIds": list(whitelist)},
+            )

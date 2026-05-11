@@ -144,3 +144,84 @@ GATEWAY_REQUEST_TIMEOUT_SECONDS=20
 - 所有响应包含 `request_id`。
 - 下游服务异常能转成统一错误。
 - mock 模式下前端可以只接 gateway 跑完整 Demo。
+
+
+## 启动
+
+依赖（建议在每个服务用独立 venv 隔离，也可以全仓库共用一个）：
+
+```bash
+cd services/api-gateway
+python3 -m venv .venv && source .venv/bin/activate    # 可选
+pip install -r requirements.txt
+```
+
+启动：
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+健康检查：
+
+```bash
+curl -s http://127.0.0.1:8000/health | python3 -m json.tool
+```
+
+预期输出（envelope，含 8 个下游 readiness）：
+
+```json
+{
+  "request_id": "req-xxxxxxxxxxxx",
+  "data": {
+    "status": "ok",
+    "service": "api-gateway",
+    "demoUserId": "demo-user",
+    "downstream": {
+      "profile":  { "baseUrl": "http://127.0.0.1:8010", "ready": true },
+      "content":  { "baseUrl": "http://127.0.0.1:8020", "ready": true },
+      "seed":     { "baseUrl": "http://127.0.0.1:8030", "ready": true },
+      "sprout":   { "baseUrl": "http://127.0.0.1:8040", "ready": true },
+      "writing":  { "baseUrl": "http://127.0.0.1:8050", "ready": true },
+      "feedback": { "baseUrl": "http://127.0.0.1:8060", "ready": true },
+      "zhihu":    { "baseUrl": "http://127.0.0.1:8070", "ready": true },
+      "llm":      { "baseUrl": "http://127.0.0.1:8080", "ready": true }
+    }
+  }
+}
+```
+
+## 测试
+
+```bash
+python3 -m unittest discover -s services/api-gateway/tests -v
+python3 -m py_compile services/api-gateway/app/*.py services/api-gateway/tests/*.py
+```
+
+## 配置
+
+凭证 / 端口 / 模式统一由 `services/config.yaml` 提供（已被 `.gitignore`），模板：
+
+```bash
+cp services/config.example.yaml services/config.yaml
+```
+
+环境变量优先级最高，可临时覆盖：
+
+```text
+PROVIDER_MODE=mock | live
+KANSHAN_LOG_DIR=output/logs
+KANSHAN_LOG_LEVEL=INFO | DEBUG
+```
+
+启动日志写到：
+
+- `output/logs/api-gateway-YYYY-MM-DD.jsonl`（机器可读）
+- 控制台 stderr（人读一行）
+
+## 一键启动 9 个服务
+
+```bash
+bash scripts/run_all_services.sh         # 仅后端
+bash scripts/dev_up.sh                   # 后端 + 前端，前端切到 gateway 模式
+```

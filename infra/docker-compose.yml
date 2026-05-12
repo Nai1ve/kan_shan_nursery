@@ -51,7 +51,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
       PROFILE_SERVICE_URL: http://profile-service:8010
       CONTENT_SERVICE_URL: http://content-service:8020
       SEED_SERVICE_URL: http://seed-service:8030
@@ -84,7 +84,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,7 +109,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,7 +134,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -159,7 +159,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,7 +184,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -209,7 +209,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,7 +234,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
       ZHIHU_APP_KEY: ${ZHIHU_APP_KEY:-}
       ZHIHU_APP_SECRET: ${ZHIHU_APP_SECRET:-}
       ZHIHU_ACCESS_TOKEN: ${ZHIHU_ACCESS_TOKEN:-}
@@ -262,7 +262,7 @@ services:
       PROVIDER_MODE: ${PROVIDER_MODE:-mock}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_API_BASE_URL: ${LLM_API_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -288,8 +288,8 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_KANSHAN_BACKEND_MODE: gateway
-        NEXT_PUBLIC_KANSHAN_GATEWAY_URL: http://api-gateway:8000
-        NEXT_PUBLIC_ZHIHU_ADAPTER_URL: http://zhihu-adapter:8070
+        NEXT_PUBLIC_KANSHAN_GATEWAY_URL: ${KANSHAN_GATEWAY_URL:-http://api-gateway:8000}
+        NEXT_PUBLIC_ZHIHU_ADAPTER_URL: ${KANSHAN_ZHIHU_URL:-http://zhihu-adapter:8070}
     container_name: kanshan-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

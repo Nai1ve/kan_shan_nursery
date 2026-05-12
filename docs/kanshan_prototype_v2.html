@@ -303,9 +303,10 @@
     .memory-card strong { font-size: 14px; }
     .memory-card textarea { min-height: 76px; }
 
-    .question-card { padding: 16px; border-radius: 20px; background: rgba(255,255,255,0.74); border: 1px solid var(--line); }
-    .question-card h4 { margin: 0 0 10px; font-size: 14px; line-height: 1.55; }
+    .question-card { padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.74); border: 1px solid var(--line); }
+    .question-card h4 { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
     .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .scale button { min-width: 44px; min-height: 36px; font-size: 14px; font-weight: 700; white-space: nowrap; }
     .scale button { border: 1px solid var(--line); background: rgba(255,255,255,0.76); border-radius: 12px; padding: 9px 0; cursor: pointer; color: var(--ink-3); font-weight: 800; }
     .scale button.selected { background: rgba(22,119,255,0.11); color: var(--zhihu-blue-dark); border-color: rgba(22,119,255,0.26); }
 
@@ -493,16 +494,14 @@
           <!-- STEP 2: ZHIHU -->
           <section class="login-step-panel" data-login-panel="zhihu">
             <div class="grid-2">
-              <div class="card">
+              <div class="card" style="padding:20px;">
                 <div class="tag-row"><span class="tag blue">推荐</span></div>
                 <h3>关联知乎账号</h3>
-                <p class="field-text">授权后可增强关注流、兴趣图谱和创作偏好。</p>
                 <div class="action-row"><button class="btn primary" onclick="markZhihuBound()">关联知乎</button></div>
               </div>
-              <div class="card">
+              <div class="card" style="padding:20px;">
                 <div class="tag-row"><span class="tag orange">可跳过</span></div>
                 <h3>暂时跳过</h3>
-                <p class="field-text">先用填写信息生成临时画像，后续可重新关联。</p>
                 <div class="action-row"><button class="btn ghost" onclick="switchLoginStep('llm')">跳过，继续</button></div>
               </div>
             </div>
@@ -535,6 +534,7 @@
                 <div class="card llm-provider-card"><div class="tag-row"><span class="tag orange">自有模型</span></div><h3>自有模型 B</h3><p class="field-text">可用于更偏表达和读者感受的视角。</p></div>
               </div>
             </div>
+            <div class="action-row" style="margin-top:18px;"><button class="btn primary" onclick="switchLoginStep('interest')">下一步</button></div>
           </section>
 
           <!-- STEP 4: INTEREST -->
@@ -561,8 +561,8 @@
               </div>
               <div class="card">
                 <h3>写作风格问卷</h3>
-                <p class="field-text" style="margin-bottom:14px;">用 6 个问题补充结构化表单无法覆盖的写作偏好。1 表示低，5 表示高。</p>
-                <div class="grid-2">
+                <p class="field-text" style="margin-bottom:14px;">用 12 个问题补充结构化表单无法覆盖的写作偏好。</p>
+                <div style="display:grid; gap:10px; max-height:420px; overflow-y:auto; padding-right:8px;">
                   <div class="question-card"><h4>1. 你希望文章逻辑严密到什么程度？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div>
                   <div class="question-card"><h4>2. 你愿意在文章中表达鲜明立场吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div>
                   <div class="question-card"><h4>3. 你喜欢加入个人经历和踩坑案例吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div>
@@ -627,7 +627,7 @@
       <!-- ===== TAB: 今日看什么 ===== -->
       <section id="today" class="section active">
         <div class="panel">
-          <div class="panel-header"><div><h2 class="panel-title">今日看什么</h2></div><button class="btn primary" onclick="showToast('已刷新当前分类输入')">刷新输入</button></div>
+          <div class="panel-header"><div><h2 class="panel-title">今日看什么</h2></div><button class="btn primary" onclick="refreshCurrentCategory()">刷新输入</button></div>
           <div class="panel-body">
             <div class="interest-rail">
               <div class="subinterest-card active" data-interest="shuma"><strong>数码科技</strong><span>设备、软件、AI 与消费电子</span></div>
@@ -637,7 +637,7 @@
               <div class="subinterest-card" data-interest="shehui"><strong>社会人文</strong><span>社会观察、人文思考、文化评论</span></div>
               <div class="subinterest-card" data-interest="bendi"><strong>本地城市</strong><span>本地生活、城市观察、区域话题</span></div>
               <div class="subinterest-card" data-interest="following"><strong>关注流精选</strong><span>你关注的作者和圈子</span></div>
-              <div class="subinterest-card" data-interest="serendipity"><strong>偶遇输入</strong><span>远端关联内容</span></div>
+              <div class="subinterest-card" data-interest="serendipity"><strong>偶遇输入</strong><span>跨领域的新鲜视角</span></div>
             </div>
 
             <!-- 数码科技 SECTION -->
@@ -649,14 +649,14 @@
                   <h3>AI 编程工具会不会改变程序员的成长路径？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">这个话题近期讨论热度较高，并且和你过往关注的 Agent、编程、职业转型内容相关。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">当前讨论主要集中在 AI 是否会压缩初级程序员岗位，以及程序员是否还需要传统编码训练。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已生成内容摘要')">总结一下</button><button class="btn ghost" onclick="showToast('已记录认同，并沉淀到种子库')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对，并加入反方材料')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">知乎搜索</span><span class="tag green">高质量讨论</span></div>
                   <h3>AI Coding 产品的壁垒到底在哪里？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">多个高赞回答都在讨论"代码生成能力是否会同质化"，与你已有观点种子高度相关。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">讨论集中在模型能力、IDE 入口、私有代码库上下文、企业研发流程接入等方向。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -670,14 +670,14 @@
                   <h3>技术人转型管理，最难的不是带团队而是放手</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">多位技术 leader 分享从一线开发转管理的真实踩坑经历，讨论热度持续上升。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">从写代码到带团队，核心变化不是技能树而是思维方式和时间分配。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">职场教育</span></div>
                   <h3>在线课程真的能替代传统学位吗？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">教育领域长期争议话题，适合结合个人学习经历产出有立场的回答。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">讨论围绕学习效率、认证价值、知识体系完整性展开。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -691,14 +691,14 @@
                   <h3>为什么技术文章越写越长，读者却越来越少？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">内容创作中常见的"信息过载"问题，适合产出关于写作结构和读者注意力的方法论文章。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">长文不等于深度，关键在于结构清晰、问题精准、节奏合理。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">创作表达</span></div>
                   <h3>AI 辅助写作的边界在哪里？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">与你的产品定位高度相关，适合产出关于创作 Agent 使用边界的观点文章。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">AI 能生成结构和素材，但观点、判断和经历仍需作者主导。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -712,14 +712,14 @@
                   <h3>极简生活是消费降级还是认知升级？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">生活方式类热门讨论，适合结合个人体验产出有温度的观点。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">极简不是不买，而是更清楚自己要什么。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">生活方式</span></div>
                   <h3>远程办公两年后，我为什么选择回到办公室？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">适合产出关于工作方式选择的经验复盘，容易引发共鸣。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">自由和效率之间的取舍，取决于个人工作习惯和团队协作模式。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -733,14 +733,14 @@
                   <h3>年轻人"躺平"是消极还是理性选择？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">社会观察类高热度话题，适合产出有社会视角和人文关怀的分析文章。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">从经济学和心理学角度理解"躺平"背后的结构性因素。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">社会人文</span></div>
                   <h3>AI 会加剧还是缩小知识鸿沟？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">技术与社会交叉话题，适合产出兼具技术理解和人文思考的文章。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">AI 工具降低了知识获取门槛，但也可能放大信息筛选能力的差距。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -754,14 +754,14 @@
                   <h3>一线城市的程序员，该不该回二线定居？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">本地生活类高共鸣话题，适合产出结合个人城市体验的决策分析。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">薪资差距、生活成本、职业机会和家庭因素的综合权衡。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
                 <article class="card structured-card">
                   <div class="tag-row"><span class="tag blue">本地城市</span></div>
                   <h3>为什么年轻人开始重新爱上菜市场？</h3>
                   <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">城市观察类轻松话题，适合产出有烟火气的生活随笔。</p></div>
                   <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">菜市场复兴背后的消费心理和城市文化变迁。</p></div>
-                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div>
+                  <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
                 </article>
               </div>
             </div>
@@ -940,7 +940,7 @@
 
         <!-- 写作风格 -->
         <section class="profile-panel-section" data-profile-panel="style">
-          <div class="grid-2"><div class="panel"><div class="panel-header"><div><h2 class="panel-title">结构化写作风格</h2></div><button class="btn primary" onclick="showToast('写作风格已保存')">保存</button></div><div class="panel-body form-grid"><div class="field"><label>逻辑深度</label><select class="select"><option>3 - 平衡</option><option>4 - 较强</option><option>5 - 非常强</option></select></div><div class="field"><label>立场锋利度</label><select class="select"><option>2 - 克制</option><option>3 - 平衡</option><option>4 - 鲜明</option></select></div><div class="field"><label>证据偏好</label><select class="select"><option>个人经验 + 案例</option><option>资料优先</option><option>判断优先</option><option>论文 / 数据优先</option></select></div><div class="field"><label>AI 辅助边界</label><select class="select"><option>草稿级，需要我修改后发布</option><option>只给大纲</option><option>只做润色</option><option>发布前检查</option></select></div></div></div><div class="panel"><div class="panel-header"><div><h2 class="panel-title">写作风格问答</h2></div></div><div class="panel-body grid-2"><div class="question-card"><h4>1. 你希望文章逻辑严密到什么程度？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div><div class="question-card"><h4>2. 你愿意在文章中表达鲜明立场吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div><div class="question-card"><h4>3. 你喜欢加入个人经历和踩坑案例吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div><div class="question-card"><h4>4. 你能接受比较犀利的表达吗？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div><div class="question-card"><h4>5. 你希望文章更像知乎回答还是公众号长文？</h4><div class="scale"><button>答</button><button>2</button><button class="selected">中</button><button>4</button><button>文</button></div></div><div class="question-card"><h4>6. 你希望多引用资料还是多讲自己的判断？</h4><div class="scale"><button>料</button><button>2</button><button class="selected">平</button><button>4</button><button>判</button></div></div><div class="question-card"><h4>7. 你是否希望系统主动提出反方质疑？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div><div class="question-card"><h4>8. 你希望文章开头更直接还是更有故事感？</h4><div class="scale"><button>直</button><button>2</button><button class="selected">中</button><button>4</button><button>事</button></div></div><div class="question-card"><h4>9. 你希望标题更克制还是更有传播性？</h4><div class="scale"><button>克</button><button>2</button><button class="selected">中</button><button>4</button><button>传</button></div></div><div class="question-card"><h4>10. 你是否愿意暴露自己的不确定和纠结？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div><div class="question-card"><h4>11. 你希望风格更冷静还是更有情绪？</h4><div class="scale"><button>冷</button><button class="selected">2</button><button>中</button><button>4</button><button>情</button></div></div><div class="question-card"><h4>12. 你希望 AI 帮你写到什么程度？</h4><div class="scale"><button>纲</button><button>段</button><button class="selected">稿</button><button>修</button><button>发</button></div></div></div></div></div>
+          <div class="grid-2"><div class="panel"><div class="panel-header"><div><h2 class="panel-title">结构化写作风格</h2></div><button class="btn primary" onclick="showToast('写作风格已保存')">保存</button></div><div class="panel-body form-grid"><div class="field"><label>逻辑深度</label><select class="select"><option>3 - 平衡</option><option>4 - 较强</option><option>5 - 非常强</option></select></div><div class="field"><label>立场锋利度</label><select class="select"><option>2 - 克制</option><option>3 - 平衡</option><option>4 - 鲜明</option></select></div><div class="field"><label>证据偏好</label><select class="select"><option>个人经验 + 案例</option><option>资料优先</option><option>判断优先</option><option>论文 / 数据优先</option></select></div><div class="field"><label>AI 辅助边界</label><select class="select"><option>草稿级，需要我修改后发布</option><option>只给大纲</option><option>只做润色</option><option>发布前检查</option></select></div></div></div><div class="panel"><div class="panel-header"><div><h2 class="panel-title">写作风格问答</h2></div></div><div class="panel-body" style="display:grid; gap:10px; max-height:500px; overflow-y:auto;"><div class="question-card"><h4>1. 你希望文章逻辑严密到什么程度？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div><div class="question-card"><h4>2. 你愿意在文章中表达鲜明立场吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div><div class="question-card"><h4>3. 你喜欢加入个人经历和踩坑案例吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div><div class="question-card"><h4>4. 你能接受比较犀利的表达吗？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div><div class="question-card"><h4>5. 你希望文章更像知乎回答还是公众号长文？</h4><div class="scale"><button>答</button><button>2</button><button class="selected">中</button><button>4</button><button>文</button></div></div><div class="question-card"><h4>6. 你希望多引用资料还是多讲自己的判断？</h4><div class="scale"><button>料</button><button>2</button><button class="selected">平</button><button>4</button><button>判</button></div></div><div class="question-card"><h4>7. 你是否希望系统主动提出反方质疑？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div><div class="question-card"><h4>8. 你希望文章开头更直接还是更有故事感？</h4><div class="scale"><button>直</button><button>2</button><button class="selected">中</button><button>4</button><button>事</button></div></div><div class="question-card"><h4>9. 你希望标题更克制还是更有传播性？</h4><div class="scale"><button>克</button><button>2</button><button class="selected">中</button><button>4</button><button>传</button></div></div><div class="question-card"><h4>10. 你是否愿意暴露自己的不确定和纠结？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div><div class="question-card"><h4>11. 你希望风格更冷静还是更有情绪？</h4><div class="scale"><button>冷</button><button class="selected">2</button><button>中</button><button>4</button><button>情</button></div></div><div class="question-card"><h4>12. 你希望 AI 帮你写到什么程度？</h4><div class="scale"><button>纲</button><button>段</button><button class="selected">稿</button><button>修</button><button>发</button></div></div></div></div></div>
         </section>
       </section>
     </main>
@@ -1010,6 +1010,44 @@
       const target = document.getElementById('seedClaim');
       if (target) target.textContent = claim;
       showToast('已切换观点种子');
+    }
+
+    /* ===== REFRESH CURRENT CATEGORY ===== */
+    function refreshCurrentCategory() {
+      const activeSection = document.querySelector('.category-section:not([style*="display: none"])');
+      if (!activeSection) { showToast('请先选择一个兴趣分类'); return; }
+      const grid = activeSection.querySelector('.grid-2');
+      if (!grid) return;
+      const newCards = `
+        <article class="card structured-card" style="border:2px dashed var(--zhihu-blue);opacity:0.85;">
+          <div class="tag-row"><span class="tag green">新输入</span></div>
+          <h3>刚刚刷新的新内容</h3>
+          <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">基于你的兴趣画像和最新热点推荐。</p></div>
+          <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+        </article>
+        <article class="card structured-card" style="border:2px dashed var(--zhihu-blue);opacity:0.85;">
+          <div class="tag-row"><span class="tag green">新输入</span></div>
+          <h3>刚刚刷新的新内容</h3>
+          <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">基于你的兴趣画像和最新热点推荐。</p></div>
+          <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+        </article>
+        <article class="card structured-card" style="border:2px dashed var(--zhihu-blue);opacity:0.85;">
+          <div class="tag-row"><span class="tag green">新输入</span></div>
+          <h3>刚刚刷新的新内容</h3>
+          <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">基于你的兴趣画像和最新热点推荐。</p></div>
+          <div class="action-row"><button class="btn ghost" onclick="showToast('已记录认同')">我认同</button><button class="btn ghost" onclick="showToast('已记录反对')">我反对</button><button class="btn ghost" onclick="showToast('已打开疑问对话框')">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+        </article>`;
+      grid.insertAdjacentHTML('afterbegin', newCards);
+      showToast('已刷新当前分类，新增 3 条输入');
+    }
+
+    /* ===== WRITE MEMORY BACK ===== */
+    function writeMemoryBack() {
+      const textarea = document.getElementById('memoryEditTextarea');
+      if (!textarea) return;
+      if (confirm('确认将修改后的 Memory 写入「数码科技」分类 Memory？')) {
+        showToast('已写入 Memory：数码科技分类画像已更新');
+      }
     }
 
     /* ===== SPROUT TWO-PHASE ===== */
@@ -1243,7 +1281,10 @@
       const stage = document.getElementById('stageContent');
       const advice = document.getElementById('editorAdvice');
       const nav = `<div class="action-row" style="margin-top:24px;"><button class="btn ghost ${step === 0 ? 'disabled' : ''}" onclick="renderWritingStep(${Math.max(0, step - 1)})">上一步</button><button class="btn primary ${step === writingSteps.length - 1 ? 'disabled' : ''}" onclick="renderWritingStep(${Math.min(writingSteps.length - 1, step + 1)})">下一步</button></div>`;
-      const memoryInjection = `<div class="memory-injection"><div class="tag-row"><span class="tag blue">已匹配兴趣分类画像：数码科技</span><span class="tag green">Memory 已注入</span></div><h3>本次写作使用的画像 Memory</h3><p><strong>偏好视角：</strong>设备、软件、AI、消费电子。<br><strong>证据偏好：</strong>案例优先，避免只讲参数和发布会。<br><strong>写作风格：</strong>清晰、克制、偏工程师复盘视角；允许有观点锋芒，但避免标题党和情绪煽动。<br><strong>写作提醒：</strong>需要补充具体工程场景、使用 AI 编程时的真实判断，并回应"长上下文模型会不会削弱壁垒"的反方质疑。</p></div>`;
+      const memoryInjection = `<div class="memory-injection"><div class="tag-row"><span class="tag blue">已匹配兴趣分类画像：数码科技</span><span class="tag green">Memory 已注入</span></div><h3>本次写作使用的画像 Memory</h3><textarea class="textarea" id="memoryEditTextarea" style="min-height:120px;margin:12px 0;">偏好视角：设备、软件、AI、消费电子。
+证据偏好：案例优先，避免只讲参数和发布会。
+写作风格：清晰、克制、偏工程师复盘视角；允许有观点锋芒，但避免标题党和情绪煽动。
+写作提醒：需要补充具体工程场景、使用 AI 编程时的真实判断，并回应"长上下文模型会不会削弱壁垒"的反方质疑。</textarea><div class="action-row"><button class="btn primary" onclick="writeMemoryBack()">写入 Memory</button><button class="btn ghost" onclick="showToast('已取消，Memory 未修改')">取消</button></div></div>`;
       const contents = [
         `<h2 class="stage-title">选择观点种子</h2><p class="stage-desc">当前演示选择的是"AI 编程工具的护城河可能不在代码生成"。</p><div class="draft-box"><div class="tag-row"><span class="tag green">可发芽</span><span class="tag blue">AI 编程</span></div><h2>观点种子：AI 编程工具的护城河可能不在代码生成</h2><p><strong>核心观点：</strong>单纯代码生成工具的护城河很浅，真正的壁垒可能在上下文积累、工作流入口、团队协作和企业数据闭环。</p><p><strong>触发热点：</strong>AI 编程工具进入企业协作场景。</p><p><strong>建议文章类型：</strong>深度分析 / 工程复盘。</p></div>${nav}`,
         `<h2 class="stage-title">核心观点确认</h2><p class="stage-desc">AI 可以提炼观点，但最终立场必须由用户确认。</p><div class="draft-box"><h2>我理解你想表达的是：</h2><p><strong>核心观点：</strong><br>单纯代码生成能力很难成为 AI 编程工具的长期护城河。真正有价值的是上下文积累、工程工作流入口、团队协作数据和企业级可控交付。</p><p><strong>文章基调：</strong><br>不是否定 AI 编程工具的价值，而是讨论它的长期竞争壁垒在哪里。</p><p><strong>你想让读者带走的判断：</strong><br>AI 编程产品的竞争，将从"谁更会写代码"转向"谁更懂工程现场"。</p><p><strong>请确认：</strong></p><div class="action-row"><button class="btn primary" onclick="showToast('已确认核心观点')">确认</button><button class="btn ghost">调整观点</button><button class="btn ghost">更犀利一点</button><button class="btn ghost">更稳健一点</button><button class="btn ghost">补充个人经历</button></div></div>${nav}`,

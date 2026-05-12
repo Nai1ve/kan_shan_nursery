@@ -93,6 +93,7 @@ class KanshanConfig:
     provider_mode: str = "mock"
     database_url: str = "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan"
     storage_backend: str = "memory"
+    cors_origins: list[str] = field(default_factory=lambda: ["http://127.0.0.1:3000", "http://localhost:3000"])
     zhihu: ZhihuConfig = field(default_factory=ZhihuConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -160,6 +161,16 @@ def _flat_legacy(zhihu_section: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if legacy_key in zhihu_section and isinstance(zhihu_section[legacy_key], (str, int)):
             out[section][field_name] = zhihu_section[legacy_key]
     return out
+
+
+def _parse_cors_origins(env_value: str | None, yaml_value: Any) -> list[str]:
+    """Parse CORS origins from env var (comma-separated) or YAML (list)."""
+    defaults = ["http://127.0.0.1:3000", "http://localhost:3000"]
+    if env_value:
+        return [o.strip() for o in env_value.split(",") if o.strip()]
+    if yaml_value and isinstance(yaml_value, list):
+        return [str(o) for o in yaml_value]
+    return defaults
 
 
 def load_config(path: str | Path | None = None) -> KanshanConfig:
@@ -264,6 +275,10 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
                     _pick(os.getenv("ZHIHU_QUOTA_DIRECT_ANSWER"), quota_raw.get("direct_answer"), 100) or 100
                 ),
             ),
+        ),
+        cors_origins=_parse_cors_origins(
+            os.getenv("CORS_ORIGINS"),
+            raw.get("cors_origins"),
         ),
         cache=CacheConfig(
             backend=_pick(

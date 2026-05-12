@@ -4,6 +4,12 @@
 
 provider_mode: mock          # mock / live。所有 zhihu live 调用都受此开关。
 
+# CORS 白名单（前端访问后端的来源地址）
+cors_origins:
+  - "http://127.0.0.1:3000"
+  - "http://localhost:3000"
+  # - "http://your-server-ip:3000"
+
 zhihu:
   community:
     # 用户 token：知乎个人主页 → "..." → 复制链接，取 people/ 后那串

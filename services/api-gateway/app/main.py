@@ -32,15 +32,11 @@ configure_logging("api-gateway", _config.logging)
 logger = get_logger("kanshan.gateway.main")
 
 app = FastAPI(title="Kanshan API Gateway", version="0.1.0")
-origins = [
-    "http://127.0.0.1:3000",
-    "http://localhost:3000",
-    "http://192.168.1.115:3000",
-]
 
+# CORS: 从配置文件读取白名单
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=_config.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

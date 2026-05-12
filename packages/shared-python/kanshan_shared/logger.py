@@ -75,7 +75,8 @@ class JsonLinesHandler(Handler):
 
     def _record_to_dict(self, record: LogRecord) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(record.created)),
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(record.created))
+            + f".{int(record.msecs):03d}Z",
             "service": self.service,
             "level": record.levelname,
             "logger": record.name,
@@ -101,13 +102,14 @@ class ConsoleFormatter(logging.Formatter):
 
     def format(self, record: LogRecord) -> str:
         ts = time.strftime("%H:%M:%S", time.localtime(record.created))
+        ts_ms = f"{ts}.{int(record.msecs):03d}"
         extras = []
         for key, value in record.__dict__.items():
             if key in _RESERVED or key.startswith("_"):
                 continue
             extras.append(f"{key}={value}")
         suffix = (" " + " ".join(extras)) if extras else ""
-        base = f"{ts} {record.levelname:<5} {self.service} {record.getMessage()}{suffix}"
+        base = f"{ts_ms} {record.levelname:<5} [{self.service}] {record.getMessage()}{suffix}"
         if record.exc_info:
             base += "\n" + super().formatException(record.exc_info)
         return base
@@ -144,13 +146,28 @@ class LoggerFactory:
             root._kanshan_configured = True  # type: ignore[attr-defined]
 
 
+def _resolve_log_dir(log_dir: str | Path) -> Path:
+    """Resolve log directory to an absolute path relative to repo root."""
+    p = Path(log_dir)
+    if p.is_absolute():
+        return p
+    # Try to find repo root by looking for .git directory
+    here = Path(__file__).resolve()
+    for candidate in [here, *here.parents]:
+        if (candidate / ".git").exists():
+            return candidate / log_dir
+    # Fallback: use current working directory
+    return Path.cwd() / log_dir
+
+
 def configure_logging(service: str, logging_cfg: Any | None = None) -> None:
     if logging_cfg is None:
         LoggerFactory.configure(service)
         return
+    raw_dir = getattr(logging_cfg, "jsonl_dir", "output/logs")
     LoggerFactory.configure(
         service,
-        jsonl_dir=getattr(logging_cfg, "jsonl_dir", "output/logs"),
+        jsonl_dir=_resolve_log_dir(raw_dir),
         console_level=getattr(logging_cfg, "console_level", "INFO"),
     )
 

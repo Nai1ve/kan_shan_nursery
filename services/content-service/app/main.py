@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,7 +17,9 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
-from .repository import CardNotFound, CategoryNotFound, SourceNotFound
+from .enricher import LlmEnricher
+from .repository import CardNotFound, CategoryNotFound, ContentRepository, SourceNotFound
+from .scheduler import ContentScheduler
 from .service import ContentService
 
 
@@ -25,7 +28,17 @@ _config = load_config()
 configure_logging("content-service", _config.logging)
 logger = get_logger("kanshan.content_service.main")
 
-service = ContentService()
+_zhihu_url = os.getenv("ZHIHU_ADAPTER_URL", "http://127.0.0.1:8070")
+_profile_url = os.getenv("PROFILE_SERVICE_URL", "http://127.0.0.1:8010")
+_llm_url = os.getenv("LLM_SERVICE_URL", "http://127.0.0.1:8080")
+
+enricher = LlmEnricher(llm_base_url=_llm_url)
+repository = ContentRepository(enricher=enricher, profile_service_url=_profile_url)
+service = ContentService(repository=repository)
+
+# Start background content scheduler
+_scheduler = ContentScheduler(zhihu_base_url=_zhihu_url, profile_base_url=_profile_url)
+_scheduler.start()
 
 
 def handle_error(error: Exception) -> None:
@@ -47,12 +60,16 @@ def health() -> dict[str, str]:
 
 @app.get("/content")
 def bootstrap() -> dict[str, Any]:
-    return service.bootstrap()
+    result = service.bootstrap()
+    logger.info("content_bootstrap", extra={"cardCount": len(result.get("cards", []))})
+    return result
 
 
 @app.get("/content/cards")
 def list_cards(category_id: str | None = None) -> dict[str, Any]:
-    return service.list_cards(category_id)
+    result = service.list_cards(category_id)
+    logger.info("content_card_list", extra={"categoryId": category_id, "count": len(result.get("cards", []))})
+    return result
 
 
 @app.get("/content/cards/{card_id}")
@@ -76,7 +93,9 @@ def get_source(card_id: str, source_id: str) -> dict[str, Any]:
 @app.post("/content/categories/{category_id}/refresh")
 def refresh_category(category_id: str) -> dict[str, Any]:
     try:
-        return service.refresh_category(category_id)
+        result = service.refresh_category(category_id)
+        logger.info("content_category_refresh", extra={"categoryId": category_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -85,7 +104,9 @@ def refresh_category(category_id: str) -> dict[str, Any]:
 @app.post("/content/cards/{card_id}/summarize")
 def summarize_card(card_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.summarize_card(card_id, payload)
+        result = service.summarize_card(card_id, payload)
+        logger.info("content_summarize", extra={"cardId": card_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise

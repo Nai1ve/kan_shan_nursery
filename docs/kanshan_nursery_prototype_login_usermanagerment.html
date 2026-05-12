@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>看山小苗圃｜读写一体创作 Agent</title>
+  <style>
+    :root {
+      --zhihu-blue: #1677ff;
+      --zhihu-blue-dark: #0f5fd6;
+      --ink-1: #111827;
+      --ink-2: #374151;
+      --ink-3: #6b7280;
+      --ink-4: #9ca3af;
+      --bg: #f5f7fb;
+      --card: rgba(255,255,255,0.86);
+      --line: rgba(17,24,39,0.08);
+      --green: #22c55e;
+      --orange: #f97316;
+      --purple: #8b5cf6;
+      --red: #ef4444;
+      --shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+      --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.06);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --blur: saturate(180%) blur(18px);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink-1);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(22,119,255,0.12), transparent 28%),
+        radial-gradient(circle at 90% 8%, rgba(34,197,94,0.10), transparent 25%),
+        linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    .login-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 36px;
+      padding: clamp(24px, 5vw, 72px);
+      align-items: center;
+    }
+
+    .login-hero { max-width: 720px; }
+
+    .login-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 900;
+      font-size: 30px;
+      background: linear-gradient(145deg, var(--zhihu-blue), #54a3ff);
+      box-shadow: 0 20px 54px rgba(22,119,255,0.24);
+      margin-bottom: 26px;
+    }
+
+    .login-hero h1 {
+      margin: 0;
+      font-size: clamp(42px, 6vw, 78px);
+      letter-spacing: -0.07em;
+      line-height: 0.98;
+    }
+
+    .login-hero p {
+      margin: 24px 0 0;
+      color: var(--ink-3);
+      font-size: 18px;
+      line-height: 1.85;
+      max-width: 640px;
+    }
+
+    .login-panel {
+      background: var(--card);
+      backdrop-filter: var(--blur);
+      border: 1px solid var(--line);
+      border-radius: 36px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+
+    .login-panel h2 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      letter-spacing: -0.04em;
+    }
+
+    .login-panel > p {
+      margin: 0 0 22px;
+      color: var(--ink-3);
+      line-height: 1.7;
+    }
+
+    .login-option {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 18px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid var(--line);
+      margin-bottom: 14px;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .login-option:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-soft);
+      border-color: rgba(22,119,255,0.26);
+    }
+
+    .login-option-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: rgba(22,119,255,0.09);
+      color: var(--zhihu-blue-dark);
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+
+    .login-option strong { display: block; margin-bottom: 4px; }
+    .login-option span { color: var(--ink-3); font-size: 13px; line-height: 1.65; }
+
+    .app {
+      display: none;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+    .app.show { display: grid; }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 22px;
+      border-right: 1px solid var(--line);
+      background: rgba(255,255,255,0.64);
+      backdrop-filter: var(--blur);
+      overflow-y: auto;
+    }
+
+    .brand { display: flex; gap: 12px; align-items: center; margin-bottom: 28px; }
+
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+      background: linear-gradient(145deg, var(--zhihu-blue), #54a3ff);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      box-shadow: 0 14px 32px rgba(22,119,255,0.28);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .brand-title { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+    .brand-subtitle { color: var(--ink-3); font-size: 13px; margin-top: 2px; }
+
+    .nav { display: flex; flex-direction: column; gap: 8px; }
+
+    .nav button {
+      border: 0;
+      background: transparent;
+      color: var(--ink-2);
+      padding: 13px 14px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: 0.18s ease;
+    }
+
+    .nav button:hover { background: rgba(22,119,255,0.07); color: var(--zhihu-blue-dark); }
+    .nav button.active { background: rgba(22,119,255,0.11); color: var(--zhihu-blue-dark); font-weight: 700; }
+
+    .nav-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      background: rgba(22,119,255,0.09);
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+    }
+
+    .sidebar-card {
+      margin-top: 24px;
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.62));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .sidebar-card .eyebrow { color: var(--zhihu-blue-dark); font-size: 12px; font-weight: 800; margin-bottom: 8px; }
+    .sidebar-card p { margin: 0; color: var(--ink-3); line-height: 1.7; font-size: 13px; }
+
+    .main { padding: 32px clamp(24px, 4vw, 54px) 56px; overflow-x: hidden; }
+
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
+    .hero-title { margin: 0; font-size: clamp(28px, 3.6vw, 48px); letter-spacing: -0.055em; line-height: 1.08; }
+    .hero-desc { margin: 10px 0 0; color: var(--ink-3); font-size: 16px; line-height: 1.7; max-width: 820px; }
+
+    .user-pill {
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 14px 9px 9px;
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+    }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #111827, #374151);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+
+    .section { display: none; animation: fadeIn 0.28s ease; }
+    .section.active { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .grid-1 { display: grid; grid-template-columns: 1fr; gap: 18px; }
+
+    .panel {
+      background: var(--card);
+      backdrop-filter: var(--blur);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel + .panel { margin-top: 20px; }
+
+    .panel-header {
+      padding: 22px 24px 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .panel-title { margin: 0; font-size: 19px; letter-spacing: -0.02em; }
+    .panel-subtitle { margin: 7px 0 0; color: var(--ink-3); font-size: 13px; line-height: 1.6; }
+    .panel-body { padding: 12px 24px 24px; }
+
+    .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 24px 0; }
+    .metric-card { background: rgba(255,255,255,0.74); border: 1px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: var(--shadow-soft); }
+    .metric-value { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; }
+    .metric-label { color: var(--ink-3); margin-top: 6px; font-size: 13px; }
+
+    .card {
+      background: rgba(255,255,255,0.76);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--shadow-soft);
+      transition: 0.2s ease;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 18px 42px rgba(15,23,42,0.10); }
+
+    .structured-card h3 { margin: 0 0 16px; font-size: 19px; letter-spacing: -0.03em; line-height: 1.38; }
+    .field-block { margin-top: 14px; }
+    .field-title { font-size: 13px; font-weight: 900; color: var(--ink-1); margin-bottom: 6px; }
+    .field-text { margin: 0; color: var(--ink-3); line-height: 1.75; font-size: 14px; }
+    .field-list { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; line-height: 1.78; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .tag, .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink-2);
+      background: rgba(17,24,39,0.05);
+      border: 1px solid transparent;
+    }
+
+    .chip {
+      cursor: pointer;
+      user-select: none;
+      transition: 0.18s ease;
+      padding: 8px 12px;
+      font-size: 13px;
+      background: rgba(255,255,255,0.7);
+      border-color: var(--line);
+    }
+    .chip:hover { transform: translateY(-1px); }
+    .chip.selected { color: var(--zhihu-blue-dark); background: rgba(22,119,255,0.11); border-color: rgba(22,119,255,0.28); }
+
+    .tag.blue { color: var(--zhihu-blue-dark); background: rgba(22,119,255,0.10); }
+    .tag.green { color: #15803d; background: rgba(34,197,94,0.12); }
+    .tag.orange { color: #c2410c; background: rgba(249,115,22,0.12); }
+    .tag.purple { color: #6d28d9; background: rgba(139,92,246,0.12); }
+    .tag.red { color: #b91c1c; background: rgba(239,68,68,0.10); }
+
+    .source-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; color: var(--ink-4); font-size: 12px; }
+
+    .action-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 13px;
+      cursor: pointer;
+      background: rgba(17,24,39,0.06);
+      color: var(--ink-2);
+      font-size: 13px;
+      font-weight: 700;
+      transition: 0.18s ease;
+    }
+    .btn:hover { background: rgba(17,24,39,0.10); transform: translateY(-1px); }
+    .btn.primary { background: var(--zhihu-blue); color: #fff; box-shadow: 0 12px 24px rgba(22,119,255,0.22); }
+    .btn.primary:hover { background: var(--zhihu-blue-dark); }
+    .btn.ghost { background: rgba(255,255,255,0.75); border: 1px solid var(--line); }
+    .btn.disabled { pointer-events: none; opacity: 0.42; }
+
+    .category-section + .category-section { margin-top: 24px; }
+    .category-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 18px 0 12px; }
+    .category-header h3 { margin: 0; font-size: 20px; letter-spacing: -0.03em; }
+    .category-header p { margin: 6px 0 0; color: var(--ink-3); font-size: 13px; }
+
+    .interest-rail {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 4px 0 14px;
+      margin-bottom: 10px;
+    }
+
+    .subinterest-card {
+      min-width: 178px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+    .subinterest-card:hover, .subinterest-card.active { background: rgba(22,119,255,0.08); border-color: rgba(22,119,255,0.28); transform: translateY(-1px); }
+    .subinterest-card strong { display: block; font-size: 13px; margin-bottom: 5px; }
+    .subinterest-card span { color: var(--ink-3); font-size: 12px; }
+
+    .two-column-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items: start; }
+    .profile-layout { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: 18px; align-items: start; }
+    .seed-list { display: grid; gap: 14px; }
+    .seed-card { cursor: pointer; position: relative; overflow: hidden; }
+    .seed-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 2px solid transparent; transition: 0.18s ease; pointer-events: none; }
+    .seed-card.selected::after { border-color: rgba(22,119,255,0.42); }
+
+    .sprout-card { position: relative; background: linear-gradient(150deg, rgba(255,255,255,0.92), rgba(238,247,255,0.88)); }
+    .sprout-badge {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 58px;
+      height: 58px;
+      border-radius: 19px;
+      background: rgba(34,197,94,0.12);
+      color: #15803d;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 18px;
+    }
+
+    .form-grid { display: grid; gap: 14px; }
+    .field label { display: block; font-size: 13px; color: var(--ink-3); margin-bottom: 8px; font-weight: 700; }
+    .input, .textarea, .select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.76);
+      outline: none;
+      color: var(--ink-1);
+      transition: 0.18s ease;
+    }
+    .textarea { min-height: 96px; resize: vertical; line-height: 1.7; }
+    .input:focus, .textarea:focus, .select:focus { border-color: rgba(22,119,255,0.42); box-shadow: 0 0 0 4px rgba(22,119,255,0.08); }
+
+    .memory-card { display: grid; gap: 10px; padding: 16px; border-radius: 20px; background: rgba(255,255,255,0.72); border: 1px solid var(--line); }
+    .memory-card strong { font-size: 14px; }
+    .memory-card textarea { min-height: 76px; }
+
+    .question-card { padding: 16px; border-radius: 20px; background: rgba(255,255,255,0.74); border: 1px solid var(--line); }
+    .question-card h4 { margin: 0 0 10px; font-size: 14px; line-height: 1.55; }
+
+    .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .scale button { border: 1px solid var(--line); background: rgba(255,255,255,0.76); border-radius: 12px; padding: 9px 0; cursor: pointer; color: var(--ink-3); font-weight: 800; }
+    .scale button.selected { background: rgba(22,119,255,0.11); color: var(--zhihu-blue-dark); border-color: rgba(22,119,255,0.26); }
+
+    .wizard-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr) 350px; gap: 18px; align-items: start; }
+    .stepper { display: grid; gap: 10px; }
+    .step-item {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 13px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      background: rgba(255,255,255,0.6);
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+    .step-item.active { border-color: rgba(22,119,255,0.34); background: rgba(22,119,255,0.08); }
+    .step-item.done .step-num { background: rgba(34,197,94,0.14); color: #15803d; }
+    .step-num { width: 28px; height: 28px; flex: 0 0 auto; border-radius: 10px; display: grid; place-items: center; background: rgba(17,24,39,0.06); color: var(--ink-3); font-weight: 900; font-size: 13px; }
+    .step-copy strong { display: block; font-size: 13px; margin-bottom: 4px; }
+    .step-copy span { color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+
+    .writing-stage { min-height: 690px; }
+    .stage-content { padding: 24px; }
+    .stage-title { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.04em; }
+    .stage-desc { margin: 0 0 20px; color: var(--ink-3); line-height: 1.7; }
+
+    .draft-box { padding: 24px; border-radius: 24px; background: rgba(255,255,255,0.72); border: 1px solid var(--line); }
+    .draft-box h2 { margin: 0 0 16px; font-size: 25px; letter-spacing: -0.04em; line-height: 1.25; }
+    .draft-box p { color: var(--ink-2); line-height: 1.9; font-size: 15px; margin: 0 0 15px; }
+
+    .outline-block { display: grid; gap: 12px; }
+    .outline-item { padding: 14px; border-radius: 16px; background: rgba(17,24,39,0.04); border: 1px solid rgba(17,24,39,0.05); }
+    .outline-item strong { display: block; margin-bottom: 6px; color: var(--ink-1); font-size: 14px; }
+    .outline-item span { color: var(--ink-3); line-height: 1.6; font-size: 13px; }
+
+    .roundtable {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .agent-card { border-radius: 22px; padding: 16px; background: rgba(255,255,255,0.74); border: 1px solid var(--line); }
+    .agent-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .agent-avatar { width: 34px; height: 34px; border-radius: 14px; display: grid; place-items: center; font-weight: 900; color: white; background: var(--zhihu-blue); }
+    .agent-card p { margin: 0; color: var(--ink-3); font-size: 13px; line-height: 1.7; }
+
+    .check-item { border-radius: 18px; padding: 15px; background: rgba(255,255,255,0.72); border: 1px solid var(--line); margin-bottom: 12px; }
+    .check-item h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }
+    .check-item p { margin: 0; color: var(--ink-3); font-size: 13px; line-height: 1.65; }
+
+    .history-card { display: grid; grid-template-columns: 1fr 220px; gap: 18px; align-items: start; }
+    .mini-bars { display: grid; gap: 8px; }
+    .mini-bar { height: 8px; border-radius: 999px; background: rgba(17,24,39,0.06); overflow: hidden; }
+    .mini-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--zhihu-blue), #5dd6a7); }
+
+    .floating-toast { position: fixed; right: 28px; bottom: 28px; background: rgba(17,24,39,0.92); color: #fff; padding: 14px 16px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.18); display: none; z-index: 20; font-size: 14px; }
+    .floating-toast.show { display: block; animation: toastIn 0.22s ease; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (max-width: 1280px) {
+      .wizard-layout { grid-template-columns: 1fr; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .roundtable { grid-template-columns: 1fr; }
+      .history-card { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 1180px) {
+      .grid-3, .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .profile-layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 900px) {
+      .login-shell { grid-template-columns: 1fr; }
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+      .nav button { white-space: nowrap; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .grid-3, .grid-2, .grid-4, .metric-row, .two-column-layout { grid-template-columns: 1fr; }
+    }
+
+    /* Auth entry: no sidebar, top state machine */
+    .auth-entry-shell {
+      min-height: 100vh;
+      padding: clamp(24px, 5vw, 64px);
+      display: grid;
+      gap: 28px;
+      align-content: start;
+    }
+    .auth-entry-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .auth-brand { display: flex; align-items: center; gap: 12px; }
+    .auth-title-block h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 48px);
+      letter-spacing: -0.055em;
+      line-height: 1.05;
+    }
+    .auth-title-block p {
+      margin: 8px 0 0;
+      color: var(--ink-3);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+    .auth-status-pill {
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 14px 9px 9px;
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+    }
+    .auth-progress {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .auth-progress.hidden { display: none; }
+    .auth-progress-step {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 13px;
+      background: rgba(255,255,255,0.68);
+      cursor: pointer;
+      transition: 0.18s ease;
+      min-height: 92px;
+    }
+    .auth-progress-step:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+    .auth-progress-step.active { background: rgba(22,119,255,0.09); border-color: rgba(22,119,255,0.30); }
+    .auth-progress-step.done .auth-step-num { color: #15803d; background: rgba(34,197,94,0.14); }
+    .auth-step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: var(--ink-3);
+      background: rgba(17,24,39,0.06);
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .auth-progress-step strong { display: block; font-size: 13px; margin-bottom: 4px; }
+    .auth-progress-step span { display: block; color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+    .auth-main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1040px);
+      justify-content: center;
+      gap: 18px;
+      align-items: start;
+    }
+    .auth-wizard-panel { min-height: 560px; }
+    .auth-step-panel { display: none; }
+    .auth-step-panel.active { display: block; animation: fadeIn 0.28s ease; }
+    .auth-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .auth-tab {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      background: rgba(255,255,255,0.72);
+      color: var(--ink-2);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .auth-tab.active { color: var(--zhihu-blue-dark); background: rgba(22,119,255,0.11); border-color: rgba(22,119,255,0.28); }
+    .auth-mode-panel { display: none; }
+    .auth-mode-panel.active { display: block; }
+    .profile-tabbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .profile-tab {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      background: rgba(255,255,255,0.72);
+      color: var(--ink-2);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .profile-tab.active { color: var(--zhihu-blue-dark); background: rgba(22,119,255,0.11); border-color: rgba(22,119,255,0.28); }
+    .profile-panel-section { display: none; }
+    .profile-panel-section.active { display: block; animation: fadeIn 0.25s ease; }
+    .quota-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .quota { padding: 12px; border-radius: 16px; background: rgba(17,24,39,0.04); border: 1px solid rgba(17,24,39,0.05); }
+    .quota strong { display: block; font-size: 18px; margin-bottom: 4px; }
+    .quota span { color: var(--ink-3); font-size: 12px; }
+    .llm-provider-card { position: relative; }
+    .llm-provider-card.selected::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 2px solid rgba(22,119,255,0.38);
+      pointer-events: none;
+    }
+    .interest-group { display: grid; gap: 10px; padding: 14px; border-radius: 20px; border: 1px solid var(--line); background: rgba(255,255,255,0.62); }
+    .interest-group h4 { margin: 0; font-size: 14px; letter-spacing: -0.02em; }
+    .interest-group p { margin: -4px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.5; }
+    .chip.small { font-size: 11px; padding: 5px 8px; }
+
+    @media (max-width: 1180px) {
+      .auth-progress { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .auth-main-grid { grid-template-columns: 1fr; }
+      .quota-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 900px) {
+      .auth-entry-topbar { flex-direction: column; align-items: flex-start; }
+      .auth-progress { grid-template-columns: 1fr; }
+      .quota-grid { grid-template-columns: 1fr; }
+    }
+
+  </style>
+</head>
+<body>
+  <section id="login" class="auth-entry-shell">
+    <div class="auth-entry-topbar">
+      <div class="auth-brand">
+        <div class="login-logo" style="margin-bottom:0;">苗</div>
+        <div class="auth-title-block">
+          <h1 id="authHeroTitle">登录 / 注册</h1>
+          <p id="authHeroDesc">先建立本地用户身份，再逐步完成知乎授权、LLM 配置、兴趣采集和画像生成。</p>
+        </div>
+      </div>
+      <div id="authGuestPill" class="auth-status-pill" onclick="handleAuthPillClick()">
+        <div class="avatar" id="authAvatar">访</div>
+        <div>
+          <div id="authPillName" style="font-weight:800;font-size:14px;">Guest</div>
+          <div id="authPillDesc" style="color:var(--ink-3);font-size:12px;">未登录 · 未建画像</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="auth-progress hidden" id="authProgress">
+      <div class="auth-progress-step active" data-auth-step="auth"><div class="auth-step-num">1</div><strong>注册</strong><span>绑定本地用户身份</span></div>
+      <div class="auth-progress-step" data-auth-step="zhihu"><div class="auth-step-num">2</div><strong>知乎关联</strong><span>授权或跳过</span></div>
+      <div class="auth-progress-step" data-auth-step="llm"><div class="auth-step-num">3</div><strong>LLM 配置</strong><span>可配置多个模型</span></div>
+      <div class="auth-progress-step" data-auth-step="interest"><div class="auth-step-num">4</div><strong>兴趣领域</strong><span>大众兴趣大类</span></div>
+      <div class="auth-progress-step" data-auth-step="style"><div class="auth-step-num">5</div><strong>创作画像</strong><span>资料 + 风格问卷</span></div>
+      <div class="auth-progress-step" data-auth-step="generation"><div class="auth-step-num">6</div><strong>完成</strong><span>进入工作台</span></div>
+    </div>
+
+    <div class="auth-main-grid">
+      <article class="panel auth-wizard-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="authStepTitle" class="panel-title">登录 / 注册</h2>
+            <p id="authStepDesc" class="panel-subtitle">用户必须先拥有本地账号，后续 OAuth、LLM 配置和画像才能绑定到用户。</p>
+          </div>
+        </div>
+        <div class="panel-body">
+          <section class="auth-step-panel active" data-auth-panel="auth">
+            <div class="grid-2">
+              <div class="card" style="box-shadow:none;">
+                <div class="tag-row"><span class="tag blue">欢迎使用</span></div>
+                <h3>看山小苗圃</h3>
+                <p class="field-text">先登录或注册一个本地账号。后续的知乎授权、兴趣选择、写作风格和创作画像都会绑定到这个账号。</p>
+                <div class="field-block"><div class="field-title">你将完成：</div><ul class="field-list"><li>选择兴趣领域</li><li>建立创作画像</li><li>配置可选 LLM</li><li>进入读写一体工作台</li></ul></div>
+              </div>
+              <div class="card" style="box-shadow:none;">
+                <div class="auth-tabs">
+                  <button class="auth-tab active" data-auth-mode="login">登录</button>
+                  <button class="auth-tab" data-auth-mode="register">注册</button>
+                  <button class="auth-tab" data-auth-mode="demo">演示模式</button>
+                </div>
+                <div class="auth-mode-panel active" data-auth-mode-panel="login">
+                  <div class="form-grid">
+                    <div class="field"><label>邮箱 / 用户名</label><input class="input" value="demo@example.com" /></div>
+                    <div class="field"><label>密码</label><input class="input" type="password" value="password" /></div>
+                    <div class="action-row"><button class="btn primary" onclick="mockLoginAndNext('login')">登录</button><button class="btn ghost">忘记密码</button></div>
+                    <p class="field-text">没有账号？点击上方「注册」创建新账号。</p>
+                  </div>
+                </div>
+                <div class="auth-mode-panel" data-auth-mode-panel="register">
+                  <div class="form-grid">
+                    <div class="field"><label>昵称</label><input class="input" id="registerNickname" value="看山编辑" /></div>
+                    <div class="field"><label>邮箱</label><input class="input" placeholder="yourname@example.com" /></div>
+                    <div class="field"><label>密码</label><input class="input" type="password" placeholder="至少 8 位" /></div>
+                    <div class="field"><label>确认密码</label><input class="input" type="password" placeholder="再次输入密码" /></div>
+                    <div class="action-row"><button class="btn primary" onclick="mockLoginAndNext('register')">注册</button></div>
+                    <p class="field-text">注册即表示同意在本地账号下保存兴趣画像、写作偏好和必要的使用记录。</p>
+                  </div>
+                </div>
+                <div class="auth-mode-panel" data-auth-mode-panel="demo">
+                  <div class="card" style="box-shadow:none;">
+                    <div class="tag-row"><span class="tag orange">开发 / 路演入口</span></div>
+                    <h3>演示模式</h3>
+                    <p class="field-text">演示模式用于黑客松路演或开发调试，不作为正式用户主路径。</p>
+                    <div class="action-row"><button class="btn primary" onclick="enterApp('demo')">进入演示工作台</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="auth-step-panel" data-auth-panel="zhihu">
+            <div class="grid-2">
+              <div class="card">
+                <div class="tag-row"><span class="tag blue">推荐</span><span class="tag green">增强画像</span></div>
+                <h3>关联知乎账号</h3>
+                <p class="field-text">用于读取授权用户信息、关注关系、关注流、圈子互动等公开可授权数据，帮助生成更准确的阅读与创作画像。</p>
+                <div class="action-row"><button class="btn primary" onclick="markZhihuBound()">模拟关联知乎</button><button class="btn ghost">查看使用数据</button></div>
+              </div>
+              <div class="card">
+                <div class="tag-row"><span class="tag orange">降级路径</span></div>
+                <h3>暂时跳过</h3>
+                <p class="field-text">当 OAuth 不可用、授权失败或用户暂不想绑定时，可先用填写信息生成临时画像，后续在用户管理页重新关联。</p>
+                <div class="action-row"><button class="btn ghost" onclick="switchAuthStep('llm')">跳过，继续配置 LLM</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="auth-step-panel" data-auth-panel="llm">
+            <div class="grid-2">
+              <div class="card">
+                <div class="tag-row"><span class="tag blue">可选配置</span><span class="tag green">支持多模型</span></div>
+                <h3>LLM 使用方式</h3>
+                <p class="field-text">你可以使用平台免费额度，也可以配置自己的 OpenAI-compatible 模型。配置多个模型后，系统会在写作、审稿和反馈分析中自动组织不同视角的讨论结果。</p>
+                <div class="field-block"><div class="field-title">不会在这里暴露具体内部角色：</div><p class="field-text">前端只告诉用户“会提供不同视角”，具体任务调度和角色拆分由系统内部完成。</p></div>
+                <div class="action-row"><button class="btn primary" onclick="switchAuthStep('interest')">使用平台免费额度</button><button class="btn ghost" onclick="showToast('稍后也可以在用户管理页配置模型')">稍后配置</button></div>
+              </div>
+              <div class="card">
+                <h3>添加自有模型</h3>
+                <div class="form-grid">
+                  <div class="field"><label>显示名称</label><input class="input" placeholder="例如：DeepSeek V3 / GPT-4.1 / Qwen Plus" /></div>
+                  <div class="field"><label>Base URL</label><input class="input" placeholder="https://api.example.com/v1" /></div>
+                  <div class="field"><label>Model</label><input class="input" placeholder="model-name" /></div>
+                  <div class="field"><label>API Key</label><input class="input" type="password" placeholder="只提交一次，服务端加密保存" /></div>
+                  <div class="action-row"><button class="btn primary" onclick="addMockLlmProvider()">保存为一个模型</button><button class="btn ghost" onclick="showToast('正在测试连接')">测试连接</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="panel" style="box-shadow:none; margin-top:18px;">
+              <div class="panel-header"><div><h2 class="panel-title">已配置模型</h2><p class="panel-subtitle">这里只展示模型列表和用途说明，不展示内部 Agent 角色。</p></div></div>
+              <div class="panel-body grid-3" id="llmProviderList">
+                <div class="card llm-provider-card selected"><div class="tag-row"><span class="tag blue">平台免费</span><span class="tag green">默认</span></div><h3>平台免费模型</h3><p class="field-text">适合画像生成、摘要和轻量问答，受每日额度限制。</p></div>
+                <div class="card llm-provider-card"><div class="tag-row"><span class="tag purple">自有模型</span></div><h3>自有模型 A</h3><p class="field-text">可用于更严谨的分析视角。</p></div>
+                <div class="card llm-provider-card"><div class="tag-row"><span class="tag orange">自有模型</span></div><h3>自有模型 B</h3><p class="field-text">可用于更偏表达和读者感受的视角。</p></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="auth-step-panel" data-auth-panel="interest">
+            <div class="field" style="margin-bottom:16px;"><label>兴趣选择方式</label><select class="select"><option>推荐：选择 5～12 个兴趣，后续可在用户管理页调整</option><option>只想阅读</option><option>只想写作</option><option>阅读和写作都需要</option></select></div>
+            <div class="grid-2" id="authInterestGroups"></div>
+            <div class="action-row"><button class="btn primary" onclick="switchAuthStep('style')">保存兴趣，继续写作风格</button><button class="btn ghost" onclick="showToast('已随机选择一组大众兴趣')">帮我随机选一组</button></div>
+          </section>
+
+          <section class="auth-step-panel" data-auth-panel="style">
+            <div class="grid-2">
+              <div class="card">
+                <h3>建立你的创作画像</h3>
+                <p class="field-text" style="margin-bottom:14px;">这一步整合原来的“首次登录画像”和“写作风格问卷”。完成后系统会生成临时画像，后续可在用户管理页继续修改。</p>
+                <div class="form-grid">
+                  <div class="field"><label>你希望系统怎么称呼你？</label><input class="input" value="看山编辑" /></div>
+                  <div class="field"><label>你的身份 / 创作背景</label><select class="select"><option>普通内容消费者</option><option>学生 / 研究者</option><option>职场人士</option><option>产品经理</option><option>技术创作者 / 工程师</option><option>泛知识创作者</option></select></div>
+                  <div class="field"><label>文章更像</label><select class="select"><option>知乎回答</option><option>公众号长文</option><option>经验复盘</option><option>观点评论</option><option>短想法</option></select></div>
+                  <div class="field"><label>标题风格</label><select class="select"><option>克制清晰</option><option>适度传播</option><option>强冲突感</option></select></div>
+                  <div class="field"><label>AI 帮助边界</label><select class="select"><option>生成大纲</option><option>生成段落</option><option>生成初稿</option><option>只做润色</option><option>生成发布前检查</option></select></div>
+                  <div class="field"><label>你最希望系统帮你避免什么？</label><textarea class="textarea">避免把文章写成正确但无聊的 AI 味长文；保留个人判断、真实经历和反方视角。</textarea></div>
+                </div>
+              </div>
+              <div class="card">
+                <h3>写作风格问卷</h3>
+                <p class="field-text" style="margin-bottom:14px;">保留问答式采集，用于补充结构化表单无法覆盖的偏好。</p>
+                <div class="grid-2">
+                  <div class="question-card"><h4>1. 你希望文章逻辑严密到什么程度？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div>
+                  <div class="question-card"><h4>2. 你愿意表达鲜明立场吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div>
+                  <div class="question-card"><h4>3. 你喜欢加入个人经历吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div>
+                  <div class="question-card"><h4>4. 是否需要主动反方质疑？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div>
+                  <div class="question-card"><h4>5. 更偏资料引用还是个人判断？</h4><div class="scale"><button>料</button><button>2</button><button class="selected">平</button><button>4</button><button>判</button></div></div>
+                  <div class="question-card"><h4>6. 标题更克制还是更有传播性？</h4><div class="scale"><button>克</button><button>2</button><button class="selected">中</button><button>4</button><button>传</button></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="action-row"><button class="btn primary" onclick="switchAuthStep('generation')">生成临时画像</button><button class="btn ghost" onclick="showToast('创作画像草稿已保存')">保存后稍后继续</button></div>
+          </section>
+
+          <section class="auth-step-panel" data-auth-panel="generation">
+            <div class="grid-2">
+              <div class="card"><h3>画像生成进度</h3><div class="field-block"><div class="field-title">已完成：</div><ul class="field-list"><li>保存本地账号与登录状态</li><li>保存兴趣领域与写作风格</li><li>生成临时画像，可进入工作台</li></ul></div><div class="field-block"><div class="field-title">后台进行中：</div><ul class="field-list"><li>等待知乎 OAuth 数据增强</li><li>汇总关注流与兴趣行为</li><li>生成增强 Memory，等待用户确认</li></ul></div><div class="action-row"><button class="btn primary" onclick="enterApp('ready')">进入工作台</button><button class="btn ghost" onclick="goTabAfterLoginProfile()">查看用户管理页</button></div></div>
+              <div class="card"><h3>临时画像摘要</h3><p class="field-text">你关注生活方式、数码科技、职场成长、篮球和影视内容。系统将先用这些显式选择生成基础推荐与写作偏好，等待知乎授权和历史行为后再增强。</p><div class="tag-row" style="margin-top:14px;"><span class="tag blue">临时画像</span><span class="tag orange">待增强</span><span class="tag green">可进入工作台</span></div></div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      </div>
+  </section>
+
+  <div id="app" class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">苗</div><div><div class="brand-title">看山小苗圃</div><div class="brand-subtitle">知乎读写一体创作 Agent</div></div></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="active" data-target="today"><span class="nav-icon">看</span>今日看什么</button>
+        <button data-target="seeds"><span class="nav-icon">种</span>我的种子库</button>
+        <button data-target="sprout"><span class="nav-icon">芽</span>今日发芽</button>
+        <button data-target="write"><span class="nav-icon">写</span>写作苗圃</button>
+        <button data-target="history"><span class="nav-icon">馈</span>历史反馈</button>
+        <button data-target="profile"><span class="nav-icon">我</span>用户管理</button>
+      </nav>
+      <div class="sidebar-card"><div class="eyebrow">今日苗圃状态</div><p>已从兴趣小类、关注流与偶遇输入中筛出 24 条高价值内容；3 颗观点种子进入“可发芽”状态。</p></div>
+      <div class="sidebar-card"><div class="eyebrow">产品原则</div><p>看到好内容，形成好观点，写出好文章。</p></div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div><h1 id="heroTitle" class="hero-title">看到好内容，形成好观点。</h1><p id="heroDesc" class="hero-desc">按兴趣小类、关注流与偶遇输入筛选高质量内容，把阅读后的反应沉淀成观点种子。</p></div>
+        <div class="user-pill" onclick="goTab('profile')"><div class="avatar">山</div><div><div style="font-weight:800;font-size:14px;">看山编辑</div><div style="color:var(--ink-3);font-size:12px;">主编模式 · 已建画像</div></div></div>
+      </div>
+
+      <section id="today" class="section active">
+        <div class="metric-row"><div class="metric-card"><div class="metric-value">24</div><div class="metric-label">今日值得看卡片</div></div><div class="metric-card"><div class="metric-value">8</div><div class="metric-label">兴趣小类</div></div><div class="metric-card"><div class="metric-value">5</div><div class="metric-label">关注流精选</div></div><div class="metric-card"><div class="metric-value">10%</div><div class="metric-label">远端偶遇输入</div></div></div>
+        <div class="panel">
+          <div class="panel-header"><div><h2 class="panel-title">今日看什么</h2><p class="panel-subtitle">先按兴趣小类铺开，再展示关注流与偶遇输入。兴趣广泛的用户不会被压缩到三个卡片里。</p></div><button class="btn primary" onclick="showToast('已刷新：兴趣小类 + 关注流 + 偶遇')">刷新输入</button></div>
+          <div class="panel-body">
+            <div class="interest-rail">
+              <div class="subinterest-card active"><strong>Agent 工程化</strong><span>6 条输入 · 2 条可写</span></div>
+              <div class="subinterest-card"><strong>AI Coding</strong><span>5 条输入 · 1 条发芽</span></div>
+              <div class="subinterest-card"><strong>RAG / 检索</strong><span>4 条输入</span></div>
+              <div class="subinterest-card"><strong>后端工程</strong><span>3 条输入</span></div>
+              <div class="subinterest-card"><strong>程序员成长</strong><span>4 条输入</span></div>
+              <div class="subinterest-card"><strong>金融风控</strong><span>2 条偶遇</span></div>
+              <div class="subinterest-card"><strong>医学 AI</strong><span>1 条偶遇</span></div>
+            </div>
+
+            <div class="category-section">
+              <div class="category-header"><div><h3>兴趣小类：AI Coding</h3><p>基于你的 AI Coding、工程实践、程序员成长标签筛选。</p></div><span class="tag blue">强相关</span></div>
+              <div class="grid-2">
+                <article class="card structured-card">
+                  <div class="tag-row"><span class="tag blue">知乎热榜</span><span class="tag orange">争议度高</span></div>
+                  <h3>标题：AI 编程工具会不会改变程序员的成长路径？</h3>
+                  <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">这个话题近期讨论热度较高，并且和你过往关注的 Agent、编程、职业转型内容相关。</p></div>
+                  <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">当前讨论主要集中在 AI 是否会压缩初级程序员岗位，以及程序员是否还需要传统编码训练。</p></div>
+                  <div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>AI 是否会替代初级开发？</li><li>编码能力和工程能力是否会分化？</li><li>程序员学习路径是否需要重构？</li></ol></div>
+                  <div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>AI 时代，程序员真正需要训练的是什么？</li><li>会写代码和能交付系统之间的差距会不会变大？</li><li>初级程序员的成长路径是否正在被改写？</li></ul></div>
+                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn ghost">我认同</button><button class="btn ghost">我反对</button><button class="btn ghost">有疑问</button><button class="btn primary" onclick="showToast('已加入种子库')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+                </article>
+                <article class="card structured-card">
+                  <div class="tag-row"><span class="tag blue">知乎搜索</span><span class="tag green">高质量讨论</span></div>
+                  <h3>标题：AI Coding 产品的壁垒到底在哪里？</h3>
+                  <div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">多个高赞回答都在讨论“代码生成能力是否会同质化”，与你已有观点种子高度相关。</p></div>
+                  <div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">讨论集中在模型能力、IDE 入口、私有代码库上下文、企业研发流程接入等方向。</p></div>
+                  <div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>模型能力是否足以形成壁垒？</li><li>上下文积累是否真的难迁移？</li><li>企业工作流是否比单点生成更重要？</li></ol></div>
+                  <div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>AI 编程工具的护城河，可能不在“会写代码”。</li><li>企业真正需要的是代码生成，还是可控交付？</li><li>从工程上下文看 AI Coding 的长期竞争。</li></ul></div>
+                  <div class="action-row"><button class="btn ghost">总结一下</button><button class="btn ghost">我认同</button><button class="btn ghost">我反对</button><button class="btn ghost">有疑问</button><button class="btn primary" onclick="goTab('sprout')">加入种子库</button><button class="btn ghost" onclick="goTab('write')">基于它写一篇</button></div>
+                </article>
+              </div>
+            </div>
+
+            <div class="category-section">
+              <div class="category-header"><div><h3>兴趣小类：Agent 工程化</h3><p>系统保留多个兴趣小类，每类可以独立展开 3–5 张卡片。</p></div><span class="tag blue">强相关</span></div>
+              <div class="grid-3">
+                <article class="card structured-card"><div class="tag-row"><span class="tag blue">Agent Quality</span></div><h3>标题：Agent Quality 到底评估什么？</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">与你近期 Agent 质量系列内容高度相关，且站内讨论仍集中在表层指标。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">任务完成率被频繁讨论，但工具调用可靠性、上下文治理、失败恢复较少被系统化整理。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>Agent 是否需要软件测试式质量体系？</li><li>任务成功率是否足够？</li><li>上下文污染如何评估？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>Agent 不是一次问答，而是可控工作流。</li><li>Agent Quality 应该关注失败模式。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div></article>
+                <article class="card structured-card"><div class="tag-row"><span class="tag blue">Memory</span></div><h3>标题：Agent 的 Memory 不只是聊天记录摘要</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">和你的“观点种子库”产品机制相关，可以作为产品设计方法论文章。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">长期记忆需要区分事实、偏好、任务状态、写作风格和反馈信号。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>记忆越多是否越好？</li><li>用户是否应该可见、可编辑？</li><li>如何避免自我强化？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>为什么创作 Agent 需要可编辑 Memory？</li><li>Memory 应该服务于观点发芽。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div></article>
+                <article class="card structured-card"><div class="tag-row"><span class="tag blue">工具调用</span></div><h3>标题：Agent 工具调用失败后应该怎么办？</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">适合补充你的 Agent 工程化文章，能体现工程交付视角。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">讨论围绕工具调用失败、重试、降级、人工确认和日志可观测性展开。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>失败后自动重试还是人工确认？</li><li>如何定义可恢复错误？</li><li>用户是否需要看到失败原因？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>Agent 的可靠性来自失败处理，而非只来自模型能力。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">基于它写一篇</button></div></article>
+              </div>
+            </div>
+
+            <div class="category-section">
+              <div class="category-header"><div><h3>关注流精选</h3><p>来自你关注的人和圈子动态，优先筛选观点密度高、讨论价值高的内容。</p></div><span class="tag green">社交输入</span></div>
+              <div class="grid-3">
+                <article class="card structured-card"><div class="tag-row"><span class="tag green">关注作者</span><span class="tag blue">产品思考</span></div><h3>标题：AI Coding 产品正在从插件走向工作流入口</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">与你“代码生成护城河浅”的旧种子强相关，可以直接触发今日发芽。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">作者认为未来竞争点不是补全几行代码，而是谁能进入需求、开发、测试和发布的完整链路。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>插件级工具是否也能积累足够上下文？</li><li>工作流入口是否会被平台垄断？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>AI 编程产品的壁垒在组织流程。</li><li>代码生成只是入口，工程上下文才是资产。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary" onclick="goTab('sprout')">触发发芽</button><button class="btn ghost">基于它写一篇</button></div></article>
+                <article class="card structured-card"><div class="tag-row"><span class="tag green">圈子讨论</span><span class="tag orange">反方多</span></div><h3>标题：很多人反对“AI 替代初级程序员”的简单判断</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">适合作为文章中的反方材料，能避免文章变成单向输出。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">评论区出现更细分歧：不是岗位是否消失，而是训练路径、任务来源和团队分工正在变化。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>初级岗位是否真的减少？</li><li>AI 是否会减少新人训练机会？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>初级成长路径被重塑，而非简单消失。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">收集反方</button><button class="btn ghost">加入种子库</button></div></article>
+                <article class="card structured-card"><div class="tag-row"><span class="tag green">关注作者</span><span class="tag purple">方法论</span></div><h3>标题：好的技术长文，通常不是资料多，而是问题问得准</h3><div class="field-block"><div class="field-title">推荐理由：</div><p class="field-text">可用于优化写作苗圃的流程，也适合成为写作方法论种子。</p></div><div class="field-block"><div class="field-title">内容摘要：</div><p class="field-text">作者强调内容创作中的问题意识：先定义读者困惑，再选择资料和结构。</p></div><div class="field-block"><div class="field-title">主要争议：</div><ol class="field-list"><li>资料充分是否等于文章有价值？</li><li>技术文章是否必须有强观点？</li></ol></div><div class="field-block"><div class="field-title">可写角度：</div><ul class="field-list"><li>技术文章的关键不是堆概念，而是建立问题。</li></ul></div><div class="action-row"><button class="btn ghost">总结一下</button><button class="btn primary">加入种子库</button><button class="btn ghost">生成方法卡</button></div></article>
+              </div>
+            </div>
+
+            <div class="category-section">
+              <div class="category-header"><div><h3>偶遇输入</h3><p>保留少量高维远端信息，避免推荐只在同温层内自我强化。</p></div><span class="tag purple">远端 10%</span></div>
+              <div class="grid-2">
+                <article class="card structured-card">
+                  <div class="tag-row"><span class="tag purple">偶遇卡片</span><span class="tag green">金融风控</span></div>
+                  <h3>偶遇卡片：Agent 产品的护城河，不在单次任务完成率</h3>
+                  <div class="field-block"><div class="field-title">今天的技术热点：</div><p class="field-text">AI 编程工具进入企业协作场景。</p></div>
+                  <div class="field-block"><div class="field-title">远端关联：</div><p class="field-text">这和金融风控中的“风险暴露”很像。单次代码生成效果并不是全部，真正重要的是极端场景下是否可控、可追责、可回滚。</p></div>
+                  <div class="field-block"><div class="field-title">可能产生的观点：</div><p class="field-text">Agent 产品的护城河，不在单次任务完成率，而在持续上下文、风险控制和工作流闭环。</p></div>
+                  <div class="field-block"><div class="field-title">是否加入种子库？</div><div class="action-row"><button class="btn primary" onclick="showToast('已加入种子库：Agent 风控视角')">加入</button><button class="btn ghost">忽略</button><button class="btn ghost">再解释一下</button></div></div>
+                </article>
+                <article class="card structured-card">
+                  <div class="tag-row"><span class="tag purple">偶遇卡片</span><span class="tag blue">医学 AI</span></div>
+                  <h3>偶遇卡片：高召回不等于可交付</h3>
+                  <div class="field-block"><div class="field-title">今天的技术热点：</div><p class="field-text">Agent 评测榜单开始关注任务成功率。</p></div>
+                  <div class="field-block"><div class="field-title">远端关联：</div><p class="field-text">医学检测模型不仅要看 mAP，还要看错误类型和临床后果。Agent 也类似，不能只看总体成功率。</p></div>
+                  <div class="field-block"><div class="field-title">可能产生的观点：</div><p class="field-text">Agent 评估应该关注失败模式、错误代价和恢复机制，而非只看均值指标。</p></div>
+                  <div class="field-block"><div class="field-title">是否加入种子库？</div><div class="action-row"><button class="btn primary">加入</button><button class="btn ghost">忽略</button><button class="btn ghost">再解释一下</button></div></div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="seeds" class="section">
+        <div class="two-column-layout">
+          <div class="panel"><div class="panel-header"><div><h2 class="panel-title">我的种子库</h2><p class="panel-subtitle">种子卡片按完整模板展示，包含来源、反应、核心观点、可写方向和下一步操作。</p></div><button class="btn primary" onclick="showToast('新建手动种子')">新建种子</button></div>
+            <div class="panel-body seed-list">
+              <article class="card structured-card seed-card selected" onclick="selectSeed(this, '单纯代码生成工具的护城河很浅，真正的壁垒可能在上下文积累、工作流入口、团队协作和企业数据闭环。')">
+                <div class="tag-row"><span class="tag green">当前状态：可发芽</span><span class="tag blue">AI 编程</span></div>
+                <h3>观点种子：AI 编程工具的护城河可能不在代码生成</h3>
+                <div class="field-block"><div class="field-title">来源：</div><p class="field-text">知乎热榜 / 搜索结果 / 用户手动记录</p></div>
+                <div class="field-block"><div class="field-title">原始内容摘要：</div><p class="field-text">近期讨论集中在 AI 编程工具是否会替代程序员，以及代码生成能力是否会快速同质化。</p></div>
+                <div class="field-block"><div class="field-title">我的反应：</div><p class="field-text">我认同代码生成会越来越普遍，但不认为这就是最终壁垒。</p></div>
+                <div class="field-block"><div class="field-title">核心观点：</div><p class="field-text">单纯代码生成工具的护城河很浅，真正的壁垒可能在上下文积累、工作流入口、团队协作和企业数据闭环。</p></div>
+                <div class="field-block"><div class="field-title">可写方向：</div><ol class="field-list"><li>AI 编程工具为什么会快速同质化？</li><li>企业真正需要的是代码，还是可控的工程交付？</li><li>Agent 产品的护城河到底在哪里？</li></ol></div>
+                <div class="field-block"><div class="field-title">需要补充：</div><ul class="field-list"><li>AI 编程产品案例</li><li>企业研发流程</li><li>自己做复杂工程项目的经历</li></ul></div>
+                <div class="action-row"><button class="btn ghost">继续浇水</button><button class="btn primary" onclick="goTab('sprout')">今日发芽</button><button class="btn ghost" onclick="goTab('write')">开始写作</button><button class="btn ghost">合并相似种子</button></div>
+              </article>
+              <article class="card structured-card seed-card" onclick="selectSeed(this, 'Agent 质量评估不应该只看任务完成率，还要看失败恢复、工具可靠性和上下文治理。')">
+                <div class="tag-row"><span class="tag orange">当前状态：缺案例</span><span class="tag purple">Agent 工程</span></div>
+                <h3>观点种子：Agent Quality 不能只看任务完成率</h3>
+                <div class="field-block"><div class="field-title">来源：</div><p class="field-text">知乎搜索 / 关注作者 / 用户手动记录</p></div>
+                <div class="field-block"><div class="field-title">原始内容摘要：</div><p class="field-text">任务完成率被频繁讨论，但工具调用、上下文污染和失败恢复仍缺系统性框架。</p></div>
+                <div class="field-block"><div class="field-title">我的反应：</div><p class="field-text">我认为 Agent 质量体系应该更接近工程可靠性评估，而不是单次问答评测。</p></div>
+                <div class="field-block"><div class="field-title">核心观点：</div><p class="field-text">Agent 不是一次回答，而是持续执行的工作流，质量评估应覆盖失败模式和可恢复性。</p></div>
+                <div class="action-row"><button class="btn ghost">继续浇水</button><button class="btn ghost">今日发芽</button><button class="btn ghost">开始写作</button><button class="btn ghost">合并相似种子</button></div>
+              </article>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-header"><div><h2 class="panel-title">种子详情</h2><p class="panel-subtitle">把模糊想法转成可写作结构。</p></div></div><div class="panel-body"><div class="card" style="box-shadow:none;"><div class="tag-row"><span class="tag blue">核心观点</span></div><h3 id="seedClaim">单纯代码生成工具的护城河很浅，真正的壁垒可能在上下文积累、工作流入口、团队协作和企业数据闭环。</h3><div class="field-block"><div class="field-title">下一步建议：</div><p class="field-text">这颗种子已经具备热点、论点和个人经验入口，适合直接进入“今日发芽”或“写作苗圃”。</p></div><div class="action-row"><button class="btn primary" onclick="goTab('write')">开始写作</button><button class="btn ghost" onclick="goTab('sprout')">今日发芽</button></div></div></div></div>
+        </div>
+      </section>
+
+      <section id="sprout" class="section">
+        <div class="panel"><div class="panel-header"><div><h2 class="panel-title">今日发芽</h2><p class="panel-subtitle">历史种子 × 今日热点 × 用户画像，捕捉最适合动笔的时机。</p></div><button class="btn primary" onclick="showToast('正在碰撞：历史种子 × 今日热点')">重新碰撞</button></div>
+          <div class="panel-body grid-2">
+            <article class="card structured-card sprout-card"><div class="sprout-badge">87</div><div class="tag-row"><span class="tag green">高时效</span><span class="tag blue">发芽指数 87</span></div><h3>今日发芽机会</h3><div class="field-block"><div class="field-title">被激活的种子：</div><p class="field-text">单纯代码生成工具的护城河很浅。</p></div><div class="field-block"><div class="field-title">触发热点：</div><p class="field-text">某 AI 编程工具宣布被收购 / 发布企业版 / 引发讨论。</p></div><div class="field-block"><div class="field-title">为什么值得写：</div><p class="field-text">这个热点验证了你之前的判断：当代码生成能力逐渐同质化，产品竞争重点会转向工作流入口、上下文管理和企业协作数据。</p></div><div class="field-block"><div class="field-title">建议标题：</div><p class="field-text">AI 编程工具的护城河，可能不在“会写代码”</p></div><div class="field-block"><div class="field-title">建议角度：</div><p class="field-text">从“代码生成能力商品化”切入，讨论 AI 编程产品真正的长期壁垒。</p></div><div class="field-block"><div class="field-title">建议补充：</div><p class="field-text">你过去做复杂系统时可以强调，真正困难的不是写代码，而是需求边界、状态变化、系统约束和交付责任。</p></div><div class="action-row"><button class="btn primary" onclick="goTab('write')">开始写作</button><button class="btn ghost">补充资料</button><button class="btn ghost">换个角度</button><button class="btn ghost">暂时不写</button></div></article>
+            <article class="card structured-card sprout-card"><div class="sprout-badge">79</div><div class="tag-row"><span class="tag orange">适合回答</span><span class="tag blue">发芽指数 79</span></div><h3>今日发芽机会</h3><div class="field-block"><div class="field-title">被激活的种子：</div><p class="field-text">AI 时代不是不需要刷题，而是刷题目标要变化。</p></div><div class="field-block"><div class="field-title">触发热点：</div><p class="field-text">程序员就业与 AI 编程工具讨论升温。</p></div><div class="field-block"><div class="field-title">为什么值得写：</div><p class="field-text">这个话题能连接职业焦虑和学习方法，容易形成知乎回答。</p></div><div class="field-block"><div class="field-title">建议标题：</div><p class="field-text">AI 时代，程序员还需要刷 LeetCode 吗？</p></div><div class="field-block"><div class="field-title">建议角度：</div><p class="field-text">LeetCode 的价值从代码熟练度转向问题建模。</p></div><div class="field-block"><div class="field-title">建议补充：</div><p class="field-text">补充你自己用 AI 写代码时，哪些任务变快了，哪些任务仍需要人工判断。</p></div><div class="action-row"><button class="btn primary" onclick="goTab('write')">开始写作</button><button class="btn ghost">补充资料</button><button class="btn ghost">换个角度</button><button class="btn ghost">暂时不写</button></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="write" class="section">
+        <div class="wizard-layout">
+          <aside class="panel"><div class="panel-header"><div><h2 class="panel-title">写作流程</h2><p class="panel-subtitle">流程写死但可交互，适合直接演示。</p></div></div><div class="panel-body stepper" id="stepper"></div></aside>
+          <article class="panel writing-stage"><div class="stage-content" id="stageContent"></div></article>
+          <aside class="panel"><div class="panel-header"><div><h2 class="panel-title">看山圆桌</h2><p class="panel-subtitle">不同 Agent 共同评判，用户满意后点击定稿。</p></div></div><div class="panel-body" id="editorAdvice"></div></aside>
+        </div>
+      </section>
+
+      <section id="history" class="section">
+        <div class="panel"><div class="panel-header"><div><h2 class="panel-title">历史文章监控反馈</h2><p class="panel-subtitle">监控已发布文章表现，提取反馈信号，反哺用户画像、种子库和下一篇文章。</p></div><button class="btn primary" onclick="showToast('已同步最新互动数据')">同步反馈</button></div>
+          <div class="panel-body grid-1">
+            <article class="card history-card"><div><div class="tag-row"><span class="tag blue">已发布</span><span class="tag green">表现良好</span></div><h3>AI 编程工具的护城河，可能不在“会写代码”</h3><div class="field-block"><div class="field-title">表现摘要：</div><p class="field-text">阅读完成率较高，收藏率高于平均值。评论区主要围绕“上下文是否真的构成壁垒”展开。</p></div><div class="field-block"><div class="field-title">评论反馈提取：</div><ol class="field-list"><li>支持观点：企业研发流程确实比单次生成更重要。</li><li>反方观点：未来长上下文模型可能会弱化这个壁垒。</li><li>补充材料：多人提到权限、安全审计和团队知识库。</li></ol></div><div class="field-block"><div class="field-title">反哺动作：</div><p class="field-text">生成新种子：“AI Coding 的企业壁垒可能在权限、安全和组织知识库”。</p></div><div class="action-row"><button class="btn primary">生成二次文章</button><button class="btn ghost">更新 Memory</button><button class="btn ghost">查看评论摘要</button></div></div><div class="mini-bars"><div><div class="field-title">阅读完成率 78%</div><div class="mini-bar"><span style="width:78%"></span></div></div><div><div class="field-title">收藏率 42%</div><div class="mini-bar"><span style="width:42%"></span></div></div><div><div class="field-title">评论争议度 69%</div><div class="mini-bar"><span style="width:69%"></span></div></div></div></article>
+            <article class="card history-card"><div><div class="tag-row"><span class="tag blue">已发布</span><span class="tag orange">需要复盘</span></div><h3>Agent Quality 到底评估什么？</h3><div class="field-block"><div class="field-title">表现摘要：</div><p class="field-text">点赞不错，但评论指出文章偏框架化，缺少真实失败案例。</p></div><div class="field-block"><div class="field-title">评论反馈提取：</div><ol class="field-list"><li>读者希望看到更多真实工具调用失败案例。</li><li>有人质疑“质量体系是否会增加开发负担”。</li><li>高赞评论建议补充可观测性和回放机制。</li></ol></div><div class="field-block"><div class="field-title">反哺动作：</div><p class="field-text">将“真实案例不足”写入写作风险 Memory，下次自动提醒补案例。</p></div><div class="action-row"><button class="btn primary">生成补充篇</button><button class="btn ghost">更新画像</button><button class="btn ghost">沉淀反方</button></div></div><div class="mini-bars"><div><div class="field-title">阅读完成率 61%</div><div class="mini-bar"><span style="width:61%"></span></div></div><div><div class="field-title">收藏率 35%</div><div class="mini-bar"><span style="width:35%"></span></div></div><div><div class="field-title">案例需求 82%</div><div class="mini-bar"><span style="width:82%"></span></div></div></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="profile" class="section">
+        <div class="profile-tabbar">
+          <button class="profile-tab active" data-profile-tab="overview">总览</button>
+          <button class="profile-tab" data-profile-tab="account">账号与授权</button>
+          <button class="profile-tab" data-profile-tab="llm">LLM 配置</button>
+          <button class="profile-tab" data-profile-tab="interests">兴趣画像</button>
+          <button class="profile-tab" data-profile-tab="memory">Memory 管理</button>
+          <button class="profile-tab" data-profile-tab="style">写作风格</button>
+        </div>
+
+        <section class="profile-panel-section active" data-profile-panel="overview">
+          <div class="grid-4" style="margin-bottom:18px;">
+            <div class="card"><div class="sidebar-card .eyebrow"></div><div class="eyebrow">画像状态</div><h3>临时画像</h3><p class="field-text">可用，等待 OAuth 增强。</p></div>
+            <div class="card"><div class="eyebrow">知乎账号</div><h3>未关联</h3><p class="field-text">可后续重新关联。</p></div>
+            <div class="card"><div class="eyebrow">LLM</div><h3>3 个模型</h3><p class="field-text">平台免费 + 2 个自有模型。</p></div>
+            <div class="card"><div class="eyebrow">兴趣领域</div><h3>9 个</h3><p class="field-text">生活、科技、职场、体育等。</p></div>
+          </div>
+          <div class="profile-layout">
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">基础资料</h2><p class="panel-subtitle">账号信息与用户自我描述。</p></div><button class="btn primary" onclick="showToast('基础资料已保存')">保存</button></div><div class="panel-body form-grid"><div class="field"><label>昵称</label><input class="input" value="看山编辑" /></div><div class="field"><label>身份 / 创作背景</label><input class="input" value="普通用户 / 知乎内容阅读者 / 想提高表达能力" /></div><div class="field"><label>一句话自我描述</label><textarea class="textarea">我希望看到更高质量的内容，也希望把自己的想法整理成清楚、有观点的表达。</textarea></div></div></div>
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">增强画像待确认</h2><p class="panel-subtitle">后台生成的 Memory 更新必须经用户确认后写入长期画像。</p></div></div><div class="panel-body"><div class="memory-card"><strong>待确认更新</strong><p class="field-text">系统推测你在「职场成长」下更关注真实经验和可执行建议，在「数码科技」下更关注产品体验和购买决策。</p><div class="action-row"><button class="btn primary" onclick="showToast('已应用增强画像')">确认写入</button><button class="btn ghost">逐条编辑</button><button class="btn danger">拒绝</button></div></div></div></div>
+          </div>
+        </section>
+
+        <section class="profile-panel-section" data-profile-panel="account">
+          <div class="grid-2">
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">账号信息</h2><p class="panel-subtitle">用于登录、通知和安全审计。</p></div><button class="btn primary" onclick="showToast('账号信息已保存')">保存</button></div><div class="panel-body form-grid"><div class="field"><label>邮箱</label><input class="input" value="demo@example.com" /></div><div class="field"><label>用户名</label><input class="input" value="kanshan_user" /></div><div class="field"><label>密码</label><input class="input" type="password" value="password-placeholder" /></div><div class="action-row"><button class="btn ghost">修改密码</button><button class="btn danger">退出登录</button></div></div></div>
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">知乎授权与数据来源</h2><p class="panel-subtitle">授权状态、数据范围和重新绑定入口。</p></div></div><div class="panel-body form-grid"><div class="card"><div class="tag-row"><span class="tag orange">未关联</span><span class="tag blue">可跳过</span></div><h3>知乎账号</h3><p class="field-text">当前使用本地临时画像。关联后可增强关注流、兴趣图谱和创作偏好。</p><div class="action-row"><button class="btn primary" onclick="showToast('模拟重新发起知乎 OAuth')">重新关联知乎</button><button class="btn ghost">查看数据使用说明</button></div></div><div class="card"><h3>将使用的数据</h3><div class="tag-row"><span class="chip small selected" onclick="toggleChip(this)">用户基本信息</span><span class="chip small selected" onclick="toggleChip(this)">关注列表</span><span class="chip small selected" onclick="toggleChip(this)">关注流</span><span class="chip small selected" onclick="toggleChip(this)">圈子互动</span><span class="chip small" onclick="toggleChip(this)">公开创作样本</span></div></div></div></div>
+          </div>
+        </section>
+
+        <section class="profile-panel-section" data-profile-panel="llm">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">多 LLM 配置</h2>
+                <p class="panel-subtitle">可配置多个模型。系统会在写作、审稿、反馈分析等任务中自动组织不同视角的讨论，不向用户暴露具体内部 Agent 角色。</p>
+              </div>
+              <button class="btn primary" onclick="addMockLlmProvider()">添加模型</button>
+            </div>
+            <div class="panel-body grid-3" id="profileLlmProviderList">
+              <div class="card llm-provider-card selected"><div class="tag-row"><span class="tag blue">平台免费</span><span class="tag green">默认</span></div><h3>平台免费模型</h3><p class="field-text">适合画像生成、摘要和轻量问答，受每日额度限制。</p></div>
+              <div class="card llm-provider-card"><div class="tag-row"><span class="tag purple">自有模型</span></div><h3>自有模型 A</h3><p class="field-text">可用于提供更严谨的分析视角。</p></div>
+              <div class="card llm-provider-card"><div class="tag-row"><span class="tag orange">自有模型</span></div><h3>自有模型 B</h3><p class="field-text">可用于提供更偏表达、读者感受和传播判断的视角。</p></div>
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top:18px;">
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">新增 / 编辑模型</h2><p class="panel-subtitle">API Key 只提交到服务端加密保存，前端不读明文。</p></div></div><div class="panel-body form-grid"><div class="field"><label>显示名称</label><input class="input" placeholder="例如：DeepSeek V3 / GPT-4.1 / Qwen Plus" /></div><div class="field"><label>Base URL</label><input class="input" placeholder="https://api.example.com/v1" /></div><div class="field"><label>Model</label><input class="input" placeholder="model-name" /></div><div class="field"><label>API Key</label><input class="input" type="password" placeholder="只提交一次，服务端加密保存" /></div><div class="action-row"><button class="btn primary" onclick="showToast('正在测试连接')">测试连接</button><button class="btn ghost" onclick="showToast('配置已保存')">保存配置</button><button class="btn danger">删除配置</button></div></div></div>
+            <div class="panel"><div class="panel-header"><div><h2 class="panel-title">多视角使用方式</h2><p class="panel-subtitle">用户只需要知道系统会综合多个视角，不需要关心内部角色拆分。</p></div></div><div class="panel-body"><div class="field-block"><div class="field-title">可用于：</div><ul class="field-list"><li>观点生成时提供更稳健的判断</li><li>写作审稿时提供不同角度的反馈</li><li>历史反馈分析时减少单一模型偏差</li><li>高成本任务前由用户主动触发，避免无意义消耗</li></ul></div><div class="field-block"><div class="field-title">默认策略：</div><p class="field-text">优先使用平台免费模型处理轻量任务；当用户配置自有模型后，系统会在需要多视角讨论时自动组合使用。</p></div></div></div>
+          </div>
+        </section>
+
+        <section class="profile-panel-section" data-profile-panel="interests">
+          <div class="panel"><div class="panel-header"><div><h2 class="panel-title">兴趣画像管理</h2><p class="panel-subtitle">兴趣是长期 Memory 的主分类。关注流和偶遇输入是来源，不进入长期兴趣主类。</p></div><button class="btn primary" onclick="showToast('兴趣画像已保存')">保存兴趣</button></div><div class="panel-body"><div class="grid-2" id="profileInterestGroups"></div></div></div>
+          <div class="panel"><div class="panel-header"><div><h2 class="panel-title">按兴趣绑定的局部画像</h2><p class="panel-subtitle">同一个用户在不同领域下需要不同视角、证据偏好和写作提醒。</p></div></div><div class="panel-body grid-3"><div class="memory-card"><strong>职场成长</strong><p class="field-text">知识水平：中级；偏好视角：真实经验、可执行建议、反焦虑。</p><textarea class="textarea">写作提醒：不要只讲大道理，需要给出普通人能执行的小循环。</textarea></div><div class="memory-card"><strong>数码科技</strong><p class="field-text">知识水平：入门到中级；偏好视角：购买决策、产品体验、长期使用。</p><textarea class="textarea">写作提醒：避免参数堆砌，多讲场景、价格、替代方案。</textarea></div><div class="memory-card"><strong>篮球</strong><p class="field-text">知识水平：兴趣用户；偏好视角：比赛观感、球员成长、战术变化。</p><textarea class="textarea">写作提醒：允许更有情绪，但需要避免无依据的饭圈化表达。</textarea></div></div></div>
+        </section>
+
+        <section class="profile-panel-section" data-profile-panel="memory">
+          <div class="profile-layout"><div class="panel"><div class="panel-header"><div><h2 class="panel-title">全局 Memory</h2><p class="panel-subtitle">跨兴趣通用的用户背景、表达偏好和系统边界。</p></div><button class="btn primary" onclick="showToast('Memory 已保存')">保存 Memory</button></div><div class="panel-body form-grid"><div class="memory-card"><strong>长期背景</strong><textarea class="textarea">普通内容消费者，想减少低质量信息摄入，也希望把想法整理成有观点、有结构的表达。</textarea></div><div class="memory-card"><strong>内容偏好</strong><textarea class="textarea">喜欢清晰、具体、有真实案例的内容；不喜欢过度煽动、标题党和没有增量的正确废话。</textarea></div><div class="memory-card"><strong>系统边界</strong><textarea class="textarea">AI 不替我决定立场；生成草稿后必须提醒我修改后再发布。</textarea></div></div></div><div class="panel"><div class="panel-header"><div><h2 class="panel-title">Memory 更新请求</h2><p class="panel-subtitle">系统推断必须经过用户确认。</p></div></div><div class="panel-body form-grid"><div class="card"><div class="tag-row"><span class="tag orange">待确认</span></div><h3>新增兴趣：家居收纳</h3><p class="field-text">系统根据近期收藏推断你可能关注家居收纳和居住体验，是否加入兴趣画像？</p><div class="action-row"><button class="btn primary">确认</button><button class="btn ghost">编辑</button><button class="btn danger">拒绝</button></div></div><div class="card"><div class="tag-row"><span class="tag orange">待确认</span></div><h3>写作风险提醒</h3><p class="field-text">你在职场话题下容易陷入泛泛建议，建议写入提醒：需要补充具体场景和反方观点。</p><div class="action-row"><button class="btn primary">确认</button><button class="btn ghost">编辑</button><button class="btn danger">拒绝</button></div></div></div></div></div>
+        </section>
+
+        <section class="profile-panel-section" data-profile-panel="style">
+          <div class="grid-2"><div class="panel"><div class="panel-header"><div><h2 class="panel-title">结构化写作风格</h2><p class="panel-subtitle">替代零散问卷结果，便于后端保存和 Prompt 注入。</p></div><button class="btn primary" onclick="showToast('写作风格已保存')">保存</button></div><div class="panel-body form-grid"><div class="field"><label>逻辑深度</label><select class="select"><option>3 - 平衡</option><option>4 - 较强</option><option>5 - 非常强</option></select></div><div class="field"><label>立场锋利度</label><select class="select"><option>2 - 克制</option><option>3 - 平衡</option><option>4 - 鲜明</option></select></div><div class="field"><label>证据偏好</label><select class="select"><option>个人经验 + 案例</option><option>资料优先</option><option>判断优先</option><option>论文 / 数据优先</option></select></div><div class="field"><label>AI 辅助边界</label><select class="select"><option>草稿级，需要我修改后发布</option><option>只给大纲</option><option>只做润色</option><option>发布前检查</option></select></div></div></div><div class="panel"><div class="panel-header"><div><h2 class="panel-title">写作风格问答</h2><p class="panel-subtitle">保留原来的问答式采集，用于补充结构化表单无法覆盖的偏好。</p></div></div><div class="panel-body grid-2"><div class="question-card"><h4>1. 你希望文章逻辑严密到什么程度？</h4><div class="scale"><button>1</button><button>2</button><button class="selected">3</button><button>4</button><button>5</button></div></div><div class="question-card"><h4>2. 你愿意表达鲜明立场吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button class="selected">4</button><button>5</button></div></div><div class="question-card"><h4>3. 你喜欢加入个人经历吗？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div><div class="question-card"><h4>4. 是否需要主动反方质疑？</h4><div class="scale"><button>1</button><button>2</button><button>3</button><button>4</button><button class="selected">5</button></div></div></div></div></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="floating-toast">已完成</div>
+
+  <script>
+    const login = document.getElementById('login');
+    const app = document.getElementById('app');
+    const navButtons = document.querySelectorAll('.nav button');
+    const sections = document.querySelectorAll('.section');
+    const toast = document.getElementById('toast');
+    const heroTitle = document.getElementById('heroTitle');
+    const heroDesc = document.getElementById('heroDesc');
+
+    const heroMap = {
+      onboarding: ['建立你的创作画像。', '通过兴趣小类和写作问卷，让看山小苗圃知道你关心什么、怎么表达、哪些内容值得推荐。'],
+      today: ['看到好内容，形成好观点。', '按兴趣小类、关注流与偶遇输入筛选高质量内容，把阅读反应沉淀成观点种子。'],
+      seeds: ['收藏的不是内容，是下一篇文章的种子。', '每一颗种子都包含来源、反应、核心观点、可写方向和补充材料。'],
+      sprout: ['旧想法，遇到新热点，就会发芽。', '用今日热榜、搜索结果和关注流激活历史种子，捕捉稍纵即逝的表达时机。'],
+      write: ['一步一步，把观点养成文章。', '从观点确认到论证蓝图，再到圆桌审稿、定稿草案和发布反馈。'],
+      history: ['历史反馈，不只是数据。', '监控已发布文章，把读者反馈提炼成新种子、写作风险和用户 Memory。'],
+      profile: ['你的画像，是系统理解你的方式。', '展示并编辑用户兴趣小类、创作背景、长期 Memory 和写作风格画像。']
+    };
+
+    function enterApp(mode) {
+      login.style.display = 'none';
+      app.classList.add('show');
+      goTab(mode === 'profile' ? 'profile' : 'today');
+      showToast(mode === 'zhihu' ? '已模拟关联知乎账号' : mode === 'onboarding' ? '进入首次画像采集' : '进入演示模式');
+    }
+
+    function goTab(target) {
+      navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.target === target));
+      sections.forEach(section => section.classList.toggle('active', section.id === target));
+      if (heroMap[target]) { heroTitle.textContent = heroMap[target][0]; heroDesc.textContent = heroMap[target][1]; }
+      if (target === 'write') renderWritingStep(currentStep);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    navButtons.forEach(button => button.addEventListener('click', () => goTab(button.dataset.target)));
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+    }
+
+    function toggleChip(el) { el.classList.toggle('selected'); }
+
+    function selectSeed(card, claim) {
+      document.querySelectorAll('.seed-card').forEach(item => item.classList.remove('selected'));
+      card.classList.add('selected');
+      const target = document.getElementById('seedClaim');
+      if (target) target.textContent = claim;
+      showToast('已切换观点种子');
+    }
+
+    document.addEventListener('click', (event) => {
+      if (event.target.matches('.scale button')) {
+        event.target.parentElement.querySelectorAll('button').forEach(btn => btn.classList.remove('selected'));
+        event.target.classList.add('selected');
+      }
+      if (event.target.closest('.subinterest-card')) {
+        document.querySelectorAll('.subinterest-card').forEach(item => item.classList.remove('active'));
+        event.target.closest('.subinterest-card').classList.add('active');
+        showToast('已切换兴趣小类视图');
+      }
+    });
+
+    const writingSteps = [
+      { title: '选择观点种子', desc: '确定这篇文章从哪颗种子发芽。' },
+      { title: '确认核心观点', desc: 'AI 先提炼，用户确认立场边界。' },
+      { title: '选择文章类型', desc: '深度分析、经验复盘、知乎回答等。' },
+      { title: '生成论证蓝图', desc: '先搭骨架，不急着写正文。' },
+      { title: '生成表达初稿', desc: '基于观点、资料和用户画像生成初稿。' },
+      { title: '圆桌审稿会', desc: '逻辑、人味、反方、传播四类 Agent 讨论。' },
+      { title: '定稿草案', desc: '用户满意后点击定稿，生成最终草稿。' },
+      { title: '发布与反馈', desc: '提示用户修改后发布，并进入反馈监控。' }
+    ];
+
+    let currentStep = 0;
+
+    function renderStepper() {
+      const stepper = document.getElementById('stepper');
+      stepper.innerHTML = writingSteps.map((step, index) => `
+        <div class="step-item ${index === currentStep ? 'active' : ''} ${index < currentStep ? 'done' : ''}" onclick="renderWritingStep(${index})">
+          <div class="step-num">${index < currentStep ? '✓' : index + 1}</div>
+          <div class="step-copy"><strong>${step.title}</strong><span>${step.desc}</span></div>
+        </div>
+      `).join('');
+    }
+
+    function renderWritingStep(step) {
+      currentStep = step;
+      renderStepper();
+      const stage = document.getElementById('stageContent');
+      const advice = document.getElementById('editorAdvice');
+      const nav = `<div class="action-row" style="margin-top:24px;"><button class="btn ghost ${step === 0 ? 'disabled' : ''}" onclick="renderWritingStep(${Math.max(0, step - 1)})">上一步</button><button class="btn primary ${step === writingSteps.length - 1 ? 'disabled' : ''}" onclick="renderWritingStep(${Math.min(writingSteps.length - 1, step + 1)})">下一步</button></div>`;
+      const contents = [
+        `<h2 class="stage-title">选择观点种子</h2><p class="stage-desc">当前演示选择的是“AI 编程工具的护城河可能不在代码生成”。</p><div class="draft-box"><div class="tag-row"><span class="tag green">可发芽</span><span class="tag blue">AI 编程</span></div><h2>观点种子：AI 编程工具的护城河可能不在代码生成</h2><p><strong>核心观点：</strong>单纯代码生成工具的护城河很浅，真正的壁垒可能在上下文积累、工作流入口、团队协作和企业数据闭环。</p><p><strong>触发热点：</strong>AI 编程工具进入企业协作场景。</p><p><strong>建议文章类型：</strong>深度分析 / 工程复盘。</p></div>${nav}`,
+        `<h2 class="stage-title">核心观点确认</h2><p class="stage-desc">AI 可以提炼观点，但最终立场必须由用户确认。</p><div class="draft-box"><h2>我理解你想表达的是：</h2><p><strong>核心观点：</strong><br>单纯代码生成能力很难成为 AI 编程工具的长期护城河。真正有价值的是上下文积累、工程工作流入口、团队协作数据和企业级可控交付。</p><p><strong>文章基调：</strong><br>不是否定 AI 编程工具的价值，而是讨论它的长期竞争壁垒在哪里。</p><p><strong>你想让读者带走的判断：</strong><br>AI 编程产品的竞争，将从“谁更会写代码”转向“谁更懂工程现场”。</p><p><strong>请确认：</strong></p><div class="action-row"><button class="btn primary" onclick="showToast('已确认核心观点')">确认</button><button class="btn ghost">调整观点</button><button class="btn ghost">更犀利一点</button><button class="btn ghost">更稳健一点</button><button class="btn ghost">补充个人经历</button></div></div>${nav}`,
+        `<h2 class="stage-title">选择文章类型</h2><p class="stage-desc">不同文章类型会影响结构、语气、证据密度和情绪强度。</p><div class="grid-2"><div class="card"><div class="tag-row"><span class="tag blue">推荐</span></div><h3>深度分析</h3><p>适合讨论 AI 编程产品的长期壁垒，强调逻辑、推演和资料支撑。</p></div><div class="card"><h3>经验复盘</h3><p>适合加入 FileSync3、Java 后端等个人项目经验，提高人味和可信度。</p></div><div class="card"><h3>知乎回答</h3><p>更直接，适合回答“AI 编程工具的护城河是什么？”这类问题。</p></div><div class="card"><h3>观点评论</h3><p>更贴近热点，强调时效、立场和反差。</p></div></div>${nav}`,
+        `<h2 class="stage-title">论证蓝图</h2><p class="stage-desc">先把文章骨架搭好，再进入正文。</p><div class="draft-box"><p><strong>中心观点：</strong><br>AI 编程工具的长期护城河，不在代码生成，而在工程上下文和工作流闭环。</p><p><strong>背景：</strong><br>代码生成能力正在快速普及，单次生成效果的差距会逐渐缩小。</p><p><strong>分论点一：</strong><br>代码生成能力容易被模型升级追平。</p><ul class="field-list"><li>基础模型能力会持续提升</li><li>常规代码模式可被大量数据覆盖</li><li>单点生成能力难以形成长期壁垒</li></ul><p><strong>分论点二：</strong><br>工程上下文更难迁移。</p><ul class="field-list"><li>每个团队的代码规范、业务规则、历史债务不同</li><li>真正影响效率的是上下文理解和持续协作</li><li>工程现场的信息高度碎片化</li></ul><p><strong>分论点三：</strong><br>企业用户真正关心的是可控交付。</p><ul class="field-list"><li>生成代码只是开始</li><li>代码需要测试、审查、集成、回滚、追责</li><li>工具必须嵌入研发流程</li></ul><p><strong>反方观点：</strong><br>如果模型足够强，是否也能理解上下文？</p><p><strong>回应方向：</strong><br>模型能力会提升，但企业上下文、团队流程和组织数据不是开放通用能力，需要长期积累和系统接入。</p><p><strong>建议加入的个人经验：</strong><br>你过去做 FileSync3 或 Java 后端项目时，可以补充“真正困难的不是写代码，而是数据链路、状态变化、边界条件和客户需求变化”。</p></div>${nav}`,
+        `<h2 class="stage-title">生成表达初稿</h2><p class="stage-desc">这不是最终发布稿，而是基于观点种子生成的可编辑表达稿。</p><div class="draft-box"><h2>AI 编程工具的护城河，可能不在“会写代码”</h2><p>如果只看单次代码生成效果，AI 编程工具之间的差距很容易被模型升级抹平。今天一个工具能生成接口代码，明天另一个工具也可以；今天一个模型能补测试样例，下一轮基础模型更新后，这类能力可能很快变成标配。</p><p>真正值得讨论的是，当“生成代码”这件事逐渐商品化以后，AI 编程产品还能靠什么形成长期壁垒。我的判断是，壁垒不会只来自模型本身，而会更多来自工程上下文、研发工作流入口、团队协作数据，以及企业级可控交付能力。</p><p>很多项目里，写代码不是最难的部分。真正困难的是弄清楚需求边界、兼容历史逻辑、处理状态变化、保证出问题时能定位、回滚和追责。</p></div>${nav}`,
+        `<h2 class="stage-title">圆桌审稿会</h2><p class="stage-desc">逻辑压测和人味检查合并为圆桌会议，由不同 Agent 从不同视角评判讨论。</p><div class="roundtable"><div class="agent-card"><div class="agent-head"><div class="agent-avatar">逻</div><strong>逻辑审稿 Agent</strong></div><p>第 2 段到第 3 段之间仍有跳跃：你从代码生成同质化推到工程上下文更重要，需要解释上下文为什么难以被模型直接学习。</p></div><div class="agent-card"><div class="agent-head"><div class="agent-avatar" style="background:#f97316;">人</div><strong>人味编辑 Agent</strong></div><p>文章目前像行业分析，缺少你的真实项目经验。建议加入 FileSync3 或复杂后端系统中“代码不难，边界很难”的具体场景。</p></div><div class="agent-card"><div class="agent-head"><div class="agent-avatar" style="background:#8b5cf6;">反</div><strong>反方读者 Agent</strong></div><p>我会质疑：未来长上下文模型能吸收整个代码库，为什么上下文仍是壁垒？你需要回应上下文长度不等于上下文质量。</p></div><div class="agent-card"><div class="agent-head"><div class="agent-avatar" style="background:#22c55e;">传</div><strong>社区传播 Agent</strong></div><p>标题有传播性但不标题党。建议开头从工程场景切入，而不是从“随着 AI 技术发展”这类泛化表达切入。</p></div></div><div class="action-row"><button class="btn ghost">采纳逻辑建议</button><button class="btn ghost">补充个人经历</button><button class="btn ghost">生成反方回应</button><button class="btn primary" onclick="renderWritingStep(6); showToast('已进入定稿草案')">我觉得可以，进入定稿</button></div>${nav}`,
+        `<h2 class="stage-title">定稿草案</h2><p class="stage-desc">系统根据圆桌会议整理出最终草稿，但要求用户修改后再发布。</p><div class="draft-box"><div class="tag-row"><span class="tag green">可定稿</span><span class="tag orange">发布前请人工修改</span></div><h2>AI 编程工具的护城河，可能不在“会写代码”</h2><p>很多人讨论 AI 编程工具时，容易把注意力放在“谁更会写代码”上。但如果只看单次代码生成效果，这件事很可能会越来越难形成长期差距。模型会升级，常规代码模式会被大量覆盖，今天领先的补全、生成、测试能力，明天就可能变成行业标配。</p><p>我更关心的是另一件事：当代码生成能力逐渐商品化之后，AI 编程产品还能靠什么形成长期壁垒？我的判断是，壁垒不会只来自模型本身，而会更多来自工程上下文、研发工作流入口、团队协作数据，以及企业级可控交付能力。</p><p>这和我过去做复杂后端系统时的感受很接近。很多时候，写出一段代码并不是最难的部分。真正麻烦的是弄清楚需求边界、兼容历史逻辑、处理状态变化、保证出了问题之后能够定位、回滚和追责。AI 可以生成一段看起来正确的代码，但它不天然知道这个字段为什么不能改、这个状态为什么不能丢、这个逻辑为什么必须兼容历史客户。</p><p>所以，AI 编程工具的竞争终点，可能不是谁更会写代码，而是谁更懂工程现场。代码生成是入口，工程上下文才可能成为长期资产。</p><div class="action-row"><button class="btn primary" onclick="showToast('已定稿：请人工修改后发布')">确认定稿</button><button class="btn ghost">继续修改</button><button class="btn ghost">复制草稿</button></div></div>${nav}`,
+        `<h2 class="stage-title">发布与反馈</h2><p class="stage-desc">要求用户修改后发布，并进入历史文章监控反馈页面。</p><div class="draft-box"><h2>发布前提醒</h2><ul class="field-list"><li>请补充一个你真实经历中的工程场景，避免文章过于抽象。</li><li>请确认文中观点是你认可的表达，不要直接发布未检查版本。</li><li>建议先发布到圈子收集评论，再发布为长文。</li><li>发布后进入“历史反馈”页面，系统会提取评论中的支持、反对和补充材料。</li></ul><div class="action-row"><button class="btn primary" onclick="showToast('已模拟发布，进入历史反馈'); goTab('history')">我已修改，模拟发布</button><button class="btn ghost">保存为草稿</button><button class="btn ghost">复制最终稿</button></div></div>${nav}`
+      ];
+      const advices = [
+        '<div class="check-item"><h4><span class="tag blue">主编建议</span></h4><p>这颗种子适合演示，因为它能串联“看什么、今日发芽、写作苗圃、圆桌审稿、历史反馈”。</p></div>',
+        '<div class="check-item"><h4><span class="tag green">立场边界</span></h4><p>建议避免写成“代码生成不重要”。更稳的表达是：代码生成重要，但不是长期壁垒的全部。</p></div>',
+        '<div class="check-item"><h4><span class="tag purple">风格选择</span></h4><p>如果用于知乎，建议选择“深度分析 + 工程复盘”的混合结构，既有判断，也有个人经验。</p></div>',
+        '<div class="check-item"><h4><span class="tag blue">蓝图检查</span></h4><p>当前结构成立。生成初稿时要避免概念堆叠，优先用具体工程场景解释抽象观点。</p></div>',
+        '<div class="check-item"><h4><span class="tag orange">初稿提醒</span></h4><p>初稿已经能读，但还缺少你的真实项目经验。下一步圆桌审稿会集中处理逻辑和人味。</p></div>',
+        '<div class="check-item"><h4><span class="tag red">圆桌结论</span></h4><p>文章可进入定稿，但必须补足“为什么上下文难迁移”和“个人工程经验”两个点。</p></div>',
+        '<div class="check-item"><h4><span class="tag green">定稿提醒</span></h4><p>这是最终草稿，不是自动发布稿。用户修改后再发布，才能保留作者主体性。</p></div>',
+        '<div class="check-item"><h4><span class="tag blue">反馈闭环</span></h4><p>发布后应提取评论中的支持、反对和补充材料，反哺下一轮文章和观点种子。</p></div>'
+      ];
+      stage.innerHTML = contents[step];
+      advice.innerHTML = advices[step];
+    }
+
+    const authStepOrder = ['auth', 'zhihu', 'llm', 'interest', 'style', 'generation'];
+    let currentAuthStep = 'auth';
+    let isLoggedIn = false;
+    let addedLlmCount = 2;
+
+    const authStepMeta = {
+      auth: ['注册', '创建本地账号后，继续完成知乎授权、LLM 配置、兴趣选择和创作画像。'],
+      zhihu: ['知乎账号关联', '说明为什么关联知乎账号，同时保留跳过和失败降级路径。'],
+      llm: ['LLM 配置', '用户可以配置多个模型，让不同 Agent 产生多视角圆桌讨论结果。'],
+      interest: ['兴趣领域选择', '使用大众内容平台式兴趣大类，让普通用户也能快速选择。'],
+      style: ['建立创作画像', '整合基础资料、创作偏好和写作风格问卷，生成可编辑的临时画像。'],
+      generation: ['完成', '画像已生成，可以进入工作台；后续增强结果会进入用户管理页等待确认。']
+    };
+
+    const interestGroups = [
+      { title: '体育运动', desc: '赛事、训练、运动生活', items: ['足球','篮球','NBA','CBA','网球','羽毛球','乒乓球','跑步','健身','瑜伽','骑行','游泳','滑雪','户外徒步','电竞赛事'] },
+      { title: '数码科技', desc: '设备、软件、AI 与消费电子', items: ['手机','电脑','平板','相机','耳机','智能家居','新能源汽车','AI 工具','机器人','操作系统','软件效率','编程开发','网络安全','开源项目','硬件评测'] },
+      { title: '影视娱乐', desc: '大众内容消费与评论', items: ['电影','电视剧','综艺','纪录片','动画','明星娱乐','音乐','播客','演唱会','短剧','院线新片','影评','剧评'] },
+      { title: '游戏动漫', desc: '游戏、二次元与互动娱乐', items: ['主机游戏','手游','PC 游戏','独立游戏','Steam','MOBA','FPS','开放世界','游戏攻略','动漫','漫画','轻小说','Cosplay','模型手办'] },
+      { title: '生活方式', desc: '日常生活、消费和体验', items: ['美食','咖啡','旅行','露营','家居','收纳','宠物','穿搭','美妆护肤','亲子','情感关系','婚恋','城市生活','租房买房','极简生活'] },
+      { title: '职场教育', desc: '成长、学习与职业选择', items: ['职场成长','求职面试','简历优化','副业','自我提升','时间管理','公开表达','考研','留学','职业转型','大学生活','在线课程','阅读方法','写作训练'] },
+      { title: '财经商业', desc: '商业趋势、金融和消费', items: ['股票','基金','宏观经济','消费趋势','商业模式','创业','投资理财','房地产','保险','银行','互联网商业','品牌营销','公司分析','出海','产业观察'] },
+      { title: '社会人文', desc: '公共讨论与泛知识', items: ['社会观察','心理学','历史','哲学','法律','教育议题','公共政策','城市治理','性别议题','代际关系','文化研究','语言学习','科普','读书','人物故事'] },
+      { title: '健康医学', desc: '健康、医学与身心管理', items: ['医学科普','心理健康','睡眠','营养','减脂','运动康复','口腔健康','中医讨论','慢病管理','体检','药品科普','冥想','压力管理'] },
+      { title: '汽车出行', desc: '交通工具和出行体验', items: ['汽车评测','新能源车','智能驾驶','购车决策','摩托车','公共交通','自驾','露营车','车机系统','充电体验','二手车'] },
+      { title: '创作表达', desc: '内容生产和个人表达', items: ['知乎写作','公众号','小红书','短视频','直播','摄影','剪辑','设计','产品设计','信息可视化','个人品牌','知识管理','Prompt Engineering'] },
+      { title: '本地城市', desc: '地方生活与同城内容', items: ['北京','上海','广州','深圳','杭州','成都','重庆','武汉','南京','西安','长沙','青岛','天津','台北','香港'] }
+    ];
+
+    function renderInterestGroups(targetId) {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.innerHTML = interestGroups.map(group => `
+        <div class="interest-group">
+          <h4>${group.title}</h4>
+          <p>${group.desc}</p>
+          <div class="tag-row">
+            ${group.items.map((item, index) => `<span class="chip ${index < 2 ? 'selected' : ''}" onclick="toggleChip(this)">${item}</span>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function switchAuthStep(step) {
+      if (!authStepMeta[step]) return;
+      if (step !== 'auth') showRegisterProgress();
+      currentAuthStep = step;
+      const currentIndex = authStepOrder.indexOf(step);
+      document.querySelectorAll('[data-auth-step]').forEach(item => {
+        const idx = authStepOrder.indexOf(item.dataset.authStep);
+        item.classList.toggle('active', item.dataset.authStep === step);
+        item.classList.toggle('done', idx >= 0 && idx < currentIndex);
+      });
+      document.querySelectorAll('[data-auth-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.authPanel === step));
+      const title = document.getElementById('authStepTitle');
+      const desc = document.getElementById('authStepDesc');
+      const heroTitle = document.getElementById('authHeroTitle');
+      const heroDesc = document.getElementById('authHeroDesc');
+      if (title) title.textContent = authStepMeta[step][0];
+      if (desc) desc.textContent = authStepMeta[step][1];
+      if (heroTitle) heroTitle.textContent = step === 'auth' ? '注册' : authStepMeta[step][0];
+      if (heroDesc) heroDesc.textContent = authStepMeta[step][1];
+      if (step === 'generation') updateAuthStateText('临时画像已生成');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showRegisterProgress() {
+      const progress = document.getElementById('authProgress');
+      if (progress) progress.classList.remove('hidden');
+    }
+
+    function hideRegisterProgress() {
+      const progress = document.getElementById('authProgress');
+      if (progress) progress.classList.add('hidden');
+    }
+
+    function updateAuthPill(name, desc, avatarText) {
+      const nameEl = document.getElementById('authPillName');
+      const descEl = document.getElementById('authPillDesc');
+      const avatarEl = document.getElementById('authAvatar');
+      if (nameEl) nameEl.textContent = name;
+      if (descEl) descEl.textContent = desc;
+      if (avatarEl) avatarEl.textContent = avatarText;
+    }
+
+    function updateAuthStateText(profileState) {
+      const authStateText = document.getElementById('authStateText');
+      const zhihuStateText = document.getElementById('zhihuStateText');
+      const llmStateText = document.getElementById('llmStateText');
+      const profileStateText = document.getElementById('profileStateText');
+      if (authStateText) authStateText.textContent = isLoggedIn ? 'Authenticated / 已登录' : 'Guest / 未登录';
+      if (zhihuStateText) zhihuStateText.textContent = window.__zhihuBound ? '已关联' : '未关联 / 可跳过';
+      if (llmStateText) llmStateText.textContent = '平台免费 + 多个自有模型可配置';
+      if (profileStateText) profileStateText.textContent = profileState || '配置中';
+    }
+
+    function mockLoginAndNext(mode) {
+      isLoggedIn = true;
+      const nickname = document.getElementById('registerNickname')?.value || '看山编辑';
+      if (mode === 'login') {
+        updateAuthPill(nickname, '已登录 · 已进入工作台', '山');
+        showToast('登录成功，进入工作台');
+        enterApp('ready');
+        return;
+      }
+      updateAuthPill(nickname, '已注册 · 待关联知乎', '山');
+      updateAuthStateText('未生成');
+      showToast('注册成功，继续完成初始化流程');
+      showRegisterProgress();
+      switchAuthStep('zhihu');
+    }
+
+    function markZhihuBound() {
+      window.__zhihuBound = true;
+      updateAuthPill('看山编辑', '已登录 · 知乎已关联', '山');
+      updateAuthStateText('未生成');
+      showToast('知乎账号已模拟关联');
+      switchAuthStep('llm');
+    }
+
+    function handleAuthPillClick() {
+      if (!isLoggedIn) {
+        showToast('请先完成登录 / 注册');
+        switchAuthStep('auth');
+        return;
+      }
+      goTabAfterLoginProfile();
+    }
+
+    function goTabAfterLoginProfile() {
+      login.style.display = 'none';
+      app.classList.add('show');
+      goTab('profile');
+      showToast('进入用户管理页');
+    }
+
+    function addMockLlmProvider() {
+      addedLlmCount += 1;
+      const card = `<div class="card llm-provider-card"><div class="tag-row"><span class="tag purple">自有模型</span></div><h3>自定义模型 ${addedLlmCount}</h3><p class="field-text">用于多视角讨论，系统会在需要时自动调度。</p></div>`;
+      const entryList = document.getElementById('llmProviderList');
+      const profileList = document.getElementById('profileLlmProviderList');
+      if (entryList) entryList.insertAdjacentHTML('beforeend', card);
+      if (profileList) profileList.insertAdjacentHTML('beforeend', card);
+      showToast('已添加一个 LLM 配置卡片');
+    }
+
+    document.addEventListener('click', (event) => {
+      const authStep = event.target.closest('[data-auth-step]');
+      if (authStep) switchAuthStep(authStep.dataset.authStep);
+
+      const authMode = event.target.closest('[data-auth-mode]');
+      if (authMode) {
+        const mode = authMode.dataset.authMode;
+        document.querySelectorAll('[data-auth-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.authMode === mode));
+        document.querySelectorAll('[data-auth-mode-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.authModePanel === mode));
+        if (mode === 'register') {
+          showRegisterProgress();
+          switchAuthStep('auth');
+          const heroTitleEl = document.getElementById('authHeroTitle');
+          const heroDescEl = document.getElementById('authHeroDesc');
+          const stepTitle = document.getElementById('authStepTitle');
+          const stepDesc = document.getElementById('authStepDesc');
+          if (heroTitleEl) heroTitleEl.textContent = '注册';
+          if (heroDescEl) heroDescEl.textContent = '创建账号后，按步骤完成初始化配置。';
+          if (stepTitle) stepTitle.textContent = '注册';
+          if (stepDesc) stepDesc.textContent = '注册用户需要一步步完成知乎关联、LLM 配置、兴趣领域和创作画像。';
+        } else {
+          hideRegisterProgress();
+          const heroTitleEl = document.getElementById('authHeroTitle');
+          const heroDescEl = document.getElementById('authHeroDesc');
+          const stepTitle = document.getElementById('authStepTitle');
+          const stepDesc = document.getElementById('authStepDesc');
+          if (mode === 'login') {
+            if (heroTitleEl) heroTitleEl.textContent = '登录';
+            if (heroDescEl) heroDescEl.textContent = '已有账号可直接登录进入工作台。';
+            if (stepTitle) stepTitle.textContent = '登录';
+            if (stepDesc) stepDesc.textContent = '登录成功后直接进入工作台，不再展示初始化流程。';
+          } else {
+            if (heroTitleEl) heroTitleEl.textContent = '演示模式';
+            if (heroDescEl) heroDescEl.textContent = '用于黑客松路演和开发调试，直接进入演示工作台。';
+            if (stepTitle) stepTitle.textContent = '演示模式';
+            if (stepDesc) stepDesc.textContent = '演示模式不代表正式用户注册路径。';
+          }
+        }
+      }
+
+      const profileTab = event.target.closest('[data-profile-tab]');
+      if (profileTab) {
+        const tab = profileTab.dataset.profileTab;
+        document.querySelectorAll('[data-profile-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.profileTab === tab));
+        document.querySelectorAll('[data-profile-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.profilePanel === tab));
+      }
+
+      const llmCard = event.target.closest('.llm-provider-card');
+      if (llmCard) {
+        llmCard.parentElement.querySelectorAll('.llm-provider-card').forEach(card => card.classList.remove('selected'));
+        llmCard.classList.add('selected');
+      }
+    });
+
+    renderInterestGroups('authInterestGroups');
+    renderInterestGroups('profileInterestGroups');
+    updateAuthStateText('未生成');
+    hideRegisterProgress();
+    renderWritingStep(0);
+  </script>
+</body>
+</html>

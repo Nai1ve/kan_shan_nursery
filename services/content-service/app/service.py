@@ -15,9 +15,17 @@ class ContentService:
         self.repository = repository or ContentRepository()
 
     def bootstrap(self) -> dict[str, Any]:
+        # Return all cards for bootstrap (frontend filters by category)
+        # Don't apply top-N selection here; that's for per-category views
+        from . import scheduler as content_scheduler
+        cached = content_scheduler.get_cached_cards()
+        if cached:
+            cards = sorted(cached, key=lambda c: (-(c.get("relevanceScore") or 0), c["id"]))
+        else:
+            cards = self.repository.list_cards()
         return {
             "categories": self.repository.list_categories(),
-            "cards": self.repository.list_cards(),
+            "cards": cards,
         }
 
     def list_cards(self, category_id: str | None = None) -> dict[str, Any]:

@@ -29,6 +29,7 @@ TTL_SECONDS = {
     "comment_list": 10 * 60,
     "story_list": 6 * 60 * 60,
     "story_detail": 6 * 60 * 60,
+    "user_info": 30 * 60,
     "following_feed": 10 * 60,
     "user_followed": 30 * 60,
     "user_followers": 30 * 60,
@@ -186,11 +187,12 @@ class ZhihuAdapterService:
             f"zhihu:direct_answer:{model}:"
             f"{stable_hash(json.dumps(messages, ensure_ascii=False, sort_keys=True))}:stream_false"
         )
+        request_payload = {"model": model, "messages": messages, "stream": False}
         result = self._cached(
             "direct_answer",
             key,
             lambda: mappers.map_direct_answer(
-                self.clients.data_platform.post("/v1/chat/completions", {**payload, "model": model})
+                self.clients.data_platform.post("/v1/chat/completions", request_payload)
                 if self._live_enabled()
                 else mock_data.direct_answer(model)
             ),
@@ -292,25 +294,47 @@ class ZhihuAdapterService:
         )
         return token
 
-    def following_feed(self) -> dict[str, Any]:
-        key = f"zhihu:user_moments:{self.settings.demo_user_id}"
+    def user_info(self, access_token: str | None = None) -> dict[str, Any]:
+        key = f"zhihu:user:{self.settings.demo_user_id}:{stable_hash(access_token or 'configured')}"
+        return self._cached(
+            "user_info",
+            key,
+            lambda: mappers.map_oauth_user(
+                self.clients.oauth.get("/user", access_token=access_token)
+                if self._live_enabled()
+                else {
+                    "uid": 1,
+                    "fullname": "看山测试用户",
+                    "gender": "unknown",
+                    "headline": "AI Coding 观察者",
+                    "description": "关注 Agent 与内容创作。",
+                    "avatar_path": "",
+                    "email": "",
+                    "phone_no": "",
+                }
+            ),
+        )
+
+    def following_feed(self, access_token: str | None = None) -> dict[str, Any]:
+        key = f"zhihu:user_moments:{self.settings.demo_user_id}:{stable_hash(access_token or 'configured')}"
         return self._cached(
             "following_feed",
             key,
             lambda: mappers.map_following_feed(
-                self.clients.oauth.get("/user/moments")
+                self.clients.oauth.get("/user/moments", access_token=access_token)
                 if self._live_enabled()
                 else mock_data.following_feed()
             ),
         )
 
-    def user_followed(self, page: int = 0, per_page: int = 10) -> dict[str, Any]:
-        key = f"zhihu:user_followed:{self.settings.demo_user_id}:{page}:{per_page}"
+    def user_followed(self, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
+        normalized_per_page = min(max(per_page, 1), 50)
+        key = f"zhihu:user_followed:{self.settings.demo_user_id}:{page}:{normalized_per_page}:{stable_hash(access_token or 'configured')}"
         return self._cached(
             "user_followed",
             key,
-            lambda: (
-                self.clients.oauth.get("/user/followed", {"page": page, "per_page": per_page})
+            lambda: mappers.map_oauth_users(
+                self.clients.oauth.get("/user/followed", {"page": page, "per_page": normalized_per_page}, access_token=access_token)
                 if self._live_enabled()
                 else [
                     {"uid": 1, "hash_id": "mock-author", "fullname": "关注作者", "headline": "AI Coding 观察者"},
@@ -318,13 +342,14 @@ class ZhihuAdapterService:
             ),
         )
 
-    def user_followers(self, page: int = 0, per_page: int = 10) -> dict[str, Any]:
-        key = f"zhihu:user_followers:{self.settings.demo_user_id}:{page}:{per_page}"
+    def user_followers(self, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
+        normalized_per_page = min(max(per_page, 1), 50)
+        key = f"zhihu:user_followers:{self.settings.demo_user_id}:{page}:{normalized_per_page}:{stable_hash(access_token or 'configured')}"
         return self._cached(
             "user_followers",
             key,
-            lambda: (
-                self.clients.oauth.get("/user/followers", {"page": page, "per_page": per_page})
+            lambda: mappers.map_oauth_users(
+                self.clients.oauth.get("/user/followers", {"page": page, "per_page": normalized_per_page}, access_token=access_token)
                 if self._live_enabled()
                 else [
                     {"uid": 2, "hash_id": "mock-reader", "fullname": "读者 A", "headline": "技术读者"},

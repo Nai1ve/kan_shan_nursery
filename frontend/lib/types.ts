@@ -221,3 +221,151 @@ export interface MockBootstrap {
   sproutOpportunities: SproutOpportunity[];
   feedbackArticles: FeedbackArticle[];
 }
+
+// Auth types
+export type AuthStatus = "guest" | "registered" | "authenticated" | "logged_out";
+
+export type ZhihuBindingStatus =
+  | "not_started"
+  | "authorizing"
+  | "bound"
+  | "failed"
+  | "skipped"
+  | "unavailable"
+  | "expired";
+
+export type OnboardingStatus =
+  | "not_started"
+  | "preferences_pending"
+  | "provisional_ready"
+  | "completed";
+
+export type ProfileGenerationStatus =
+  | "not_started"
+  | "queued"
+  | "collecting_oauth_data"
+  | "analyzing"
+  | "draft_ready"
+  | "applied"
+  | "failed";
+
+export type UserSetupState =
+  | "zhihu_pending"
+  | "llm_pending"
+  | "preferences_pending"
+  | "provisional_ready"
+  | "ready";
+
+export interface CurrentUser {
+  userId: string;
+  nickname: string;
+  email?: string;
+  username?: string;
+  createdAt: string;
+}
+
+export interface UserSession {
+  sessionId: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AuthMeResponse {
+  authenticated: boolean;
+  user: CurrentUser | null;
+  setupState: UserSetupState | null;
+}
+
+export interface RegisterRequest {
+  nickname: string;
+  email?: string;
+  username?: string;
+  password: string;
+}
+
+export interface LoginRequest {
+  identifier: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  user: CurrentUser;
+  session: UserSession;
+  setupState: UserSetupState;
+}
+
+export interface ZhihuBindingViewModel {
+  userId: string;
+  zhihuUid: string | null;
+  bindingStatus: ZhihuBindingStatus;
+  boundAt: string | null;
+  expiredAt: string | null;
+}
+
+export interface LlmQuotaViewModel {
+  profileSignalSummarize: { used: number; limit: number; remaining?: number };
+  profileMemorySynthesize: { used: number; limit: number; remaining?: number };
+  profileRiskReview: { used: number; limit: number; remaining?: number };
+  summarizeContent: { used: number; limit: number; remaining?: number };
+  answerSeedQuestion: { used: number; limit: number; remaining?: number };
+  supplementMaterial: { used: number; limit: number; remaining?: number };
+  argumentBlueprint: { used: number; limit: number; remaining?: number };
+  draft: { used: number; limit: number; remaining?: number };
+  roundtableReview: { used: number; limit: number; remaining?: number };
+}
+
+export interface LlmConfigViewModel {
+  status: "platform_free" | "user_configured" | "not_configured" | "invalid" | "quota_limited";
+  activeProvider: "platform_free" | "user_provider" | "none";
+  displayName?: string;
+  maskedKey?: string;
+  model?: string;
+  quota?: LlmQuotaViewModel;
+  errorMessage?: string;
+}
+
+export interface UserSetupStateData {
+  authStatus: AuthStatus;
+  setupState: UserSetupState;
+  zhihuBinding?: ZhihuBindingViewModel;
+  llmConfig?: LlmConfigViewModel;
+  profileGenerationStatus?: ProfileGenerationStatus;
+}
+
+export interface SelectedInterest {
+  interestId: string;
+  selected: boolean;
+  selfRatedLevel: "beginner" | "intermediate" | "advanced";
+  intent: "read" | "write" | "both";
+}
+
+export interface WritingStyleSurvey {
+  logicDepth: 1 | 2 | 3 | 4 | 5;
+  stanceSharpness: 1 | 2 | 3 | 4 | 5;
+  personalExperienceWillingness: 1 | 2 | 3 | 4 | 5;
+  expressionSharpness: 1 | 2 | 3 | 4 | 5;
+  preferredFormat: "zhihu_answer" | "balanced" | "long_article" | "column" | "draft";
+  evidenceVsJudgment: "evidence_first" | "balanced" | "judgment_first";
+  wantsCounterArguments: boolean;
+  openingStyle: "direct" | "balanced" | "story";
+  titleStyle: "restrained" | "balanced" | "spreadable";
+  uncertaintyTolerance: 1 | 2 | 3 | 4 | 5;
+  emotionalTemperature: "cold" | "balanced" | "emotional";
+  aiAssistanceBoundary: "outline" | "paragraph" | "draft" | "polish" | "publish_ready";
+}
+
+export interface OnboardingPayload {
+  nickname: string;
+  selectedInterests: SelectedInterest[];
+  writingStyle: WritingStyleSurvey;
+}
+
+export interface OnboardingResponse {
+  profile: ProfileData;
+  profileStatus: "provisional";
+  enrichmentJob?: {
+    id: string;
+    status: ProfileGenerationStatus;
+  };
+}

@@ -20,17 +20,35 @@ def _create_id(prefix: str) -> str:
 
 
 class FeedbackService:
-    def __init__(self) -> None:
+    def __init__(self, storage: Any = None) -> None:
+        self._storage = storage  # If None, use in-memory dict
+        if self._storage:
+            self._storage.load_initial_articles([dict(item) for item in FEEDBACK_ARTICLES])
         self._articles: dict[str, dict[str, Any]] = {item["id"]: dict(item) for item in FEEDBACK_ARTICLES}
 
+    def _get_article_from_store(self, article_id: str) -> dict[str, Any] | None:
+        if self._storage:
+            return self._storage.get_article(article_id)
+        return self._articles.get(article_id)
+
+    def _save_article_to_store(self, article_id: str, data: dict[str, Any]) -> None:
+        if self._storage:
+            self._storage.save_article(article_id, data)
+        self._articles[article_id] = data
+
+    def _list_articles_from_store(self) -> list[dict[str, Any]]:
+        if self._storage:
+            return self._storage.list_articles()
+        return list(self._articles.values())
+
     def list_articles(self, interest_id: str | None = None) -> dict[str, Any]:
-        items = list(self._articles.values())
+        items = self._list_articles_from_store()
         if interest_id:
             items = [item for item in items if item["interestId"] == interest_id]
         return {"items": items}
 
     def get_article(self, article_id: str) -> dict[str, Any]:
-        article = self._articles.get(article_id)
+        article = self._get_article_from_store(article_id)
         if not article:
             raise ArticleNotFound(article_id)
         return article
@@ -46,10 +64,10 @@ class FeedbackService:
             article.setdefault("status", "待解析")
             article.setdefault("performanceSummary", "新同步的文章，尚未生成表现摘要。")
             article.setdefault("memoryAction", "等待评论摘要")
-            self._articles[article["id"]] = article
-            return {"items": list(self._articles.values()), "syncedArticleId": article["id"]}
+            self._save_article_to_store(article["id"], article)
+            return {"items": self._list_articles_from_store(), "syncedArticleId": article["id"]}
         return {
-            "items": list(self._articles.values()),
+            "items": self._list_articles_from_store(),
             "syncedAt": _now_iso(),
             "note": "mock sync: no external call, returning cached articles.",
         }

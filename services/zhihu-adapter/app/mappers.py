@@ -176,6 +176,49 @@ def map_following_feed(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return mapped
 
 
+def map_oauth_user(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sourceType": "oauth_user",
+        "sourceId": str(raw.get("uid", "")),
+        "uid": raw.get("uid"),
+        "fullname": raw.get("fullname", ""),
+        "gender": raw.get("gender", ""),
+        "headline": raw.get("headline", ""),
+        "description": raw.get("description", ""),
+        "avatarPath": raw.get("avatar_path", ""),
+        "raw": {
+            key: value
+            for key, value in raw.items()
+            if key not in {"email", "phone_no"}
+        },
+    }
+
+
+def map_oauth_users(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    mapped = []
+    for item in raw:
+        mapped.append(
+            {
+                "sourceType": "oauth_user_relation",
+                "sourceId": str(item.get("uid", item.get("hash_id", ""))),
+                "uid": item.get("uid"),
+                "hashId": item.get("hash_id", ""),
+                "fullname": item.get("fullname", ""),
+                "gender": item.get("gender", ""),
+                "headline": item.get("headline", ""),
+                "description": item.get("description", ""),
+                "avatarPath": item.get("avatar_path", ""),
+                "url": item.get("url", ""),
+                "raw": {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"email", "phone_no"}
+                },
+            }
+        )
+    return mapped
+
+
 def map_direct_answer(raw: dict[str, Any]) -> dict[str, Any]:
     choice = (raw.get("choices") or [{}])[0]
     message = choice.get("message", {})

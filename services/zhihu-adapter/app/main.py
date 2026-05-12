@@ -22,6 +22,7 @@ from .service import ZhihuAdapterService
 
 
 _config = load_config()
+
 configure_logging("zhihu-adapter", _config.logging)
 logger = get_logger("kanshan.zhihu.main")
 
@@ -107,6 +108,11 @@ def story_list(request: Request) -> dict[str, Any]:
 @app.get("/zhihu/story-detail")
 def story_detail(request: Request, work_id: str) -> dict[str, Any]:
     return _handle(request, "story_detail", lambda: service.story_detail(work_id))
+
+
+@app.get("/zhihu/user")
+def user_info(request: Request) -> dict[str, Any]:
+    return _handle(request, "user_info", lambda: service.user_info())
 
 
 @app.get("/zhihu/following-feed")

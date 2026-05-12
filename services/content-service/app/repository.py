@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .mock_data import build_categories, build_card, build_initial_cards, _CARD_SPECS
+from . import scheduler as content_scheduler
 
 
 class CardNotFound(Exception):
@@ -23,20 +24,89 @@ def _now_iso() -> str:
 
 
 class ContentRepository:
-    def __init__(self) -> None:
+    def __init__(self, enricher: Any = None, profile_service_url: str = "") -> None:
         self._cards: dict[str, dict[str, Any]] = {card["id"]: card for card in build_initial_cards()}
         self._refresh_state: dict[str, dict[str, Any]] = {}
+        self._enricher = enricher
+        self._profile_service_url = profile_service_url
+        self._enriched_cache: dict[str, list[dict[str, Any]]] = {}
 
     def list_categories(self) -> list[dict[str, Any]]:
-        return build_categories()
+        categories = build_categories()
+        cached = content_scheduler.get_cached_cards()
+        if cached:
+            counts: dict[str, int] = {}
+            for card in cached:
+                cid = card.get("categoryId", "")
+                counts[cid] = counts.get(cid, 0) + 1
+            for cat in categories:
+                cid = cat["id"]
+                count = counts.get(cid, 0)
+                if cid == "following":
+                    cat["meta"] = "需知乎关联"
+                elif count > 0:
+                    cat["meta"] = f"{count} 张卡"
+        return categories
 
     def list_cards(self, category_id: str | None = None) -> list[dict[str, Any]]:
+        # Try enriched cache first
+        if category_id and category_id in self._enriched_cache:
+            return self._enriched_cache[category_id]
+
+        # Try raw cache
+        cached = content_scheduler.get_cached_cards(category_id)
+        if cached:
+            # Score and select top cards
+            from .scorer import select_top_cards
+            top = select_top_cards(cached, max_cards=5)
+
+            # Enrich with LLM if available
+            if self._enricher and top:
+                interest_memory = self._get_interest_memory(category_id)
+                try:
+                    self._enricher.enrich_cards_batch(top, interest_memory, max_cards=5)
+                except Exception:
+                    pass
+                # Cache enriched results
+                if category_id:
+                    self._enriched_cache[category_id] = top
+
+            return top
+
+        # Fall back to mock data (no card limit for mock)
         cards = list(self._cards.values())
         if category_id:
             cards = [card for card in cards if card["categoryId"] == category_id]
         return sorted(cards, key=lambda card: (-(card.get("relevanceScore") or 0), card["id"]))
 
+    def _get_interest_memory(self, category_id: str | None) -> dict[str, Any] | None:
+        """Get per-interest memory from profile-service."""
+        if not category_id or not self._profile_service_url:
+            return None
+        import json
+        import urllib.request
+        try:
+            url = f"{self._profile_service_url}/memory/me/interests/{category_id}"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+
+    def clear_enriched_cache(self, category_id: str | None = None) -> None:
+        """Clear enriched cache for a category or all."""
+        if category_id:
+            self._enriched_cache.pop(category_id, None)
+        else:
+            self._enriched_cache.clear()
+
     def get_card(self, card_id: str) -> dict[str, Any]:
+        # Try cache first
+        cached = content_scheduler.get_cached_cards()
+        for card in cached:
+            if card["id"] == card_id:
+                return card
+        # Fall back to mock
         card = self._cards.get(card_id)
         if not card:
             raise CardNotFound(card_id)
@@ -58,6 +128,24 @@ class ContentRepository:
     def refresh_category(self, category_id: str) -> dict[str, Any]:
         if category_id not in CATEGORIES_BY_ID:
             raise CategoryNotFound(category_id)
+
+        # Try to get unshown cached cards
+        unshown = content_scheduler.get_unshown_cards(category_id)
+        if unshown:
+            # Mark as shown and return
+            for card in unshown:
+                content_scheduler.mark_card_shown(card["id"])
+            return {
+                "categoryId": category_id,
+                "refreshState": {
+                    "refreshCount": 1,
+                    "refreshedAt": _now_iso(),
+                    "source": "cache",
+                },
+                "cards": unshown,
+            }
+
+        # Fall back to mock data refresh
         category_specs = [spec for spec in _CARD_SPECS if spec["categoryId"] == category_id]
         if not category_specs:
             raise CategoryNotFound(category_id)

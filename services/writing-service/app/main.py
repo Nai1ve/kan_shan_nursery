@@ -25,7 +25,15 @@ _config = load_config()
 configure_logging("writing-service", _config.logging)
 logger = get_logger("kanshan.writing_service.main")
 
-service = WritingService()
+if _config.storage_backend == "postgres":
+    from .database import init_db
+    init_db()
+    from .pg_storage import PostgresSessionStorage
+    service = WritingService(storage=PostgresSessionStorage())
+    logger.info("storage_backend_selected", extra={"backend": "postgres"})
+else:
+    service = WritingService()
+    logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 
 def handle_error(error: Exception) -> None:
@@ -46,7 +54,9 @@ def health() -> dict[str, str]:
 @app.post("/writing/sessions")
 def create_session(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.create_session(payload)
+        result = service.create_session(payload)
+        logger.info("writing_session_create", extra={"sessionId": result.get("sessionId", ""), "seedId": payload.get("seedId", "")})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -73,7 +83,9 @@ def patch_session(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 @app.post("/writing/sessions/{session_id}/confirm-claim")
 def confirm_claim(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.confirm_claim(session_id, payload)
+        result = service.confirm_claim(session_id, payload)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "confirm_claim"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -82,7 +94,9 @@ def confirm_claim(session_id: str, payload: dict[str, Any] | None = None) -> dic
 @app.post("/writing/sessions/{session_id}/blueprint")
 def generate_blueprint(session_id: str) -> dict[str, Any]:
     try:
-        return service.generate_blueprint(session_id)
+        result = service.generate_blueprint(session_id)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "blueprint"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -91,7 +105,9 @@ def generate_blueprint(session_id: str) -> dict[str, Any]:
 @app.post("/writing/sessions/{session_id}/draft")
 def generate_draft(session_id: str) -> dict[str, Any]:
     try:
-        return service.generate_draft(session_id)
+        result = service.generate_draft(session_id)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "draft"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -100,7 +116,9 @@ def generate_draft(session_id: str) -> dict[str, Any]:
 @app.post("/writing/sessions/{session_id}/roundtable")
 def roundtable(session_id: str) -> dict[str, Any]:
     try:
-        return service.roundtable(session_id)
+        result = service.roundtable(session_id)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "roundtable"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -109,7 +127,9 @@ def roundtable(session_id: str) -> dict[str, Any]:
 @app.post("/writing/sessions/{session_id}/finalize")
 def finalize(session_id: str) -> dict[str, Any]:
     try:
-        return service.finalize(session_id)
+        result = service.finalize(session_id)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "finalize"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -118,7 +138,9 @@ def finalize(session_id: str) -> dict[str, Any]:
 @app.post("/writing/sessions/{session_id}/publish/mock")
 def publish_mock(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.publish_mock(session_id, payload)
+        result = service.publish_mock(session_id, payload)
+        logger.info("writing_publish", extra={"sessionId": session_id, "mode": "mock"})
+        return result
     except Exception as error:
         handle_error(error)
         raise

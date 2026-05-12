@@ -41,7 +41,7 @@ logger = logging.getLogger("kanshan.zhihu.live")
 class _Transport:
     timeout_seconds: float = 15
 
-    def _do(self, request: urllib.request.Request) -> dict[str, Any]:
+    def _do(self, request: urllib.request.Request) -> Any:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = response.read().decode("utf-8")
@@ -125,19 +125,28 @@ class OAuthClient(_Transport):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        self._require_token()
+    def get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        access_token: str | None = None,
+    ) -> Any:
+        token = self._resolve_token(access_token)
         query = urllib.parse.urlencode({k: v for k, v in (params or {}).items() if v is not None})
         suffix = f"?{query}" if query else ""
         request = urllib.request.Request(
             f"{self.settings.zhihu.oauth.base_url}{path}{suffix}",
-            headers={"Authorization": f"Bearer {self.settings.zhihu.oauth.access_token}"},
+            headers={"Authorization": f"Bearer {token}"},
             method="GET",
         )
         raw = self._do(request)
-        error = from_oauth(raw)
-        if error:
-            raise error
+        # OAuth list endpoints such as /user/followed and /user/followers
+        # return a bare JSON array on success. Only dict responses can carry
+        # the documented {code, data} error envelope.
+        if isinstance(raw, dict):
+            error = from_oauth(raw)
+            if error:
+                raise error
         return raw
 
     def exchange_code_for_token(self, code: str) -> dict[str, Any]:
@@ -176,9 +185,14 @@ class OAuthClient(_Transport):
         )
         return f"{oauth.base_url}/authorize?{params}"
 
-    def _require_token(self) -> None:
-        if not self.settings.zhihu.oauth.access_token:
+    def _resolve_token(self, access_token: str | None = None) -> str:
+        token = access_token or self.settings.zhihu.oauth.access_token
+        if not token:
             raise ZhihuAuthError("OAuth access_token missing; visit /zhihu/oauth/authorize first")
+        return token
+
+    def _require_token(self) -> None:
+        self._resolve_token()
 
 
 class DataPlatformClient(_Transport):

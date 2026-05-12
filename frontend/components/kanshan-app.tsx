@@ -49,6 +49,7 @@ import type {
   WorthReadingCard,
   WritingSession,
 } from "@/lib/types";
+import { AuthEntry } from "./auth/AuthEntry";
 
 const STORAGE_KEY = "kanshan:nursery:demo-state:v1";
 
@@ -58,7 +59,7 @@ const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }
   { id: "sprout", label: "今日发芽", icon: Sprout },
   { id: "write", label: "写作苗圃", icon: PenLine },
   { id: "history", label: "历史反馈", icon: History },
-  { id: "profile", label: "个人画像", icon: UserRound },
+  { id: "profile", label: "用户管理", icon: UserRound },
 ];
 
 const heroMap: Record<TabId, [string, string]> = {
@@ -68,7 +69,7 @@ const heroMap: Record<TabId, [string, string]> = {
   sprout: ["旧想法，遇到新热点，就会发芽。", "用今日热点、关注流和用户画像激活历史观点种子。"],
   write: ["一步一步，把观点养成文章。", "从观点确认到论证蓝图，再到圆桌审稿、定稿草案和反馈回流。"],
   history: ["历史反馈，不只是数据。", "读者反馈会反哺 Memory、种子库和下一篇文章。"],
-  profile: ["你的画像，是系统理解你的方式。", "可见、可编辑的 Memory 会影响推荐、浇水和写作。"],
+  profile: ["用户管理，是账号、授权与 Memory 的总入口。", "你可以维护知乎关联、LLM 配置、兴趣画像和写作风格。"],
 };
 
 const writingSteps = [
@@ -102,6 +103,71 @@ const onboardingQuestions = [
   "你是否愿意暴露自己的不确定和纠结？",
   "你希望风格更冷静还是更有情绪？",
   "你希望 AI 帮你写到什么程度？",
+];
+
+type ProfilePanelId = "overview" | "account" | "llm" | "interests" | "memory" | "style";
+
+const profilePanels: { id: ProfilePanelId; label: string }[] = [
+  { id: "overview", label: "总览" },
+  { id: "account", label: "账号与授权" },
+  { id: "llm", label: "LLM 配置" },
+  { id: "interests", label: "兴趣画像" },
+  { id: "memory", label: "Memory 管理" },
+  { id: "style", label: "写作风格" },
+];
+
+const profileInterestGroups = [
+  {
+    group: "生活方式",
+    desc: "用于识别日常消费、关系、居住和体验类内容偏好。",
+    items: ["家居收纳", "做饭", "旅行", "亲密关系", "育儿", "消费决策", "居住体验", "城市生活", "时尚穿搭", "数码家电"],
+  },
+  {
+    group: "数码科技",
+    desc: "用于识别工具、产品体验、工程实践和技术趋势偏好。",
+    items: ["AI 工具", "手机", "电脑", "软件效率", "编程", "互联网产品", "智能硬件", "新能源汽车", "数据安全", "开源"],
+  },
+  {
+    group: "职场教育",
+    desc: "用于识别职业成长、学习路径、表达训练和长期能力建设。",
+    items: ["职场成长", "求职面试", "副业", "自我提升", "时间管理", "公开表达", "考研", "职业转型", "大学生活", "写作训练"],
+  },
+  {
+    group: "健康医学",
+    desc: "用于识别医学科普、心理健康、运动康复和风险边界。",
+    items: ["医学科普", "心理健康", "睡眠", "营养", "减脂", "运动康复", "口腔健康", "慢病管理", "体检", "压力管理"],
+  },
+  {
+    group: "财经商业",
+    desc: "用于识别投资、消费趋势、创业和商业分析偏好。",
+    items: ["投资理财", "基金", "股票", "宏观经济", "消费趋势", "创业", "商业模式", "品牌营销", "公司研究", "保险"],
+  },
+  {
+    group: "人文社科",
+    desc: "用于识别公共议题、文化观察、历史哲学和法律教育方向。",
+    items: ["历史", "哲学", "社会学", "心理学", "法律", "教育", "国际关系", "公共议题", "文化观察", "书评"],
+  },
+  {
+    group: "文娱体育",
+    desc: "用于识别影视、游戏、体育和线上娱乐输入。",
+    items: ["电影", "电视剧", "音乐", "动漫", "游戏", "篮球", "足球", "跑步", "健身", "电竞"],
+  },
+  {
+    group: "创作表达",
+    desc: "用于识别内容平台、表达形式、设计和知识管理偏好。",
+    items: ["知乎写作", "公众号", "小红书", "短视频", "摄影", "剪辑", "设计", "产品设计", "信息可视化", "Prompt Engineering"],
+  },
+];
+
+const memoryUpdateRequests = [
+  {
+    title: "新增兴趣：家居收纳",
+    desc: "系统根据近期收藏推断你可能关注家居收纳和居住体验，是否加入兴趣画像？",
+  },
+  {
+    title: "写作风险提醒",
+    desc: "你在职场话题下容易陷入泛泛建议，建议写入提醒：需要补充具体场景和反方观点。",
+  },
 ];
 
 const materialMeta: Record<WateringMaterialType, { title: string; desc: string; tone: Tone }> = {
@@ -208,6 +274,18 @@ export function KanshanApp() {
     showToast(mode === "onboarding" ? "进入首次画像采集" : "进入演示模式");
   }
 
+  function completeAuthEntry(profile?: ProfileData) {
+    setEntered(true);
+    setActiveTab("today");
+    updateData((current) => ({
+      ...current,
+      hasEntered: true,
+      activeTab: "today",
+      profile: profile ?? current.profile,
+    }));
+    showToast(profile ? "临时画像已生成，进入工作台" : "欢迎回来，进入工作台");
+  }
+
   function goTab(tab: TabId) {
     setActiveTab(tab);
     updateData((current) => ({ ...current, activeTab: tab }));
@@ -220,7 +298,7 @@ export function KanshanApp() {
   }
 
   function selectSeed(seedId: string) {
-    selectSeed(seedId);
+    setSelectedSeedId(seedId);
     updateData((current) => ({ ...current, selectedSeedId: seedId }));
   }
 
@@ -720,7 +798,7 @@ export function KanshanApp() {
   }
 
   if (!entered) {
-    return <LoginScreen onEnter={enterApp} />;
+    return <AuthEntry onComplete={completeAuthEntry} onShowDemo={() => enterApp("demo")} />;
   }
 
   const activeHero = heroMap[activeTab];
@@ -856,7 +934,9 @@ export function KanshanApp() {
             openComments={setCommentArticle}
           />
         ) : null}
-        {activeTab === "profile" ? <ProfileSection profile={data.profile} categories={data.categories} onSave={saveProfile} /> : null}
+        {activeTab === "profile" ? (
+          <ProfileSection profile={data.profile} categories={data.categories} onSave={saveProfile} onNotify={showToast} />
+        ) : null}
       </main>
 
       {questionCard ? (
@@ -1933,12 +2013,31 @@ function ProfileSection({
   profile,
   categories,
   onSave,
+  onNotify,
 }: {
   profile: ProfileData;
   categories: InputCategory[];
   onSave: (profile: ProfileData) => void;
+  onNotify: (message: string) => void;
 }) {
   const [draft, setDraft] = useState(profile);
+  const [activePanel, setActivePanel] = useState<ProfilePanelId>("overview");
+  const [accountDraft, setAccountDraft] = useState({
+    email: "demo@example.com",
+    username: "kanshan_user",
+    password: "password-placeholder",
+  });
+  const [selectedProvider, setSelectedProvider] = useState("platform-free");
+  const [providerCount, setProviderCount] = useState(3);
+  const [styleScores, setStyleScores] = useState<Record<string, number>>({
+    logic: 3,
+    stance: 4,
+    experience: 5,
+    counter: 5,
+  });
+
+  const interestCategories = categories.filter((category) => category.kind === "interest");
+  const zhihuBound = draft.accountStatus.includes("已关联");
 
   function toggleInterest(interest: string) {
     const interests = draft.interests.includes(interest)
@@ -1947,90 +2046,518 @@ function ProfileSection({
     setDraft({ ...draft, interests });
   }
 
+  function saveDraft(message = "用户管理信息已保存，并写入本地 Memory") {
+    onSave(draft);
+    onNotify(message);
+  }
+
+  function mockAction(message: string) {
+    onNotify(message);
+  }
+
+  function applyMemoryRequest(title: string) {
+    if (title.includes("家居收纳") && !draft.interests.includes("家居收纳")) {
+      setDraft({ ...draft, interests: [...draft.interests, "家居收纳"] });
+      onNotify("已把家居收纳加入兴趣画像草稿，保存后生效");
+      return;
+    }
+    setDraft({
+      ...draft,
+      globalMemory: {
+        ...draft.globalMemory,
+        riskReminder: `${draft.globalMemory.riskReminder}\n新增提醒：职场话题需要补充具体场景和反方观点。`,
+      },
+    });
+    onNotify("已把写作风险提醒加入 Memory 草稿，保存后生效");
+  }
+
+  function addMockProvider() {
+    setProviderCount((current) => current + 1);
+    setSelectedProvider(`custom-${providerCount + 1}`);
+    onNotify("已添加一个 mock 自有模型配置");
+  }
+
+  function setScore(key: string, value: number) {
+    setStyleScores((current) => ({ ...current, [key]: value }));
+    onNotify("写作风格问卷已更新到本地状态");
+  }
+
   return (
     <section className="section active">
-      <div className="profile-layout">
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h2 className="panel-title">个人信息管理</h2>
-              <p className="panel-subtitle">独立部署时，这里用于建立和维护你的本地用户画像 Memory。</p>
+      <div className="profile-tabbar" role="tablist" aria-label="用户管理">
+        {profilePanels.map((panel) => (
+          <button
+            className={`profile-tab ${activePanel === panel.id ? "active" : ""}`}
+            key={panel.id}
+            onClick={() => setActivePanel(panel.id)}
+            type="button"
+          >
+            {panel.label}
+          </button>
+        ))}
+      </div>
+
+      {activePanel === "overview" ? (
+        <section className="profile-panel-section active">
+          <div className="grid-4 profile-status-grid">
+            <div className="card no-hover">
+              <div className="eyebrow">画像状态</div>
+              <h3>{draft.accountStatus.includes("临时") ? "临时画像" : "正式画像"}</h3>
+              <p className="field-text">可用，等待 OAuth 与历史内容增强。</p>
             </div>
-            <button className="btn primary" onClick={() => onSave(draft)} type="button">
-              保存画像
-            </button>
+            <div className="card no-hover">
+              <div className="eyebrow">知乎账号</div>
+              <h3>{zhihuBound ? "已关联" : "未关联"}</h3>
+              <p className="field-text">当前{zhihuBound ? "可使用关注流增强画像" : "使用本地临时画像"}。</p>
+            </div>
+            <div className="card no-hover">
+              <div className="eyebrow">LLM</div>
+              <h3>{providerCount} 个模型</h3>
+              <p className="field-text">平台免费额度 + 自有模型 mock 配置。</p>
+            </div>
+            <div className="card no-hover">
+              <div className="eyebrow">兴趣领域</div>
+              <h3>{draft.interests.length} 个</h3>
+              <p className="field-text">用于今日推荐、发芽和写作 Memory 注入。</p>
+            </div>
           </div>
-          <div className="panel-body form-grid">
-            <EditableField label="昵称" value={draft.nickname} onChange={(nickname) => setDraft({ ...draft, nickname })} />
-            <EditableField label="账号状态" value={draft.accountStatus} onChange={(accountStatus) => setDraft({ ...draft, accountStatus })} />
-            <EditableField label="身份标签" value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />
-            <div className="field">
-              <label>兴趣小类</label>
-              <div className="tag-row">
-                {categories.filter((category) => category.kind === "interest").map((category) => (
-                  <button className={`chip ${draft.interests.includes(category.name) ? "selected" : ""}`} key={category.id} onClick={() => toggleInterest(category.name)} type="button">
-                    {category.name}
+
+          <div className="profile-layout">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">基础资料</h2>
+                  <p className="panel-subtitle">账号信息与用户自我描述。</p>
+                </div>
+                <button className="btn primary" onClick={() => saveDraft("基础资料已保存")} type="button">
+                  保存
+                </button>
+              </div>
+              <div className="panel-body form-grid">
+                <EditableField label="昵称" value={draft.nickname} onChange={(nickname) => setDraft({ ...draft, nickname })} />
+                <EditableField label="身份 / 创作背景" value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />
+                <div className="field">
+                  <label>一句话自我描述</label>
+                  <textarea
+                    className="textarea"
+                    value={draft.globalMemory.longTermBackground}
+                    onChange={(event) =>
+                      setDraft({ ...draft, globalMemory: { ...draft.globalMemory, longTermBackground: event.target.value } })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">增强画像待确认</h2>
+                  <p className="panel-subtitle">后台生成的 Memory 更新必须经用户确认后写入长期画像。</p>
+                </div>
+              </div>
+              <div className="panel-body form-grid">
+                <div className="memory-card">
+                  <strong>待确认更新</strong>
+                  <p className="field-text">
+                    系统推测你在「职场成长」下更关注真实经验和可执行建议，在「数码科技」下更关注产品体验和购买决策。
+                  </p>
+                  <div className="action-row">
+                    <button className="btn primary" onClick={() => mockAction("已应用增强画像 mock")} type="button">
+                      确认写入
+                    </button>
+                    <button className="btn ghost" onClick={() => setActivePanel("memory")} type="button">
+                      逐条编辑
+                    </button>
+                    <button className="btn danger" onClick={() => mockAction("已拒绝本次增强画像 mock")} type="button">
+                      拒绝
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activePanel === "account" ? (
+        <section className="profile-panel-section active">
+          <div className="grid-2">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">账号信息</h2>
+                  <p className="panel-subtitle">用于登录、通知和安全审计。当前为前端 mock 状态。</p>
+                </div>
+                <button className="btn primary" onClick={() => mockAction("账号信息已保存到 mock 状态")} type="button">
+                  保存
+                </button>
+              </div>
+              <div className="panel-body form-grid">
+                <EditableField label="邮箱" value={accountDraft.email} onChange={(email) => setAccountDraft({ ...accountDraft, email })} />
+                <EditableField label="用户名" value={accountDraft.username} onChange={(username) => setAccountDraft({ ...accountDraft, username })} />
+                <EditableField label="密码" value={accountDraft.password} onChange={(password) => setAccountDraft({ ...accountDraft, password })} />
+                <div className="action-row">
+                  <button className="btn ghost" onClick={() => mockAction("修改密码入口已触发 mock")} type="button">
+                    修改密码
                   </button>
+                  <button className="btn danger" onClick={() => mockAction("退出登录后端接口待接入")} type="button">
+                    退出登录
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">知乎授权与数据来源</h2>
+                  <p className="panel-subtitle">授权状态、数据范围和重新绑定入口。</p>
+                </div>
+              </div>
+              <div className="panel-body form-grid">
+                <div className="card no-hover">
+                  <div className="tag-row">
+                    <span className={`tag ${zhihuBound ? "green" : "orange"}`}>{zhihuBound ? "已关联" : "未关联"}</span>
+                    <span className="tag blue">可跳过</span>
+                  </div>
+                  <h3>知乎账号</h3>
+                  <p className="field-text">关联后可增强关注流、兴趣图谱和创作偏好；OAuth 未开放时先使用本地临时画像。</p>
+                  <div className="action-row">
+                    <button className="btn primary" onClick={() => mockAction("模拟重新发起知乎 OAuth")} type="button">
+                      重新关联知乎
+                    </button>
+                    <button className="btn ghost" onClick={() => mockAction("数据使用说明：仅用于生成可见、可编辑的 Memory")} type="button">
+                      查看数据使用说明
+                    </button>
+                  </div>
+                </div>
+                <div className="card no-hover">
+                  <h3>将使用的数据</h3>
+                  <div className="tag-row">
+                    {["用户基本信息", "关注列表", "粉丝列表", "关注流", "圈子互动", "公开创作样本"].map((scope, index) => (
+                      <button
+                        className={`chip small ${index < 4 ? "selected" : ""}`}
+                        key={scope}
+                        onClick={() => mockAction(`${scope} 数据范围已切换 mock`)}
+                        type="button"
+                      >
+                        {scope}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activePanel === "llm" ? (
+        <section className="profile-panel-section active">
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">多 LLM 配置</h2>
+                <p className="panel-subtitle">平台只能提供免费接口且必须限流；用户可以配置自己的 OpenAI-compatible 模型。</p>
+              </div>
+              <button className="btn primary" onClick={addMockProvider} type="button">
+                添加模型
+              </button>
+            </div>
+            <div className="panel-body grid-3">
+              {[
+                ["platform-free", "平台免费模型", "平台免费", "适合画像生成、摘要和轻量问答，受每日额度限制。"],
+                ["custom-a", "自有模型 A", "自有模型", "可用于更严谨的分析视角。"],
+                ["custom-b", "自有模型 B", "自有模型", "可用于更偏表达、读者感受和传播判断的视角。"],
+              ].map(([id, title, tag, desc]) => (
+                <button
+                  className={`card llm-provider-card ${selectedProvider === id ? "selected" : ""}`}
+                  key={id}
+                  onClick={() => setSelectedProvider(id)}
+                  type="button"
+                >
+                  <div className="tag-row">
+                    <span className={id === "platform-free" ? "tag blue" : "tag purple"}>{tag}</span>
+                    {id === "platform-free" ? <span className="tag green">默认</span> : null}
+                  </div>
+                  <h3>{title}</h3>
+                  <p className="field-text">{desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid-2 profile-spaced">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">新增 / 编辑模型</h2>
+                  <p className="panel-subtitle">API Key 只提交到服务端加密保存，前端不读明文。</p>
+                </div>
+              </div>
+              <div className="panel-body form-grid">
+                <EditableField label="显示名称" value="DeepSeek V3 / GPT-4.1 / Qwen Plus" onChange={() => undefined} />
+                <EditableField label="Base URL" value="https://api.example.com/v1" onChange={() => undefined} />
+                <EditableField label="Model" value="model-name" onChange={() => undefined} />
+                <div className="field">
+                  <label>API Key</label>
+                  <input className="input" type="password" placeholder="只提交一次，服务端加密保存" />
+                </div>
+                <div className="action-row">
+                  <button className="btn primary" onClick={() => mockAction("正在测试连接 mock")} type="button">
+                    测试连接
+                  </button>
+                  <button className="btn ghost" onClick={() => mockAction("LLM 配置已保存 mock")} type="button">
+                    保存配置
+                  </button>
+                  <button className="btn danger" onClick={() => mockAction("LLM 配置已删除 mock")} type="button">
+                    删除配置
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">多视角使用方式</h2>
+                  <p className="panel-subtitle">用户只需要知道系统会综合多个视角，不需要关心内部角色拆分。</p>
+                </div>
+              </div>
+              <div className="panel-body form-grid">
+                <ListBlock
+                  title="可用于"
+                  items={["画像生成时提炼兴趣信号", "观点生成时提供更稳健判断", "写作审稿时提供不同角度反馈", "高成本任务前由用户主动触发"]}
+                />
+                <InfoBlock
+                  title="默认策略"
+                  text="优先使用平台免费模型处理轻量任务；当用户配置自有模型后，需要多视角讨论时再组合使用。"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activePanel === "interests" ? (
+        <section className="profile-panel-section active">
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">兴趣画像管理</h2>
+                <p className="panel-subtitle">兴趣是长期 Memory 的主分类。关注流和偶遇输入是来源，不进入长期兴趣主类。</p>
+              </div>
+              <button className="btn primary" onClick={() => saveDraft("兴趣画像已保存")} type="button">
+                保存兴趣
+              </button>
+            </div>
+            <div className="panel-body form-grid">
+              <div className="grid-2">
+                {profileInterestGroups.map((group) => (
+                  <div className="interest-group" key={group.group}>
+                    <h4>{group.group}</h4>
+                    <p>{group.desc}</p>
+                    <div className="tag-row">
+                      {group.items.map((item) => (
+                        <button className={`chip small ${draft.interests.includes(item) ? "selected" : ""}`} key={item} onClick={() => toggleInterest(item)} type="button">
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="field-block">
+                <div className="field-title">当前业务兴趣小类</div>
+                <div className="tag-row">
+                  {interestCategories.map((category) => (
+                    <button className={`chip ${draft.interests.includes(category.name) ? "selected" : ""}`} key={category.id} onClick={() => toggleInterest(category.name)} type="button">
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel profile-spaced">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">按兴趣绑定的局部画像</h2>
+                <p className="panel-subtitle">同一个用户在不同领域下需要不同视角、证据偏好和写作提醒。</p>
+              </div>
+            </div>
+            <div className="panel-body grid-3">
+              {draft.interestMemories.map((memory) => (
+                <div className="memory-card" key={memory.interestId}>
+                  <strong>{memory.interestName}</strong>
+                  <p className="field-text">
+                    知识水平：{memory.knowledgeLevel}；偏好视角：{memory.preferredPerspective.join("、")}。
+                  </p>
+                  <textarea
+                    className="textarea"
+                    value={memory.writingReminder}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        interestMemories: draft.interestMemories.map((item) =>
+                          item.interestId === memory.interestId ? { ...item, writingReminder: event.target.value } : item,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activePanel === "memory" ? (
+        <section className="profile-panel-section active">
+          <div className="profile-layout">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">全局 Memory</h2>
+                  <p className="panel-subtitle">跨兴趣通用的用户背景、表达偏好和系统边界。</p>
+                </div>
+                <button className="btn primary" onClick={() => saveDraft("Memory 已保存")} type="button">
+                  保存 Memory
+                </button>
+              </div>
+              <div className="panel-body form-grid">
+                {Object.entries(draft.globalMemory).map(([key, value]) => (
+                  <MemoryCard
+                    key={key}
+                    title={globalMemoryLabel(key)}
+                    text={value}
+                    onChange={(nextValue) => setDraft({ ...draft, globalMemory: { ...draft.globalMemory, [key]: nextValue } })}
+                  />
                 ))}
               </div>
             </div>
-            <div className="field">
-              <label>不希望系统做什么</label>
-              <textarea className="textarea" value={draft.avoidances} onChange={(event) => setDraft({ ...draft, avoidances: event.target.value })} />
-            </div>
-          </div>
-        </div>
 
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h2 className="panel-title">用户画像 Memory</h2>
-              <p className="panel-subtitle">可展示、可编辑。真实产品中用于推荐、发芽和写作风格控制。</p>
-            </div>
-          </div>
-          <div className="panel-body form-grid">
-            {Object.entries(draft.globalMemory).map(([key, value]) => (
-              <MemoryCard
-                key={key}
-                title={globalMemoryLabel(key)}
-                text={value}
-                onChange={(nextValue) => setDraft({ ...draft, globalMemory: { ...draft.globalMemory, [key]: nextValue } })}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="panel profile-wide">
-          <div className="panel-header">
-            <div>
-              <h2 className="panel-title">兴趣分类画像</h2>
-              <p className="panel-subtitle">不同兴趣小类有不同的知识水平、证据偏好、推荐策略和写作风险提醒。</p>
-            </div>
-          </div>
-          <div className="panel-body grid-3">
-            {draft.interestMemories.map((memory) => (
-              <div className="memory-card" key={memory.interestId}>
-                <strong>{memory.interestName}</strong>
-                <p className="field-text">
-                  知识水平：{memory.knowledgeLevel}；偏好视角：{memory.preferredPerspective.join("、")}。
-                </p>
-                <textarea
-                  className="textarea"
-                  value={`证据偏好：${memory.evidencePreference}。写作提醒：${memory.writingReminder}`}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      interestMemories: draft.interestMemories.map((item) =>
-                        item.interestId === memory.interestId ? { ...item, writingReminder: event.target.value } : item,
-                      ),
-                    })
-                  }
-                />
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">Memory 更新请求</h2>
+                  <p className="panel-subtitle">系统推断必须经过用户确认。</p>
+                </div>
               </div>
-            ))}
+              <div className="panel-body form-grid">
+                {memoryUpdateRequests.map((request) => (
+                  <div className="card no-hover" key={request.title}>
+                    <div className="tag-row">
+                      <span className="tag orange">待确认</span>
+                    </div>
+                    <h3>{request.title}</h3>
+                    <p className="field-text">{request.desc}</p>
+                    <div className="action-row">
+                      <button className="btn primary" onClick={() => applyMemoryRequest(request.title)} type="button">
+                        确认
+                      </button>
+                      <button className="btn ghost" onClick={() => mockAction("已进入编辑 Memory 更新请求 mock")} type="button">
+                        编辑
+                      </button>
+                      <button className="btn danger" onClick={() => mockAction("已拒绝 Memory 更新请求 mock")} type="button">
+                        拒绝
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+      ) : null}
+
+      {activePanel === "style" ? (
+        <section className="profile-panel-section active">
+          <div className="grid-2">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">结构化写作风格</h2>
+                  <p className="panel-subtitle">替代零散问卷结果，便于后端保存和 Prompt 注入。</p>
+                </div>
+                <button className="btn primary" onClick={() => saveDraft("写作风格已保存")} type="button">
+                  保存
+                </button>
+              </div>
+              <div className="panel-body form-grid">
+                <div className="field">
+                  <label>逻辑深度</label>
+                  <select className="select" defaultValue="3 - 平衡" onChange={() => mockAction("逻辑深度已更新 mock")}>
+                    <option>3 - 平衡</option>
+                    <option>4 - 较强</option>
+                    <option>5 - 非常强</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>立场锋利度</label>
+                  <select className="select" defaultValue="4 - 鲜明" onChange={() => mockAction("立场锋利度已更新 mock")}>
+                    <option>2 - 克制</option>
+                    <option>3 - 平衡</option>
+                    <option>4 - 鲜明</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>证据偏好</label>
+                  <select className="select" defaultValue="个人经验 + 案例" onChange={() => mockAction("证据偏好已更新 mock")}>
+                    <option>个人经验 + 案例</option>
+                    <option>资料优先</option>
+                    <option>判断优先</option>
+                    <option>论文 / 数据优先</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>AI 辅助边界</label>
+                  <select className="select" defaultValue="草稿级，需要我修改后发布" onChange={() => mockAction("AI 辅助边界已更新 mock")}>
+                    <option>草稿级，需要我修改后发布</option>
+                    <option>只给大纲</option>
+                    <option>只做润色</option>
+                    <option>发布前检查</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>不希望系统做什么</label>
+                  <textarea className="textarea" value={draft.avoidances} onChange={(event) => setDraft({ ...draft, avoidances: event.target.value })} />
+                </div>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">写作风格问答</h2>
+                  <p className="panel-subtitle">保留问答式采集，用于补充结构化表单无法覆盖的偏好。</p>
+                </div>
+              </div>
+              <div className="panel-body grid-2">
+                {[
+                  ["logic", "你希望文章逻辑严密到什么程度？"],
+                  ["stance", "你愿意表达鲜明立场吗？"],
+                  ["experience", "你喜欢加入个人经历吗？"],
+                  ["counter", "是否需要主动反方质疑？"],
+                ].map(([key, question]) => (
+                  <div className="question-card" key={key}>
+                    <h4>{question}</h4>
+                    <div className="scale">
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <button className={styleScores[key] === value ? "selected" : ""} key={value} onClick={() => setScore(key, value)} type="button">
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

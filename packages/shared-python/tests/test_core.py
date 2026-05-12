@@ -111,6 +111,23 @@ zhihu:
                 os.environ.pop("ZHIHU_APP_KEY", None)
         self.assertEqual(config.zhihu.community.app_key, "env-key")
 
+    def test_data_platform_accepts_common_key_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = write_yaml(
+                pathlib.Path(tmp),
+                """
+zhihu:
+  data_platform:
+    accessSecret: ds-secret
+    baseUrl: https://developer.zhihu.com
+    defaultModel: zhida-fast-1p5
+""",
+            )
+            config = load_config(cfg_path)
+        self.assertEqual(config.zhihu.data_platform.access_secret, "ds-secret")
+        self.assertEqual(config.zhihu.data_platform.base_url, "https://developer.zhihu.com")
+        self.assertEqual(config.zhihu.data_platform.default_model, "zhida-fast-1p5")
+
     def test_missing_file_returns_defaults(self) -> None:
         config = load_config(pathlib.Path("/nonexistent/path/config.yaml"))
         self.assertIsInstance(config, KanshanConfig)

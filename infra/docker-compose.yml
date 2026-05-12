@@ -1,4 +1,7 @@
 services:
+  # ──────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ──────────────────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
     container_name: kanshan-postgres
@@ -10,12 +13,302 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kanshan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kanshan-net
 
   redis:
     image: redis:7-alpine
     container_name: kanshan-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kanshan-net
 
+  # ──────────────────────────────────────────────────────────────
+  # Backend Services
+  # ──────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: kanshan-api-gateway
+    ports:
+      - "${API_GATEWAY_PORT:-8000}:8000"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      PROFILE_SERVICE_URL: http://profile-service:8010
+      CONTENT_SERVICE_URL: http://content-service:8020
+      SEED_SERVICE_URL: http://seed-service:8030
+      SPROUT_SERVICE_URL: http://sprout-service:8040
+      WRITING_SERVICE_URL: http://writing-service:8050
+      FEEDBACK_SERVICE_URL: http://feedback-service:8060
+      ZHIHU_ADAPTER_URL: http://zhihu-adapter:8070
+      LLM_SERVICE_URL: http://llm-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  profile-service:
+    build:
+      context: ..
+      dockerfile: services/profile-service/Dockerfile
+    container_name: kanshan-profile-service
+    ports:
+      - "8010:8010"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  content-service:
+    build:
+      context: ..
+      dockerfile: services/content-service/Dockerfile
+    container_name: kanshan-content-service
+    ports:
+      - "8020:8020"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  seed-service:
+    build:
+      context: ..
+      dockerfile: services/seed-service/Dockerfile
+    container_name: kanshan-seed-service
+    ports:
+      - "8030:8030"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8030/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  sprout-service:
+    build:
+      context: ..
+      dockerfile: services/sprout-service/Dockerfile
+    container_name: kanshan-sprout-service
+    ports:
+      - "8040:8040"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8040/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  writing-service:
+    build:
+      context: ..
+      dockerfile: services/writing-service/Dockerfile
+    container_name: kanshan-writing-service
+    ports:
+      - "8050:8050"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8050/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  feedback-service:
+    build:
+      context: ..
+      dockerfile: services/feedback-service/Dockerfile
+    container_name: kanshan-feedback-service
+    ports:
+      - "8060:8060"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8060/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  zhihu-adapter:
+    build:
+      context: ..
+      dockerfile: services/zhihu-adapter/Dockerfile
+    container_name: kanshan-zhihu-adapter
+    ports:
+      - "8070:8070"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      ZHIHU_APP_KEY: ${ZHIHU_APP_KEY:-}
+      ZHIHU_APP_SECRET: ${ZHIHU_APP_SECRET:-}
+      ZHIHU_ACCESS_TOKEN: ${ZHIHU_ACCESS_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8070/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  llm-service:
+    build:
+      context: ..
+      dockerfile: services/llm-service/Dockerfile
+    container_name: kanshan-llm-service
+    ports:
+      - "8080:8080"
+    environment:
+      PROVIDER_MODE: ${PROVIDER_MODE:-mock}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - kanshan-net
+
+  # ──────────────────────────────────────────────────────────────
+  # Frontend
+  # ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_KANSHAN_BACKEND_MODE: gateway
+        NEXT_PUBLIC_KANSHAN_GATEWAY_URL: http://api-gateway:8000
+        NEXT_PUBLIC_ZHIHU_ADAPTER_URL: http://zhihu-adapter:8070
+    container_name: kanshan-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - kanshan-net
+
+# ──────────────────────────────────────────────────────────────
+# Volumes
+# ──────────────────────────────────────────────────────────────
 volumes:
   postgres-data:
+  redis-data:
+
+# ──────────────────────────────────────────────────────────────
+# Networks
+# ──────────────────────────────────────────────────────────────
+networks:
+  kanshan-net:
+    driver: bridge

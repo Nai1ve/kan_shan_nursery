@@ -91,6 +91,8 @@ class LoggingConfig:
 @dataclass
 class KanshanConfig:
     provider_mode: str = "mock"
+    database_url: str = "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan"
+    storage_backend: str = "memory"
     zhihu: ZhihuConfig = field(default_factory=ZhihuConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -134,6 +136,17 @@ def _pick(*values: Any) -> Any:
     return None
 
 
+def _get_any(mapping: dict[str, Any], *keys: str) -> Any:
+    """Return the first non-empty value for any accepted config key.
+
+    The official docs and local notes have used a few naming styles over
+    time (`access_secret`, `accessSecret`, `access-secret`). Accepting the
+    aliases here keeps `services/config.yaml` forgiving without leaking that
+    tolerance into each service.
+    """
+    return _pick(*(mapping.get(key) for key in keys))
+
+
 def _flat_legacy(zhihu_section: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Translate the legacy flat schema (zhihu: {ZHIHU_APP_KEY: ...})."""
     mapping = {
@@ -168,6 +181,16 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
             os.getenv("ZHIHU_PROVIDER_MODE"),
             raw.get("provider_mode"),
             "mock",
+        ),
+        database_url=_pick(
+            os.getenv("DATABASE_URL"),
+            raw.get("database_url"),
+            "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan",
+        ),
+        storage_backend=_pick(
+            os.getenv("STORAGE_BACKEND"),
+            raw.get("storage_backend"),
+            "memory",
         ),
         zhihu=ZhihuConfig(
             community=ZhihuCommunityConfig(
@@ -215,17 +238,17 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
             data_platform=ZhihuDataPlatformConfig(
                 access_secret=_pick(
                     os.getenv("ZHIHU_ACCESS_SECRET"),
-                    data_raw.get("access_secret"),
+                    _get_any(data_raw, "access_secret", "accessSecret", "access-secret", "secret"),
                     "",
                 ) or "",
                 base_url=_pick(
                     os.getenv("ZHIHU_DATA_PLATFORM_BASE_URL"),
-                    data_raw.get("base_url"),
+                    _get_any(data_raw, "base_url", "baseUrl", "base-url"),
                     "https://developer.zhihu.com",
                 ),
                 default_model=_pick(
                     os.getenv("LLM_DEFAULT_MODEL"),
-                    data_raw.get("default_model"),
+                    _get_any(data_raw, "default_model", "defaultModel", "default-model"),
                     "zhida-thinking-1p5",
                 ),
             ),

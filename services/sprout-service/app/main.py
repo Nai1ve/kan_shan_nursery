@@ -24,7 +24,15 @@ _config = load_config()
 configure_logging("sprout-service", _config.logging)
 logger = get_logger("kanshan.sprout_service.main")
 
-service = SproutService()
+if _config.storage_backend == "postgres":
+    from .database import init_db
+    init_db()
+    from .pg_storage import PostgresSproutStorage
+    service = SproutService(storage=PostgresSproutStorage())
+    logger.info("storage_backend_selected", extra={"backend": "postgres"})
+else:
+    service = SproutService()
+    logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 
 def handle_error(error: Exception) -> None:
@@ -44,7 +52,9 @@ def health() -> dict[str, str]:
 
 @app.post("/sprout/start")
 def start_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    return service.start_run(payload)
+    result = service.start_run(payload)
+    logger.info("sprout_start", extra={"runId": result.get("runId", "")})
+    return result
 
 
 @app.get("/sprout/runs/{run_id}")
@@ -64,7 +74,9 @@ def list_opportunities(interest_id: str | None = None) -> dict[str, Any]:
 @app.post("/sprout/opportunities/{opportunity_id}/supplement")
 def supplement_opportunity(opportunity_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.supplement(opportunity_id, payload)
+        result = service.supplement(opportunity_id, payload)
+        logger.info("sprout_opportunity_action", extra={"opportunityId": opportunity_id, "action": "supplement"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -73,7 +85,9 @@ def supplement_opportunity(opportunity_id: str, payload: dict[str, Any] | None =
 @app.post("/sprout/opportunities/{opportunity_id}/switch-angle")
 def switch_angle(opportunity_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.switch_angle(opportunity_id, payload)
+        result = service.switch_angle(opportunity_id, payload)
+        logger.info("sprout_opportunity_action", extra={"opportunityId": opportunity_id, "action": "switch_angle"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -82,7 +96,9 @@ def switch_angle(opportunity_id: str, payload: dict[str, Any] | None = None) -> 
 @app.post("/sprout/opportunities/{opportunity_id}/dismiss")
 def dismiss_opportunity(opportunity_id: str) -> dict[str, Any]:
     try:
-        return service.dismiss(opportunity_id)
+        result = service.dismiss(opportunity_id)
+        logger.info("sprout_opportunity_action", extra={"opportunityId": opportunity_id, "action": "dismiss"})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -91,7 +107,9 @@ def dismiss_opportunity(opportunity_id: str) -> dict[str, Any]:
 @app.post("/sprout/opportunities/{opportunity_id}/start-writing")
 def start_writing(opportunity_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.start_writing(opportunity_id, payload)
+        result = service.start_writing(opportunity_id, payload)
+        logger.info("sprout_opportunity_action", extra={"opportunityId": opportunity_id, "action": "start_writing"})
+        return result
     except Exception as error:
         handle_error(error)
         raise

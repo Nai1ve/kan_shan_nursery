@@ -24,7 +24,19 @@ _config = load_config()
 configure_logging("seed-service", _config.logging)
 logger = get_logger("kanshan.seed_service.main")
 
-service = SeedService()
+if _config.storage_backend == "postgres":
+    from .database import init_db
+    init_db()
+    from .pg_repository import PostgresSeedRepository
+    from .repository import SeedRepository as _MemRepo  # for type hint only
+    _repo = PostgresSeedRepository()
+    logger.info("storage_backend_selected", extra={"backend": "postgres"})
+else:
+    from .repository import SeedRepository
+    _repo = SeedRepository()
+    logger.info("storage_backend_selected", extra={"backend": "memory"})
+
+service = SeedService(repository=_repo)
 
 
 def handle_error(error: Exception) -> None:
@@ -53,7 +65,9 @@ def list_seeds() -> dict[str, Any]:
 @app.post("/seeds")
 def create_seed(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.create_manual_seed(payload)
+        result = service.create_manual_seed(payload)
+        logger.info("seed_create", extra={"seedId": result.get("id", ""), "title": result.get("title", "")})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -62,7 +76,9 @@ def create_seed(payload: dict[str, Any]) -> dict[str, Any]:
 @app.post("/seeds/from-card")
 def create_seed_from_card(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.from_card(payload)
+        result = service.from_card(payload)
+        logger.info("seed_from_card", extra={"seedId": result.get("id", ""), "cardId": payload.get("cardId", "")})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -89,7 +105,9 @@ def update_seed(seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 @app.post("/seeds/{seed_id}/questions")
 def add_question(seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.add_question(seed_id, payload)
+        result = service.add_question(seed_id, payload)
+        logger.info("seed_question_add", extra={"seedId": seed_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -107,7 +125,9 @@ def mark_question(seed_id: str, question_id: str, payload: dict[str, Any]) -> di
 @app.post("/seeds/{seed_id}/materials")
 def add_material(seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.add_material(seed_id, payload)
+        result = service.add_material(seed_id, payload)
+        logger.info("seed_material_add", extra={"seedId": seed_id, "materialType": payload.get("materialType", "")})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -143,7 +163,9 @@ def agent_supplement(seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 @app.post("/seeds/{target_seed_id}/merge")
 def merge_seed(target_seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return service.merge(target_seed_id, payload)
+        result = service.merge(target_seed_id, payload)
+        logger.info("seed_merge", extra={"targetSeedId": target_seed_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise

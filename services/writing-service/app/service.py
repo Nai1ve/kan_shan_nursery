@@ -7,8 +7,19 @@ from .session_logic import InvalidTransition, SessionNotFound, VALID_TONES
 
 
 class WritingService:
-    def __init__(self) -> None:
+    def __init__(self, storage: Any = None) -> None:
+        self._storage = storage  # If None, use in-memory dict
         self._sessions: dict[str, dict[str, Any]] = {}
+
+    def _store_get(self, session_id: str) -> dict[str, Any] | None:
+        if self._storage:
+            return self._storage.get(session_id)
+        return self._sessions.get(session_id)
+
+    def _store_save(self, session_id: str, data: dict[str, Any]) -> None:
+        if self._storage:
+            self._storage.save(session_id, data)
+        self._sessions[session_id] = data
 
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not payload.get("seedId"):
@@ -32,11 +43,11 @@ class WritingService:
             "draftStatus": "claim_confirming",
             "savedDraft": False,
         }
-        self._sessions[session["sessionId"]] = session
+        self._store_save(session["sessionId"], session)
         return session
 
     def get_session(self, session_id: str) -> dict[str, Any]:
-        session = self._sessions.get(session_id)
+        session = self._store_get(session_id)
         if not session:
             raise SessionNotFound(session_id)
         return session
@@ -49,7 +60,7 @@ class WritingService:
                 if key == "tone" and patch[key] not in VALID_TONES:
                     raise ValueError(f"tone must be one of {sorted(VALID_TONES)}")
                 merged[key] = patch[key]
-        self._sessions[session_id] = merged
+        self._store_save(session_id, merged)
         return merged
 
     def confirm_claim(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -65,7 +76,7 @@ class WritingService:
             "confirmed": True,
             "draftStatus": "claim_confirming",
         }
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return next_session
 
     def generate_blueprint(self, session_id: str) -> dict[str, Any]:
@@ -74,7 +85,7 @@ class WritingService:
             raise InvalidTransition("claim must be confirmed before blueprint")
         blueprint = session_logic._build_blueprint(session.get("coreClaim") or "未确认观点")
         next_session = {**session, "draftStatus": "blueprint_ready"}
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return {"session": next_session, "blueprint": blueprint}
 
     def generate_draft(self, session_id: str) -> dict[str, Any]:
@@ -83,7 +94,7 @@ class WritingService:
             raise InvalidTransition(f"cannot draft from status {session['draftStatus']}")
         draft = session_logic._build_draft(session.get("coreClaim") or "未确认观点", session["tone"])
         next_session = {**session, "draftStatus": "draft_ready", "savedDraft": True}
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return {"session": next_session, "draft": draft}
 
     def roundtable(self, session_id: str) -> dict[str, Any]:
@@ -92,7 +103,7 @@ class WritingService:
             raise InvalidTransition("draft must be ready before roundtable")
         review = session_logic._build_roundtable(session.get("coreClaim") or "未确认观点")
         next_session = {**session, "draftStatus": "reviewing"}
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return {"session": next_session, "review": review}
 
     def finalize(self, session_id: str) -> dict[str, Any]:
@@ -101,7 +112,7 @@ class WritingService:
             raise InvalidTransition("session must finish review before finalizing")
         finalized = session_logic._build_finalized(session.get("coreClaim") or "未确认观点")
         next_session = {**session, "draftStatus": "finalized"}
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return {"session": next_session, "finalized": finalized}
 
     def publish_mock(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -114,7 +125,7 @@ class WritingService:
             "draftStatus": "published",
             "publishedArticleId": article_id,
         }
-        self._sessions[session_id] = next_session
+        self._store_save(session_id, next_session)
         return {
             "session": next_session,
             "publishedArticle": {

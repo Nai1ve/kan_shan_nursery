@@ -24,7 +24,15 @@ _config = load_config()
 configure_logging("feedback-service", _config.logging)
 logger = get_logger("kanshan.feedback_service.main")
 
-service = FeedbackService()
+if _config.storage_backend == "postgres":
+    from .database import init_db
+    init_db()
+    from .pg_storage import PostgresFeedbackStorage
+    service = FeedbackService(storage=PostgresFeedbackStorage())
+    logger.info("storage_backend_selected", extra={"backend": "postgres"})
+else:
+    service = FeedbackService()
+    logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 
 def handle_error(error: Exception) -> None:
@@ -42,7 +50,9 @@ def health() -> dict[str, str]:
 
 @app.get("/feedback/articles")
 def list_articles(interest_id: str | None = None) -> dict[str, Any]:
-    return service.list_articles(interest_id)
+    result = service.list_articles(interest_id)
+    logger.info("feedback_article_list", extra={"interestId": interest_id, "count": len(result.get("items", []))})
+    return result
 
 
 @app.get("/feedback/articles/{article_id}")
@@ -71,7 +81,9 @@ def comments_summary(article_id: str) -> dict[str, Any]:
 @app.post("/feedback/articles/{article_id}/second-seed")
 def second_seed(article_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.second_seed(article_id, payload)
+        result = service.second_seed(article_id, payload)
+        logger.info("feedback_second_seed", extra={"articleId": article_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -80,7 +92,9 @@ def second_seed(article_id: str, payload: dict[str, Any] | None = None) -> dict[
 @app.post("/feedback/articles/{article_id}/memory-update-request")
 def memory_update_request(article_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        return service.memory_update_request(article_id, payload)
+        result = service.memory_update_request(article_id, payload)
+        logger.info("feedback_memory_update", extra={"articleId": article_id})
+        return result
     except Exception as error:
         handle_error(error)
         raise

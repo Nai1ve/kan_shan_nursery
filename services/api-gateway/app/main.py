@@ -114,9 +114,65 @@ def get_profile(request: Request) -> JSONResponse:
     return run_proxy(request, "profile", "GET", "/profiles/me")
 
 
+@app.post("/api/v1/auth/register")
+def auth_register(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/auth/register", payload=payload)
+
+
+@app.post("/api/v1/auth/login")
+def auth_login(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/auth/login", payload=payload)
+
+
+@app.post("/api/v1/auth/logout")
+def auth_logout(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/auth/logout", payload=payload)
+
+
+@app.get("/api/v1/auth/me")
+def auth_me(request: Request) -> JSONResponse:
+    session_id = request.headers.get("x-session-id")
+    return run_proxy(request, "profile", "GET", "/auth/me", params={"session_id": session_id})
+
+
+@app.get("/api/v1/auth/zhihu/authorize")
+def auth_zhihu_authorize(request: Request) -> JSONResponse:
+    return run_proxy(request, "profile", "GET", "/auth/zhihu/authorize")
+
+
+@app.get("/api/v1/auth/zhihu/callback")
+def auth_zhihu_callback(request: Request, code: str | None = None, error: str | None = None) -> JSONResponse:
+    return run_proxy(request, "profile", "GET", "/auth/zhihu/callback", params={"code": code, "error": error})
+
+
+@app.get("/api/v1/auth/zhihu/binding")
+def auth_zhihu_binding(request: Request, user_id: str) -> JSONResponse:
+    return run_proxy(request, "profile", "GET", "/auth/zhihu/binding", params={"user_id": user_id})
+
+
+@app.delete("/api/v1/auth/zhihu/binding")
+def auth_zhihu_unbind(request: Request, user_id: str) -> JSONResponse:
+    return run_proxy(request, "profile", "DELETE", "/auth/zhihu/binding", params={"user_id": user_id})
+
+
+@app.get("/api/v1/llm/config/me")
+def get_llm_config(request: Request) -> JSONResponse:
+    return run_proxy(request, "llm", "GET", "/llm/config/me")
+
+
+@app.get("/api/v1/llm/quota/me")
+def get_llm_quota(request: Request) -> JSONResponse:
+    return run_proxy(request, "llm", "GET", "/llm/quota/me")
+
+
 @app.put("/api/v1/profile/me")
 def update_profile(request: Request, payload: dict[str, Any]) -> JSONResponse:
     return run_proxy(request, "profile", "PUT", "/profiles/me", payload=payload)
+
+
+@app.post("/api/v1/profile/onboarding")
+def save_profile_onboarding(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/profiles/onboarding", payload=payload)
 
 
 @app.get("/api/v1/profile/interests")

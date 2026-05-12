@@ -78,6 +78,28 @@ class MapperTests(unittest.TestCase):
         self.assertEqual(item["sourceType"], "story")
         self.assertIn("改编自知乎盐言故事", item["usageNotice"])
 
+    def test_oauth_user_mapping_strips_sensitive_fields(self) -> None:
+        item = mappers.map_oauth_user(
+            {
+                "uid": 123,
+                "fullname": "测试用户",
+                "email": "secret@example.com",
+                "phone_no": "13800000000",
+            }
+        )
+        self.assertEqual(item["sourceType"], "oauth_user")
+        self.assertEqual(item["fullname"], "测试用户")
+        self.assertNotIn("email", item["raw"])
+        self.assertNotIn("phone_no", item["raw"])
+
+    def test_oauth_user_relation_mapping_accepts_bare_list(self) -> None:
+        items = mappers.map_oauth_users([
+            {"uid": 1, "hash_id": "hash-1", "fullname": "关注作者", "phone_no": "hidden"}
+        ])
+        self.assertEqual(items[0]["sourceType"], "oauth_user_relation")
+        self.assertEqual(items[0]["hashId"], "hash-1")
+        self.assertNotIn("phone_no", items[0]["raw"])
+
 
 class ServiceCachingAndQuotaTests(unittest.TestCase):
     def test_cache_hit_does_not_increment_quota(self) -> None:
@@ -137,6 +159,13 @@ class OAuthClientTests(unittest.TestCase):
         with self.assertRaises(ZhihuAuthError):
             bundle.oauth.get("/user")
 
+    def test_oauth_bare_array_response_is_success(self) -> None:
+        settings = _settings()
+        settings.config.zhihu.oauth.access_token = "token"
+        bundle = ClientBundle(settings)
+        bundle.oauth._do = lambda request: [{"uid": 1, "fullname": "关注作者"}]
+        self.assertEqual(bundle.oauth.get("/user/followed"), [{"uid": 1, "fullname": "关注作者"}])
+
 
 class DataPlatformOpenAIParseTests(unittest.TestCase):
     def test_direct_answer_response_parsed_into_content_and_reasoning(self) -> None:
@@ -145,6 +174,29 @@ class DataPlatformOpenAIParseTests(unittest.TestCase):
         self.assertIn("content", result)
         self.assertIn("reasoningContent", result)
         self.assertIn("model", result)
+
+    def test_direct_answer_live_payload_keeps_only_supported_fields(self) -> None:
+        settings = _settings("live")
+        service = ZhihuAdapterService(settings, MemoryCache())
+        captured = {}
+
+        def fake_post(path, payload):
+            captured["path"] = path
+            captured["payload"] = payload
+            return mock_data.direct_answer(payload["model"])
+
+        service.clients.data_platform.post = fake_post
+        result = service.direct_answer(
+            {
+                "model": "zhida-thinking-1p5",
+                "messages": [{"role": "user", "content": "test"}],
+                "temperature": 0.8,
+                "stream": False,
+            }
+        )
+        self.assertEqual(captured["path"], "/v1/chat/completions")
+        self.assertEqual(set(captured["payload"].keys()), {"model", "messages", "stream"})
+        self.assertIn("content", result)
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ import type {
 } from "@/lib/types";
 import { AuthEntry } from "./auth/AuthEntry";
 
-const STORAGE_KEY = "kanshan:nursery:demo-state:v1";
+const STORAGE_KEY = "kanshan:nursery:demo-state:v2";
 
 const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "today", label: "今日看什么", icon: BookOpen },
@@ -184,7 +184,7 @@ export function KanshanApp() {
   const [activeTab, setActiveTab] = useState<TabId>("today");
   const [toast, setToast] = useState("");
   const [data, setData] = useState<DemoState | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("ai-coding");
+  const [selectedCategory, setSelectedCategory] = useState("shuma");
   const [selectedSeedId, setSelectedSeedId] = useState("seed-ai-coding-moat");
   const [writingStep, setWritingStep] = useState(0);
   const [questionCard, setQuestionCard] = useState<WorthReadingCard | null>(null);
@@ -192,6 +192,7 @@ export function KanshanApp() {
   const [wateringSeedId, setWateringSeedId] = useState<string | null>(null);
   const [mergeSeedId, setMergeSeedId] = useState<string | null>(null);
   const [commentArticle, setCommentArticle] = useState<FeedbackArticle | null>(null);
+  const [sproutLoading, setSproutLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -210,7 +211,7 @@ export function KanshanApp() {
       const initialState: DemoState = {
         hasEntered: false,
         activeTab: "today",
-        selectedCategoryId: "ai-coding",
+        selectedCategoryId: "shuma",
         selectedSeedId: "seed-ai-coding-moat",
         profile,
         categories: content.categories,
@@ -569,16 +570,21 @@ export function KanshanApp() {
 
   function startSprout(seedId?: string) {
     if (!data) return;
-    const targetSeeds = seedId ? data.seeds.filter((seed) => seed.id === seedId) : data.seeds.filter((seed) => seed.status !== "published");
-    const generated = targetSeeds.slice(0, 4).map((seed, index) => buildSproutOpportunity(seed, index));
-    updateData((current) => ({
-      ...current,
-      sproutStarted: true,
-      sproutOpportunities: mergeOpportunities(generated, current.sproutOpportunities),
-    }));
-    if (seedId) selectSeed(seedId);
     goTab("sprout");
-    showToast("已开始：历史种子 × 今日热点 × 用户画像");
+    setSproutLoading(true);
+    showToast("正在匹配种子 × 热点 × 画像...");
+    setTimeout(() => {
+      const targetSeeds = seedId ? data.seeds.filter((seed) => seed.id === seedId) : data.seeds.filter((seed) => seed.status !== "published");
+      const generated = targetSeeds.slice(0, 4).map((seed, index) => buildSproutOpportunity(seed, index));
+      updateData((current) => ({
+        ...current,
+        sproutStarted: true,
+        sproutOpportunities: mergeOpportunities(generated, current.sproutOpportunities),
+      }));
+      if (seedId) selectSeed(seedId);
+      setSproutLoading(false);
+      showToast("已找到发芽机会");
+    }, 2000);
   }
 
   function updateOpportunity(id: string, patch: Partial<SproutOpportunity>) {
@@ -881,6 +887,14 @@ export function KanshanApp() {
               }));
             }}
             onReact={recordReaction}
+            onClearReaction={(cardId) => {
+              updateData((current) => {
+                const newReactions = { ...current.reactions };
+                delete newReactions[cardId];
+                return { ...current, reactions: newReactions };
+              });
+              showToast("已清除表态");
+            }}
             onQuestion={setQuestionCard}
             onAddSeed={addSeedFromCard}
             onWrite={writeFromCard}
@@ -900,6 +914,7 @@ export function KanshanApp() {
         {activeTab === "sprout" ? (
           <SproutSection
             started={data.sproutStarted}
+            loading={sproutLoading}
             opportunities={data.sproutOpportunities}
             onStart={() => startSprout()}
             openSeeds={() => goTab("seeds")}
@@ -1103,6 +1118,7 @@ function TodaySection({
   onToggleSource,
   onToggleSummary,
   onReact,
+  onClearReaction,
   onQuestion,
   onAddSeed,
   onWrite,
@@ -1119,6 +1135,7 @@ function TodaySection({
   onToggleSource: (cardId: string, sourceId: string) => void;
   onToggleSummary: (cardId: string) => void;
   onReact: (card: WorthReadingCard, reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
+  onClearReaction: (cardId: string) => void;
   onQuestion: (card: WorthReadingCard) => void;
   onAddSeed: (card: WorthReadingCard) => void;
   onWrite: (card: WorthReadingCard) => void;
@@ -1178,6 +1195,7 @@ function TodaySection({
                   onToggleSource={(sourceId) => onToggleSource(card.id, sourceId)}
                   onToggleSummary={() => onToggleSummary(card.id)}
                   onReact={(reaction) => onReact(card, reaction)}
+                  onClearReaction={() => onClearReaction(card.id)}
                   onQuestion={() => onQuestion(card)}
                   onAddSeed={() => onAddSeed(card)}
                   onWrite={() => onWrite(card)}
@@ -1200,6 +1218,7 @@ function ContentCard({
   onToggleSource,
   onToggleSummary,
   onReact,
+  onClearReaction,
   onQuestion,
   onAddSeed,
   onWrite,
@@ -1212,11 +1231,14 @@ function ContentCard({
   onToggleSource: (sourceId: string) => void;
   onToggleSummary: () => void;
   onReact: (reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
+  onClearReaction: () => void;
   onQuestion: () => void;
   onAddSeed: () => void;
   onWrite: () => void;
 }) {
   const cardExpanded = featured || expanded;
+  const [reactionNote, setReactionNote] = useState("");
+  const hasReaction = reaction === "agree" || reaction === "disagree";
 
   function handleCardClick(event: MouseEvent<HTMLElement>) {
     if (featured) return;
@@ -1244,7 +1266,7 @@ function ContentCard({
     >
       <div className="tag-row">
         {card.tags.map((tag) => (
-          <span className={`tag ${tag.tone}`} key={`${card.id}-${tag.label}`}>
+          <span className={`tag ${tag.tone}`} key={`${card.id}-${tag.label || 'unknown'}`}>
             {tag.label}
           </span>
         ))}
@@ -1267,8 +1289,8 @@ function ContentCard({
               >
                 <div className="source-meta">
                   <span>{source.sourceType}</span>
-                  {source.meta.map((item) => (
-                    <span key={item}>{item}</span>
+                  {source.meta.map((item, metaIndex) => (
+                    <span key={`${source.sourceId}-meta-${metaIndex}`}>{item}</span>
                   ))}
                 </div>
                 <strong>{source.title}</strong>
@@ -1305,26 +1327,48 @@ function ContentCard({
       ) : null}
       <ListBlock ordered title="主要争议" items={card.controversies} />
       <ListBlock title="可写角度" items={card.writingAngles} />
-      <div className="action-row">
-        <button className={`btn ghost ${expanded ? "selected" : ""}`} onClick={onToggleSummary} type="button">
-          {featured ? "总结一下" : expanded ? "收起卡片" : "展开卡片"}
-        </button>
-        <button className={`btn ghost ${reaction === "agree" ? "selected" : ""}`} onClick={() => onReact("agree")} type="button">
-          我认同
-        </button>
-        <button className={`btn ghost ${reaction === "disagree" ? "selected" : ""}`} onClick={() => onReact("disagree")} type="button">
-          我反对
-        </button>
-        <button className={`btn ghost ${reaction === "question" ? "selected" : ""}`} onClick={onQuestion} type="button">
-          有疑问
-        </button>
-        <button className="btn primary" onClick={onAddSeed} type="button">
-          加入种子库
-        </button>
-        <button className="btn ghost" onClick={onWrite} type="button">
-          基于它写一篇
-        </button>
-      </div>
+      {!hasReaction ? (
+        <div className="action-row">
+          <button className="btn ghost" onClick={() => onReact("agree")} type="button">
+            认同
+          </button>
+          <button className="btn ghost" onClick={() => onReact("disagree")} type="button">
+            反对
+          </button>
+          <button className="btn ghost" onClick={onQuestion} type="button">
+            疑问
+          </button>
+        </div>
+      ) : (
+        <div className="reaction-result">
+          <div className="reaction-header">
+            <span className={`tag ${reaction === "agree" ? "green" : "orange"}`}>
+              已记录：{reactionLabel(reaction)}
+            </span>
+            <button className="btn ghost compact" onClick={() => { setReactionNote(""); onClearReaction(); }} type="button" style={{ fontSize: 12, padding: "4px 10px" }}>
+              清除表态
+            </button>
+          </div>
+          <textarea
+            className="textarea"
+            placeholder="说说你的想法（可选）..."
+            value={reactionNote}
+            onChange={(e) => setReactionNote(e.target.value)}
+            style={{ minHeight: 60, marginTop: 8, marginBottom: 8 }}
+          />
+          <div className="action-row">
+            <button className={`btn ghost ${expanded ? "selected" : ""}`} onClick={onToggleSummary} type="button">
+              总结一下
+            </button>
+            <button className="btn primary" onClick={onAddSeed} type="button">
+              加入种子库
+            </button>
+            <button className="btn ghost" onClick={onWrite} type="button">
+              基于它写一篇
+            </button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -1424,6 +1468,7 @@ function SeedsSection({
 
 function SproutSection({
   started,
+  loading,
   opportunities,
   onStart,
   openSeeds,
@@ -1433,6 +1478,7 @@ function SproutSection({
   onDismiss,
 }: {
   started: boolean;
+  loading: boolean;
   opportunities: SproutOpportunity[];
   onStart: () => void;
   openSeeds: () => void;
@@ -1455,7 +1501,7 @@ function SproutSection({
             开始今日发芽
           </button>
         </div>
-        {!started ? (
+        {!started && !loading ? (
           <div className="panel-body">
             <article className="card structured-card no-hover">
               <div className="tag-row">
@@ -1463,8 +1509,6 @@ function SproutSection({
                 <span className="tag orange">用户主动触发</span>
               </div>
               <h3>今天要不要给你的种子浇浇水？</h3>
-              <InfoBlock title="我会帮你检查" text="历史观点种子、今日热榜、知乎搜索、关注流和你的兴趣画像之间是否出现新的写作机会。" />
-              <InfoBlock title="为什么需要你确认" text="今日发芽涉及搜索、语义匹配和 LLM 判断，会产生接口调用和 Token 成本，所以不自动频繁计算。" />
               <div className="action-row">
                 <button className="btn primary" onClick={onStart} type="button">
                   开始今日发芽
@@ -1475,6 +1519,11 @@ function SproutSection({
               </div>
             </article>
           </div>
+        ) : loading ? (
+          <div className="sprout-loading" style={{ display: "block" }}>
+            <div className="spinner" />
+            <p>正在匹配种子 × 热点 × 画像...</p>
+          </div>
         ) : (
           <div className="panel-body grid-2">
             {visibleOpportunities.map((opportunity) => (
@@ -1482,7 +1531,7 @@ function SproutSection({
                 <div className="sprout-badge">{opportunity.score}</div>
                 <div className="tag-row">
                   {opportunity.tags.map((tag, index) => (
-                    <span className={`tag ${tag.tone}`} key={`${opportunity.id}-${tag.label}-${index}`}>
+                    <span className={`tag ${tag.tone}`} key={`${opportunity.id}-${tag.label || 'unknown'}-${index}`}>
                       {tag.label}
                     </span>
                   ))}
@@ -1589,6 +1638,11 @@ function WritingSection({
               onReset={() => {
                 updateSession({ memoryOverride: baseMemory });
                 showToast("已恢复画像默认 Memory 注入");
+              }}
+              onWriteBack={() => {
+                if (confirm(`确认将修改后的 Memory 写入「${memory.interestName}」分类 Memory？`)) {
+                  showToast(`已写入 Memory：${memory.interestName} 分类画像已更新`);
+                }
               }}
             />
             <WritingStageContent
@@ -2742,7 +2796,7 @@ function NewSeedModal({
 }) {
   const interestCategories = categories.filter((category) => category.kind === "interest");
   const [title, setTitle] = useState("我想写一个关于 AI 工具和工程判断的观点");
-  const [interestId, setInterestId] = useState(interestCategories[0]?.id ?? "agent");
+  const [interestId, setInterestId] = useState(interestCategories[0]?.id ?? "shuma");
   const [coreClaim, setCoreClaim] = useState("AI 可以降低实现门槛，但不能替代工程判断。");
   const [userNote, setUserNote] = useState("这是我看完今天内容后的初步想法，还需要补案例和反方。");
   const [requiredMaterials, setRequiredMaterials] = useState("个人项目经历\n反方观点\n可引用来源");
@@ -3086,11 +3140,13 @@ function MemoryInjection({
   memory,
   onChange,
   onReset,
+  onWriteBack,
 }: {
   baseMemory: MemorySummary;
   memory: MemorySummary;
   onChange: (memory: MemorySummary) => void;
   onReset: () => void;
+  onWriteBack?: () => void;
 }) {
   const preferredPerspective = memory.preferredPerspective.join("、");
 
@@ -3110,9 +3166,16 @@ function MemoryInjection({
           <h3>本次写作使用的画像 Memory</h3>
           <p>修改只写入当前写作 session，不会直接覆盖全局个人画像。</p>
         </div>
-        <button className="btn ghost compact" onClick={onReset} type="button" disabled={JSON.stringify(baseMemory) === JSON.stringify(memory)}>
-          恢复画像默认
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn ghost compact" onClick={onReset} type="button" disabled={JSON.stringify(baseMemory) === JSON.stringify(memory)}>
+            恢复画像默认
+          </button>
+          {onWriteBack ? (
+            <button className="btn primary compact" onClick={onWriteBack} type="button" disabled={JSON.stringify(baseMemory) === JSON.stringify(memory)}>
+              写入 Memory
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="memory-edit-grid">
         <div className="field">
@@ -3262,7 +3325,7 @@ function buildSeedFromCard(card: WorthReadingCard, categories: InputCategory[], 
     interestId: card.categoryId,
     title: card.writingAngles[0] ?? card.title,
     interestName: category?.name ?? card.categoryId,
-    source: card.tags.map((tag) => tag.label).join(" / "),
+    source: card.tags.map((tag) => tag.label || '').filter(Boolean).join(" / "),
     sourceTitle: card.title,
     sourceSummary: card.contentSummary,
     sourceUrl: card.originalSources[0]?.sourceUrl,
@@ -3449,7 +3512,7 @@ function cardsForCategory(cards: WorthReadingCard[], categoryId: string, refresh
     ...card,
     relevanceScore: Math.min(99, card.relevanceScore + refreshState.refreshCount + index),
     tags: [
-      ...card.tags.filter((tag) => !tag.label.startsWith("刷新")),
+      ...card.tags.filter((tag) => tag.label && !tag.label.startsWith("刷新")),
       { label: `刷新 ${refreshState.refreshCount}`, tone: "green" as Tone },
     ],
   }));

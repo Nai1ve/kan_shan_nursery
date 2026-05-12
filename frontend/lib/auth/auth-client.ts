@@ -36,15 +36,18 @@ interface MockStore {
 }
 
 const interestNames: Record<string, string> = {
-  agent: "Agent 工程化",
-  "ai-coding": "AI Coding",
-  rag: "RAG / 检索",
-  backend: "后端工程",
-  growth: "程序员成长",
-  "finance-risk": "金融风控",
-  "medical-ai": "医学 AI",
-  "product-design": "产品设计",
-  "content-creation": "内容创作",
+  shuma: "数码科技",
+  zhichang: "职场教育",
+  chuangzuo: "创作表达",
+  shenghuo: "生活方式",
+  shehui: "社会人文",
+  bendi: "本地城市",
+  yule: "文娱体育",
+  caijing: "财经商业",
+  jiankang: "健康医学",
+  qiche: "汽车出行",
+  lishi: "历史考古",
+  huanjing: "环境自然",
 };
 
 function getSessionId(): string | null {
@@ -302,6 +305,10 @@ async function gatewayRequest<T>(path: string, method: string, payload?: unknown
 
   const response = await fetch(url, init);
   if (!response.ok) {
+    // Clear session on 401 (unauthorized)
+    if (response.status === 401) {
+      clearSession();
+    }
     const error = await response.json().catch(() => ({ message: "Request failed" }));
     throw new Error(error.error?.message || error.detail?.message || `HTTP ${response.status}`);
   }
@@ -328,7 +335,13 @@ export async function logout(): Promise<{ success: boolean }> {
 }
 
 export async function getMe(): Promise<AuthMeResponse> {
-  return request<AuthMeResponse>("/api/v1/auth/me", "GET");
+  try {
+    return await request<AuthMeResponse>("/api/v1/auth/me", "GET");
+  } catch {
+    // Session expired or invalid - return unauthenticated state
+    clearSession();
+    return { authenticated: false, user: null, setupState: "zhihu_pending" };
+  }
 }
 
 export async function getZhihuAuthorizeUrl(): Promise<{ url: string }> {

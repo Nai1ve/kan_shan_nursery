@@ -5,9 +5,14 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-_SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
-if str(_SHARED_ROOT) not in sys.path:
-    sys.path.insert(0, str(_SHARED_ROOT))
+# In Docker, shared-python is installed via pip, so no sys.path manipulation needed.
+# For local development, try to find it relative to the project root.
+try:
+    _SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
+    if _SHARED_ROOT.exists() and str(_SHARED_ROOT) not in sys.path:
+        sys.path.insert(0, str(_SHARED_ROOT))
+except (IndexError, OSError):
+    pass
 
 from kanshan_shared import configure_logging, get_logger, load_config
 

@@ -5,8 +5,12 @@ import os
 import sys
 from pathlib import Path
 
-_SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
-if str(_SHARED_ROOT) not in sys.path:
+# In Docker, shared-python is installed via pip, so no sys.path manipulation needed.
+try:
+    _SHARED_ROOT = Path(__file__).resolve().parents[3] / "packages" / "shared-python"
+except (IndexError, OSError):
+    _SHARED_ROOT = None
+if _SHARED_ROOT and str(_SHARED_ROOT) not in sys.path:
     sys.path.insert(0, str(_SHARED_ROOT))
 
 from kanshan_shared import configure_logging, get_logger, load_config

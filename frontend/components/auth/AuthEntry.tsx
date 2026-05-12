@@ -22,7 +22,6 @@ import { PreferenceOnboardingPanel } from "./PreferenceOnboardingPanel";
 import { ProfileGenerationPanel } from "./ProfileGenerationPanel";
 
 type AuthStep = "loading" | "login" | "register" | "zhihu" | "llm" | "preferences" | "generating";
-type AuthMode = "login" | "register" | "demo";
 type ProgressStepId = "auth" | "zhihu" | "llm" | "interest" | "style" | "generation";
 
 interface AuthEntryProps {
@@ -41,7 +40,6 @@ const setupSteps: { id: ProgressStepId; label: string; desc: string }[] = [
 
 export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
   const [step, setStep] = useState<AuthStep>("loading");
-  const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [preferenceStep, setPreferenceStep] = useState<"interests" | "style">("interests");
   const [authStatus, setAuthStatus] = useState<AuthStatus>("guest");
   const [user, setUser] = useState<AuthResponse["user"] | null>(null);
@@ -80,13 +78,11 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
         navigateToStep(me.setupState || "zhihu_pending");
       } else {
         setAuthStatus("guest");
-        setAuthMode("register");
-        setStep("register");
+        setStep("login");
       }
     } catch {
       setAuthStatus("guest");
-      setAuthMode("register");
-      setStep("register");
+      setStep("login");
     }
   }, [navigateToStep]);
 
@@ -109,7 +105,8 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     setUser(response.user);
     setSetupState(response.setupState);
     setAuthStatus("authenticated");
-    navigateToStep(response.setupState);
+    // 登录直接进入工作台，不走引导流程
+    onComplete();
   }
 
   function handleZhihuComplete() {
@@ -135,12 +132,6 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     setOnboardingResult(response);
     setSetupState("provisional_ready");
     setStep("generating");
-  }
-
-  function setAuthPanel(mode: AuthMode) {
-    setAuthMode(mode);
-    if (mode === "login") setStep("login");
-    if (mode === "register") setStep("register");
   }
 
   const progressStep: ProgressStepId =
@@ -192,14 +183,121 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     );
   }
 
+  // 登录页面 - 简洁布局
+  if (step === "login") {
+    return (
+      <main className="login-shell">
+        <div className="login-container">
+          {/* 左侧：登录表单 */}
+          <div className="login-left">
+            <div className="login-brand">
+              <div className="login-logo">苗</div>
+              <div>
+                <h1>看山小苗圃</h1>
+                <p>知乎读写一体创作 Agent</p>
+              </div>
+            </div>
+
+            <div className="login-form-container">
+              <h2>登录</h2>
+              <p className="login-subtitle">登录你的账号继续使用</p>
+
+              <LoginPanel
+                onSuccess={handleLoginSuccess}
+                onSwitchToRegister={() => setStep("register")}
+              />
+
+              <div className="login-divider">
+                <span>或</span>
+              </div>
+
+              <button
+                className="btn ghost login-demo-btn"
+                onClick={onShowDemo}
+                type="button"
+              >
+                进入演示模式
+              </button>
+            </div>
+          </div>
+
+          {/* 右侧：刘看山图片区域 */}
+          <div className="login-right">
+            <div className="login-image-placeholder">
+              <div className="login-mascot">
+                <div className="mascot-character">刘</div>
+                <div className="mascot-name">看山</div>
+              </div>
+              <p className="login-tagline">看到好内容，形成好观点，写出好文章</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // 注册页面 - 左侧表单，右侧图片
+  if (step === "register") {
+    return (
+      <main className="login-shell">
+        <div className="login-container">
+          {/* 左侧：注册表单 */}
+          <div className="login-left">
+            <div className="login-brand">
+              <div className="login-logo">苗</div>
+              <div>
+                <h1>看山小苗圃</h1>
+                <p>知乎读写一体创作 Agent</p>
+              </div>
+            </div>
+
+            <div className="login-form-container">
+              <h2>注册</h2>
+              <p className="login-subtitle">创建账号开始你的创作之旅</p>
+
+              <RegisterPanel
+                onSuccess={handleRegisterSuccess}
+                onSwitchToLogin={() => setStep("login")}
+              />
+
+              <div className="login-divider">
+                <span>或</span>
+              </div>
+
+              <button
+                className="btn ghost login-demo-btn"
+                onClick={onShowDemo}
+                type="button"
+              >
+                进入演示模式
+              </button>
+            </div>
+          </div>
+
+          {/* 右侧：刘看山图片区域 */}
+          <div className="login-right">
+            <div className="login-image-placeholder">
+              <div className="login-mascot">
+                <div className="mascot-character">刘</div>
+                <div className="mascot-name">看山</div>
+              </div>
+              <p className="login-tagline">看到好内容，形成好观点，写出好文章</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // 后续步骤（知乎关联、LLM配置、兴趣选择、画像生成）
   return (
     <main className="auth-entry-shell">
       <div className="auth-entry-topbar">
         <div className="auth-brand">
           <div className="login-logo auth-logo">苗</div>
           <div className="auth-title-block">
-            <h1>登录 / 注册</h1>
-            <p>先建立本地用户身份，再逐步完成知乎授权、LLM 配置、兴趣采集和画像生成。</p>
+            <h1>{stepTitle}</h1>
+            <p>{stepDesc}</p>
           </div>
         </div>
         <div className="auth-status-pill" role="status">
@@ -237,87 +335,6 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
           </div>
 
           <div className="panel-body">
-            {(step === "login" || step === "register") ? (
-              <section className="auth-step-panel active">
-                <div className="grid-2 auth-intro-grid">
-                  <div className="card no-hover">
-                    <div className="tag-row">
-                      <span className="tag blue">欢迎使用</span>
-                      <span className="tag green">本地账号</span>
-                    </div>
-                    <h3>看山小苗圃</h3>
-                    <p className="field-text">
-                      登录或注册一个本地账号。后续的知乎授权、兴趣选择、写作风格和创作画像都会绑定到这个账号。
-                    </p>
-                    <div className="field-block">
-                      <div className="field-title">你将完成：</div>
-                      <ul className="field-list">
-                        <li>选择兴趣领域，建立长期 Memory 主类</li>
-                        <li>配置平台免费额度或自己的 LLM</li>
-                        <li>生成临时画像，等待 OAuth 后增强</li>
-                        <li>进入读写一体工作台</li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div className="card no-hover">
-                    <div className="auth-tabs" role="tablist" aria-label="登录注册入口">
-                      <button
-                        className={`auth-tab ${authMode === "login" ? "active" : ""}`}
-                        onClick={() => setAuthPanel("login")}
-                        type="button"
-                      >
-                        登录
-                      </button>
-                      <button
-                        className={`auth-tab ${authMode === "register" ? "active" : ""}`}
-                        onClick={() => setAuthPanel("register")}
-                        type="button"
-                      >
-                        注册
-                      </button>
-                      <button
-                        className={`auth-tab ${authMode === "demo" ? "active" : ""}`}
-                        onClick={() => setAuthMode("demo")}
-                        type="button"
-                      >
-                        演示模式
-                      </button>
-                    </div>
-
-                    {authMode === "login" ? (
-                      <div className="auth-mode-panel active">
-                        <LoginPanel onSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthPanel("register")} />
-                      </div>
-                    ) : null}
-
-                    {authMode === "register" ? (
-                      <div className="auth-mode-panel active">
-                        <RegisterPanel onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthPanel("login")} />
-                      </div>
-                    ) : null}
-
-                    {authMode === "demo" ? (
-                      <div className="auth-mode-panel active">
-                        <div className="auth-panel compact-auth-panel">
-                          <div className="tag-row">
-                            <span className="tag orange">开发 / 路演入口</span>
-                          </div>
-                          <h3>演示模式</h3>
-                          <p className="field-text">演示模式用于黑客松路演或开发调试，不作为正式用户主路径。</p>
-                          {onShowDemo ? (
-                            <button className="auth-button primary" onClick={onShowDemo} type="button">
-                              进入演示工作台
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </section>
-            ) : null}
-
             {step === "zhihu" && user ? (
               <section className="auth-step-panel active">
                 <ZhihuLinkPanel userId={user.userId} onComplete={handleZhihuComplete} onSkip={handleZhihuSkip} />

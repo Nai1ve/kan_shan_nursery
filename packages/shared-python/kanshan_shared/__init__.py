@@ -12,19 +12,27 @@ Do not put business logic here.
 """
 
 from .config import KanshanConfig, ZhihuConfig, load_config
-from .database import Base, get_engine, get_session_factory
 from .logger import LoggerFactory, configure_logging, get_logger
-from .redis_client import get_redis_client
 
 __all__ = [
     "KanshanConfig",
     "ZhihuConfig",
     "load_config",
-    "Base",
-    "get_engine",
-    "get_session_factory",
-    "get_redis_client",
     "LoggerFactory",
     "configure_logging",
     "get_logger",
 ]
+
+# Optional imports - these require sqlalchemy/redis which may not be installed
+# in services that don't need them (e.g., api-gateway)
+try:
+    from .database import Base, get_engine, get_session_factory
+    __all__ += ["Base", "get_engine", "get_session_factory"]
+except ImportError:
+    pass
+
+try:
+    from .redis_client import get_redis_client
+    __all__ += ["get_redis_client"]
+except ImportError:
+    pass

@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Use China mirror for pip
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
 # Install shared-python package first
 COPY packages/shared-python /app/packages/shared-python
 RUN pip install --no-cache-dir /app/packages/shared-python

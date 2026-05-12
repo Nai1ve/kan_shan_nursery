@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Use China mirror for npm
+RUN npm config set registry https://registry.npmmirror.com
+
 # Copy package files
 COPY frontend/package.json frontend/package-lock.json ./
 

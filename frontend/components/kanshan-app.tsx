@@ -4211,6 +4211,13 @@ function RoundtableDiscussion({
             </div>
             <span style={{ marginTop: "6px", padding: "4px 12px", background: "var(--primary)", color: "#fff", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>主持人（你）</span>
           </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("human")}>
+            <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
+              <img src="/images/roundtable/agent-human.png" alt="人味编辑" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "human" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+              {speakingId === "human" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
+            </div>
+            <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>人味编辑</span>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("spread")}>
             <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
               <img src="/images/roundtable/agent-spread_transparent.png" alt="社区传播" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />

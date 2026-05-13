@@ -1454,7 +1454,7 @@ export function KanshanApp() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="user-pill" onClick={() => goTab("profile")} type="button">
-              <img src="/images/roundtable/agent-human_transparent.png" alt="用户" className="avatar" style={{ objectFit: "cover" }} />
+              <img src="/images/roundtable/agent-human.png" alt="用户" className="avatar" style={{ objectFit: "cover" }} />
               <div>
                 <div className="user-name">{data.profile.nickname}</div>
                 <div className="user-mode">{data.profile.accountStatus}</div>

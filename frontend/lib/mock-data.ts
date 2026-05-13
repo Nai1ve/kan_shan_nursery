@@ -14,14 +14,20 @@ import type {
 const createdAt = "2026-05-09T09:00:00+08:00";
 
 export const categories: InputCategory[] = [
-  { id: "shuma", name: "数码科技", meta: "2 张卡 · 1 条发芽", kind: "interest", active: true },
-  { id: "zhichang", name: "职场教育", meta: "2 张卡 · 2 条观点", kind: "interest" },
-  { id: "chuangzuo", name: "创作表达", meta: "2 张卡 · 1 条缺资料", kind: "interest" },
-  { id: "shenghuo", name: "生活方式", meta: "2 张卡", kind: "interest" },
-  { id: "shehui", name: "社会人文", meta: "2 张卡", kind: "interest" },
-  { id: "bendi", name: "本地城市", meta: "2 张卡", kind: "interest" },
-  { id: "following", name: "关注流精选", meta: "3 条社交输入", kind: "following" },
-  { id: "serendipity", name: "偶遇输入", meta: "2 条远端关联", kind: "serendipity" },
+  { id: "shuma", name: "数码科技", meta: "", kind: "interest", active: true },
+  { id: "zhichang", name: "职场教育", meta: "", kind: "interest" },
+  { id: "chuangzuo", name: "创作表达", meta: "", kind: "interest" },
+  { id: "shenghuo", name: "生活方式", meta: "", kind: "interest" },
+  { id: "shehui", name: "社会人文", meta: "", kind: "interest" },
+  { id: "bendi", name: "本地城市", meta: "", kind: "interest" },
+  { id: "yule", name: "文娱体育", meta: "", kind: "interest" },
+  { id: "caijing", name: "财经商业", meta: "", kind: "interest" },
+  { id: "jiankang", name: "健康医学", meta: "", kind: "interest" },
+  { id: "qiche", name: "汽车出行", meta: "", kind: "interest" },
+  { id: "lishi", name: "历史考古", meta: "", kind: "interest" },
+  { id: "huanjing", name: "环境自然", meta: "", kind: "interest" },
+  { id: "following", name: "关注流精选", meta: "", kind: "following" },
+  { id: "serendipity", name: "偶遇输入", meta: "", kind: "serendipity" },
 ];
 
 const categoryName = new Map(categories.map((item) => [item.id, item.name]));
@@ -30,7 +36,7 @@ export const profile: ProfileData = {
   nickname: "看山编辑",
   accountStatus: "已关联知乎账号 · 演示模式",
   role: "技术创作者 / Java 后端转 AI Agent / 研究生",
-  interests: ["数码科技", "职场教育", "创作表达", "生活方式", "社会人文", "本地城市"],
+  interests: ["数码科技", "职场教育", "创作表达", "生活方式", "社会人文", "本地城市", "文娱体育", "财经商业", "健康医学", "汽车出行", "历史考古", "环境自然"],
   avoidances:
     "不要替我决定立场；不要生成空泛、油滑、过度平衡的 AI 味文章；不要只追逐热度而牺牲我的工程视角。",
   globalMemory: {
@@ -46,12 +52,18 @@ export const profile: ProfileData = {
       "容易写成逻辑完整但缺少个人经历的文章；需要在写作阶段主动补充真实案例。",
   },
   interestMemories: [
-    memory("shuma", "进阶", ["设备", "软件", "AI", "消费电子"], "案例优先", "避免停留在概念层，需要给出可落地的评估维度和真实使用场景。"),
-    memory("zhichang", "中级", ["职业判断", "学习路径", "个人经历"], "个人经验+案例", "允许表达鲜明立场，但要回应焦虑和反方质疑。"),
-    memory("chuangzuo", "中级", ["表达结构", "社区语境", "读者反馈"], "案例+反馈", "要避免模板化写作，强调作者主体性和观点形成过程。"),
-    memory("shenghuo", "入门", ["生活经验", "实用建议"], "个人经验优先", "真实体验比框架更重要，允许轻松但不空泛。"),
-    memory("shehui", "中级", ["社会观察", "人文思考"], "资料+观点平衡", "需要有论据支撑，避免情绪化判断。"),
-    memory("bendi", "入门", ["本地生活", "城市观察"], "个人体验优先", "以真实体验为主，不需要宏大叙事。"),
+    memory("shuma", "中级", ["设备", "软件", "AI", "消费电子"], "案例优先", "不要只讲参数和发布会，需要补充实际使用场景和购买决策分析。"),
+    memory("zhichang", "进阶", ["职业判断", "学习路径", "个人经历"], "个人经验 + 案例", "允许表达鲜明立场，但要回应焦虑和反方质疑。"),
+    memory("chuangzuo", "中级", ["表达结构", "社区语境", "读者反馈"], "案例 + 反馈", "避免模板化写作，强调作者主体性和观点形成过程。"),
+    memory("shenghuo", "入门", ["生活经验", "实用建议"], "个人经验优先", "保持真实感，避免泛泛而谈的生活建议。"),
+    memory("shehui", "中级", ["社会观察", "人文思考"], "资料 + 观点平衡", "需要有数据或案例支撑，避免纯情绪化表达。"),
+    memory("bendi", "入门", ["本地生活", "城市观察"], "个人体验优先", "需要真实的本地体验，避免通用化描述。"),
+    memory("yule", "入门", ["影视", "音乐", "游戏", "运动"], "个人体验 + 评论", "允许有情绪表达，但需要有具体观点。"),
+    memory("caijing", "中级", ["投资", "理财", "商业分析"], "数据 + 案例", "需要谨慎，不做投资建议，只讨论分析方法。"),
+    memory("jiankang", "入门", ["身心健康", "医疗科普"], "论文 + 案例", "要谨慎，不做医疗建议，只讨论科普知识。"),
+    memory("qiche", "入门", ["新能源", "驾驶", "出行方式"], "个人体验优先", "需要真实用车体验，避免纯参数对比。"),
+    memory("lishi", "中级", ["历史事件", "文化遗迹", "考古发现"], "资料 + 观点", "需要有史料支撑，避免戏说。"),
+    memory("huanjing", "入门", ["环保", "自然生态", "户外探索"], "个人体验 + 数据", "需要有实际体验或数据支撑。"),
   ],
 };
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
-
+from kanshan_shared import load_config
 from kanshan_shared.database import Base, get_engine, get_session_factory
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan",
-)
+_config = load_config()
+DATABASE_URL = _config.database_url
 
 _engine = None
 _session_factory = None

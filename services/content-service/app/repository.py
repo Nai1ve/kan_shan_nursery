@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .mock_data import build_categories, build_card, build_initial_cards, _CARD_SPECS
+from .mock_data import build_categories
 from . import scheduler as content_scheduler
 
 
@@ -25,8 +25,6 @@ def _now_iso() -> str:
 
 class ContentRepository:
     def __init__(self, enricher: Any = None, profile_service_url: str = "") -> None:
-        self._cards: dict[str, dict[str, Any]] = {card["id"]: card for card in build_initial_cards()}
-        self._refresh_state: dict[str, dict[str, Any]] = {}
         self._enricher = enricher
         self._profile_service_url = profile_service_url
         self._enriched_cache: dict[str, list[dict[str, Any]]] = {}
@@ -46,6 +44,11 @@ class ContentRepository:
                     cat["meta"] = "需知乎关联"
                 elif count > 0:
                     cat["meta"] = f"{count} 张卡"
+        else:
+            # No cached data - show empty state
+            for cat in categories:
+                if cat["id"] not in ("following", "serendipity"):
+                    cat["meta"] = "暂无数据"
         return categories
 
     def list_cards(self, category_id: str | None = None) -> list[dict[str, Any]]:
@@ -73,11 +76,8 @@ class ContentRepository:
 
             return top
 
-        # Fall back to mock data (no card limit for mock)
-        cards = list(self._cards.values())
-        if category_id:
-            cards = [card for card in cards if card["categoryId"] == category_id]
-        return sorted(cards, key=lambda card: (-(card.get("relevanceScore") or 0), card["id"]))
+        # No cached data - return empty list (no mock fallback)
+        return []
 
     def _get_interest_memory(self, category_id: str | None) -> dict[str, Any] | None:
         """Get per-interest memory from profile-service."""
@@ -106,11 +106,8 @@ class ContentRepository:
         for card in cached:
             if card["id"] == card_id:
                 return card
-        # Fall back to mock
-        card = self._cards.get(card_id)
-        if not card:
-            raise CardNotFound(card_id)
-        return card
+        # No cached data - card not found
+        raise CardNotFound(card_id)
 
     def get_source(self, card_id: str, source_id: str) -> dict[str, Any]:
         card = self.get_card(card_id)
@@ -122,7 +119,8 @@ class ContentRepository:
     def update_card(self, card_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         card = self.get_card(card_id)
         next_card = {**card, **patch}
-        self._cards[card_id] = next_card
+        # Note: This only updates the in-memory representation for the current request
+        # The cache in scheduler is not updated (would need cache invalidation)
         return next_card
 
     def refresh_category(self, category_id: str) -> dict[str, Any]:
@@ -145,29 +143,59 @@ class ContentRepository:
                 "cards": unshown,
             }
 
-        # Fall back to mock data refresh
-        category_specs = [spec for spec in _CARD_SPECS if spec["categoryId"] == category_id]
-        if not category_specs:
-            raise CategoryNotFound(category_id)
-        state = self._refresh_state.get(category_id, {"refreshCount": 0})
-        next_count = state.get("refreshCount", 0) + 1
-        existing_ids = [card["id"] for card in self._cards.values() if card["categoryId"] == category_id]
-        for card_id in existing_ids:
-            self._cards.pop(card_id, None)
-        rotated_cards = []
-        for offset, base_spec in enumerate(category_specs):
-            new_card = build_card(base_spec, offset + next_count * 7)
-            new_card["id"] = f"{base_spec['id']}-r{next_count}"
-            new_card["createdAt"] = _now_iso()
-            self._cards[new_card["id"]] = new_card
-            rotated_cards.append(new_card)
-        new_state = {
-            "refreshCount": next_count,
-            "refreshedAt": _now_iso(),
-            "visibleCardIds": [card["id"] for card in rotated_cards],
+        # No more unshown cards - try to fetch new content
+        new_cards = self._fetch_new_content_for_category(category_id)
+        if new_cards:
+            return {
+                "categoryId": category_id,
+                "refreshState": {
+                    "refreshCount": 1,
+                    "refreshedAt": _now_iso(),
+                    "source": "fresh",
+                },
+                "cards": new_cards,
+            }
+
+        # Still no cards - return empty
+        return {
+            "categoryId": category_id,
+            "refreshState": {
+                "refreshCount": 0,
+                "refreshedAt": _now_iso(),
+                "source": "cache",
+            },
+            "cards": [],
         }
-        self._refresh_state[category_id] = new_state
-        return {"categoryId": category_id, "refreshState": new_state, "cards": rotated_cards}
+
+    def _fetch_new_content_for_category(self, category_id: str) -> list[dict[str, Any]]:
+        """Fetch new content for a specific category from zhihu-adapter."""
+        import logging
+        logger = logging.getLogger("kanshan.content.repository")
+
+        try:
+            from .scheduler import fetch_and_cache_content
+            from kanshan_shared import load_config
+            config = load_config()
+
+            # Fetch new content (this will update the cache)
+            logger.info("fetching_new_content", extra={"categoryId": category_id})
+            cards_by_category = fetch_and_cache_content(
+                zhihu_base_url=config.service_urls.zhihu,
+                profile_base_url=config.service_urls.profile,
+            )
+
+            # Return cards for the requested category
+            new_cards = cards_by_category.get(category_id, [])
+            if new_cards:
+                # Mark these as shown
+                for card in new_cards:
+                    content_scheduler.mark_card_shown(card["id"])
+                logger.info("new_content_fetched", extra={"categoryId": category_id, "count": len(new_cards)})
+
+            return new_cards
+        except Exception as e:
+            logger.error("fetch_new_content_failed", extra={"categoryId": category_id, "error": str(e)})
+            return []
 
 
 CATEGORIES_BY_ID = {item["id"]: item for item in build_categories()}

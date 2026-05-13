@@ -89,6 +89,41 @@ class LoggingConfig:
 
 
 @dataclass
+class ServiceUrlsConfig:
+    """Inter-service URLs for gateway and content service."""
+    profile: str = "http://127.0.0.1:8010"
+    content: str = "http://127.0.0.1:8020"
+    seed: str = "http://127.0.0.1:8030"
+    sprout: str = "http://127.0.0.1:8040"
+    writing: str = "http://127.0.0.1:8050"
+    feedback: str = "http://127.0.0.1:8060"
+    zhihu: str = "http://127.0.0.1:8070"
+    llm: str = "http://127.0.0.1:8080"
+
+
+@dataclass
+class LLMConfig:
+    """LLM service specific config."""
+    provider_mode: str = "mock"
+    default_model: str = "zhida-thinking-1p5"
+    prompt_version: str = "v1"
+    schema_version: str = "v1"
+    cache_backend: str = "memory"
+    cache_ttl_seconds: int = 21600
+    request_timeout_seconds: int = 20
+    trace_dir: str = "output/llm-trace"
+    trace_enabled: bool = True
+
+
+@dataclass
+class OpenAICompatConfig:
+    """OpenAI-compatible API config."""
+    base_url: str = ""
+    api_key: str = ""
+    model: str = "gpt-4o-mini"
+
+
+@dataclass
 class KanshanConfig:
     provider_mode: str = "mock"
     database_url: str = "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan"
@@ -97,6 +132,9 @@ class KanshanConfig:
     zhihu: ZhihuConfig = field(default_factory=ZhihuConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    service_urls: ServiceUrlsConfig = field(default_factory=ServiceUrlsConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    openai_compat: OpenAICompatConfig = field(default_factory=OpenAICompatConfig)
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -185,6 +223,9 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
     quota_raw = zhihu_raw.get("quota") or {}
     cache_raw = raw.get("cache") or {}
     logging_raw = raw.get("logging") or {}
+    service_urls_raw = raw.get("service_urls") or {}
+    llm_raw = raw.get("llm") or {}
+    openai_compat_raw = raw.get("openai_compat") or {}
 
     config = KanshanConfig(
         provider_mode=_pick(
@@ -285,7 +326,11 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
                 os.getenv("ZHIHU_CACHE_BACKEND"),
                 os.getenv("LLM_CACHE_BACKEND"),
                 cache_raw.get("backend"),
-                "memory",
+                # When deployed in Docker the yaml is not always mounted, but
+                # REDIS_URL is always set by compose. Promote to ``redis`` in
+                # that case so zhihu-adapter / llm-service stop silently
+                # falling back to in-memory caching.
+                "redis" if os.getenv("REDIS_URL") else "memory",
             ),
             redis_url=_pick(os.getenv("REDIS_URL"), cache_raw.get("redis_url"), "redis://127.0.0.1:6379/0"),
         ),
@@ -300,6 +345,32 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
                 logging_raw.get("console_level"),
                 "INFO",
             ),
+        ),
+        service_urls=ServiceUrlsConfig(
+            profile=_pick(os.getenv("PROFILE_SERVICE_URL"), service_urls_raw.get("profile"), "http://127.0.0.1:8010"),
+            content=_pick(os.getenv("CONTENT_SERVICE_URL"), service_urls_raw.get("content"), "http://127.0.0.1:8020"),
+            seed=_pick(os.getenv("SEED_SERVICE_URL"), service_urls_raw.get("seed"), "http://127.0.0.1:8030"),
+            sprout=_pick(os.getenv("SPROUT_SERVICE_URL"), service_urls_raw.get("sprout"), "http://127.0.0.1:8040"),
+            writing=_pick(os.getenv("WRITING_SERVICE_URL"), service_urls_raw.get("writing"), "http://127.0.0.1:8050"),
+            feedback=_pick(os.getenv("FEEDBACK_SERVICE_URL"), service_urls_raw.get("feedback"), "http://127.0.0.1:8060"),
+            zhihu=_pick(os.getenv("ZHIHU_ADAPTER_URL"), service_urls_raw.get("zhihu"), "http://127.0.0.1:8070"),
+            llm=_pick(os.getenv("LLM_SERVICE_URL"), service_urls_raw.get("llm"), "http://127.0.0.1:8080"),
+        ),
+        llm=LLMConfig(
+            provider_mode=_pick(os.getenv("LLM_PROVIDER_MODE"), llm_raw.get("provider_mode"), "mock"),
+            default_model=_pick(os.getenv("LLM_DEFAULT_MODEL"), llm_raw.get("default_model"), "zhida-thinking-1p5"),
+            prompt_version=_pick(os.getenv("LLM_PROMPT_VERSION"), llm_raw.get("prompt_version"), "v1"),
+            schema_version=_pick(os.getenv("LLM_SCHEMA_VERSION"), llm_raw.get("schema_version"), "v1"),
+            cache_backend=_pick(os.getenv("LLM_CACHE_BACKEND"), llm_raw.get("cache_backend"), "memory"),
+            cache_ttl_seconds=int(_pick(os.getenv("LLM_CACHE_TTL_SECONDS"), llm_raw.get("cache_ttl_seconds"), 21600) or 21600),
+            request_timeout_seconds=int(_pick(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS"), llm_raw.get("request_timeout_seconds"), 20) or 20),
+            trace_dir=_pick(os.getenv("LLM_TRACE_DIR"), llm_raw.get("trace_dir"), "output/llm-trace"),
+            trace_enabled=_pick(os.getenv("LLM_TRACE_ENABLED"), llm_raw.get("trace_enabled"), "1") in ("1", "true", "True"),
+        ),
+        openai_compat=OpenAICompatConfig(
+            base_url=_pick(os.getenv("OPENAI_COMPAT_BASE_URL"), openai_compat_raw.get("base_url"), ""),
+            api_key=_pick(os.getenv("OPENAI_COMPAT_API_KEY"), openai_compat_raw.get("api_key"), ""),
+            model=_pick(os.getenv("OPENAI_COMPAT_MODEL"), openai_compat_raw.get("model"), "gpt-4o-mini"),
         ),
     )
     return config

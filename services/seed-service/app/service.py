@@ -15,11 +15,16 @@ class SeedNotFound(Exception):
 
 
 class SeedService:
-    def __init__(self, repository: SeedRepository | None = None) -> None:
+    def __init__(self, repository: SeedRepository | None = None, llm_client=None) -> None:
         self.repository = repository or SeedRepository()
+        self.llm_client = llm_client
 
-    def list_seeds(self) -> list[dict[str, Any]]:
-        return self.repository.list()
+    def list_seeds(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        items = self.repository.list()
+        if user_id is None:
+            return items
+        # Keep seeds with no userId (fixtures / legacy) visible to everyone.
+        return [seed for seed in items if not seed.get("userId") or seed.get("userId") == user_id]
 
     def get_seed(self, seed_id: str) -> dict[str, Any]:
         seed = self.repository.get(seed_id)
@@ -39,11 +44,14 @@ class SeedService:
         if "cardId" not in payload or "reaction" not in payload:
             raise ValueError("cardId and reaction are required")
         card_id = payload["cardId"]
+        user_id = payload.get("userId")
+        seed_id_hint = payload.get("seedId") or payload.get("id")
         existing = self.repository.find_by_card_id(card_id)
         if existing:
             next_seed = seed_logic.recalc_seed(
                 {
                     **existing,
+                    "userId": user_id or existing.get("userId"),
                     "userReaction": payload["reaction"],
                     "userNote": payload.get("userNote", existing.get("userNote", "")),
                     "updatedAt": seed_logic.now_iso(),
@@ -52,14 +60,20 @@ class SeedService:
             return self.repository.save(next_seed)
 
         card = payload.get("card") or self._fallback_card(card_id)
-        seed = seed_logic.build_seed_from_card(card, payload["reaction"], payload.get("userNote"))
+        seed = seed_logic.build_seed_from_card(
+            card,
+            payload["reaction"],
+            payload.get("userNote"),
+            seed_id=seed_id_hint,
+            user_id=user_id,
+        )
         return self.repository.save(seed)
 
     def add_question(self, seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not payload.get("question"):
             raise ValueError("question is required")
         seed = self.get_seed(seed_id)
-        next_seed = seed_logic.answer_question(seed, payload["question"], payload.get("parentQuestionId"))
+        next_seed = seed_logic.answer_question(seed, payload["question"], payload.get("parentQuestionId"), llm_client=self.llm_client)
         return self.repository.save(next_seed)
 
     def mark_question(self, seed_id: str, question_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -115,7 +129,7 @@ class SeedService:
         material_type = payload.get("type", "evidence")
         if material_type not in {"evidence", "counterargument"}:
             raise ValueError("Agent supplement only supports evidence or counterargument")
-        return self.repository.save(seed_logic.agent_supplement(seed, material_type))
+        return self.repository.save(seed_logic.agent_supplement(seed, material_type, llm_client=self.llm_client))
 
     def merge(self, target_seed_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         target = self.get_seed(target_seed_id)

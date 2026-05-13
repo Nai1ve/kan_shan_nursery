@@ -36,6 +36,7 @@ def run_mock_task(task_type: str, input_data: dict[str, Any], persona: str | Non
         "draft": _draft,
         "roundtable-review": _roundtable_review,
         "feedback-summary": _feedback_summary,
+        "profile-memory-synthesis": _profile_memory_synthesis,
     }
     try:
         return handlers[task_type](input_data)
@@ -244,6 +245,40 @@ def _feedback_summary(input_data: dict[str, Any]) -> dict[str, Any]:
         "summary": "反馈集中在观点有启发，但希望看到更多具体案例。",
         "signals": ["点赞来自认同观点", "评论集中追问证据", "收藏说明主题有长期价值"],
         "secondArticleIdeas": ["把本文的一个反方质疑展开成后续文章", "补一篇个人项目复盘作为案例"],
+    }
+
+
+def _profile_memory_synthesis(input_data: dict[str, Any]) -> dict[str, Any]:
+    user = input_data.get("user") or {}
+    nickname = user.get("nickname") or "用户"
+    interests = user.get("interests") or []
+    interactions = input_data.get("interactions") or {}
+    reactions = interactions.get("seedReactions") or []
+
+    # Build interest memories from user interests
+    interest_memories = []
+    for interest in interests:
+        interest_memories.append({
+            "interestId": interest,
+            "interestName": interest,
+            "knowledgeLevel": "中级",
+            "preferredPerspective": [f"{interest}相关视角"],
+            "evidencePreference": "个人经验 + 案例",
+            "writingReminder": f"关于{interest}的内容，需要补充实际使用场景和案例分析",
+            "feedbackSummary": "",
+        })
+
+    return {
+        "globalMemory": {
+            "longTermBackground": f"用户{nickname}，刚完成注册和兴趣选择。",
+            "contentPreference": "偏好真实经历、问题拆解、反方质疑。更重视'为什么这样想'而不是单纯罗列信息。",
+            "writingStyle": "清晰、克制；允许有观点锋芒，但避免标题党和情绪煽动。",
+            "recommendationStrategy": "按兴趣小类展开；关注流和偶遇输入作为平级入口。每次推荐都要说明为什么值得看。",
+            "riskReminder": "容易写成逻辑完整但缺少个人经历的文章；需要在写作阶段主动补充真实案例。",
+        },
+        "interestMemories": interest_memories,
+        "confidence": "medium",
+        "reasoning": "基于用户的兴趣选择和注册信息推断",
     }
 
 

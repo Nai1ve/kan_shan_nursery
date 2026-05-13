@@ -17,6 +17,7 @@ export interface InputCategory {
   meta: string;
   kind: InputCategoryKind;
   active?: boolean;
+  description?: string;
 }
 
 export interface ContentSource {
@@ -95,6 +96,7 @@ export interface SeedQuestion {
 
 export interface IdeaSeed {
   id: string;
+  userId?: string;
   interestId: string;
   title: string;
   interestName: string;

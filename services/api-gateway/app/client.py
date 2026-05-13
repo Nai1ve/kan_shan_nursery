@@ -35,21 +35,25 @@ class UrlLibDownstreamClient:
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
         timeout_seconds: float = 20,
+        session_id: str | None = None,
     ) -> tuple[int, Any]:
         url = f"{base_url.rstrip('/')}{path}"
         query = urllib.parse.urlencode({key: value for key, value in (params or {}).items() if value is not None})
         if query:
             url = f"{url}?{query}"
         body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Request-Id": request_id,
+        }
+        if session_id:
+            headers["x-session-id"] = session_id
         request = urllib.request.Request(
             url,
             data=body,
             method=method.upper(),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "X-Request-Id": request_id,
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:

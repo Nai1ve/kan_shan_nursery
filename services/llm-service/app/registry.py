@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from kanshan_shared import load_config
+
 from .providers import (
     MockProvider,
     OpenAICompatProvider,
@@ -13,6 +15,8 @@ from .providers import (
     ZhihuDirectProvider,
 )
 from .settings import Settings
+
+_shared_config = load_config()
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
@@ -60,11 +64,27 @@ class Registry:
                     timeout_seconds=self.settings.request_timeout_seconds,
                 )
             elif ptype == "openai_compat":
-                if all(os.getenv(env) for env in spec.get("requires_env") or []):
+                # Try config.yaml first, then env vars
+                openai_config = getattr(_shared_config, 'openai_compat', None)
+                base_url = ""
+                api_key = ""
+                model = "gpt-4o-mini"
+
+                if openai_config and hasattr(openai_config, 'base_url'):
+                    base_url = openai_config.base_url
+                    api_key = openai_config.api_key
+                    model = openai_config.model or model
+                else:
+                    # Fallback to env vars
+                    base_url = os.getenv("OPENAI_COMPAT_BASE_URL", "")
+                    api_key = os.getenv("OPENAI_COMPAT_API_KEY", "")
+                    model = os.getenv("OPENAI_COMPAT_MODEL", "gpt-4o-mini")
+
+                if base_url and api_key:
                     self._providers[name] = OpenAICompatProvider(
-                        base_url=os.getenv("OPENAI_COMPAT_BASE_URL", ""),
-                        api_key=os.getenv("OPENAI_COMPAT_API_KEY", ""),
-                        model=os.getenv("OPENAI_COMPAT_MODEL", "gpt-4o-mini"),
+                        base_url=base_url,
+                        api_key=api_key,
+                        model=model,
                         timeout_seconds=self.settings.request_timeout_seconds,
                     )
             else:

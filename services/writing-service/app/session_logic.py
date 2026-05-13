@@ -36,10 +36,45 @@ def _default_memory_for_interest(interest_id: str) -> dict[str, Any]:
     }
 
 
-def _build_blueprint(claim: str) -> dict[str, Any]:
+def _build_blueprint(claim: str, llm_client=None, session: dict[str, Any] | None = None) -> dict[str, Any]:
+    if llm_client and session:
+        try:
+            memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
+            seed = {"coreClaim": claim, "interestId": session.get("interestId", "")}
+            result = llm_client.argument_blueprint(
+                seed=seed,
+                materials=[],
+                memory=memory,
+                article_type=session.get("articleType", "deep_analysis"),
+            )
+            return {
+                "centralClaim": result.get("coreClaim", claim),
+                "background": result.get("outline", [{}])[0].get("section", "背景") if result.get("outline") else f'围绕"{claim}"近期出现的新讨论和案例。',
+                "arguments": [
+                    {
+                        "title": point.get("section", "论证"),
+                        "explanationPoints": point.get("points", []),
+                    }
+                    for point in result.get("outline", [])
+                ] or [
+                    {
+                        "title": "正方支撑：现实趋势",
+                        "explanationPoints": ["近期社区讨论已经出现明显倾向", "可以引用一个真实项目复盘作为例证"],
+                    },
+                ],
+                "counterArgument": result.get("counterResponses", [""])[0] if result.get("counterResponses") else "反方认为这个判断对小团队或非企业场景过度概括。",
+                "responseStrategy": "在文章中明确写出适用边界，并补充一个反例避免过度推广。",
+                "suggestedPersonalExperience": [
+                    "一次复杂系统交付中的真实判断",
+                    "AI 编程工具在你工作流里的实际使用感受",
+                ],
+            }
+        except Exception:
+            pass  # Fallback to mock below
+
     return {
         "centralClaim": claim,
-        "background": f"围绕“{claim}”近期出现的新讨论和案例。",
+        "background": f'围绕"{claim}"近期出现的新讨论和案例。',
         "arguments": [
             {
                 "title": "正方支撑：现实趋势",
@@ -72,7 +107,30 @@ def _build_blueprint(claim: str) -> dict[str, Any]:
     }
 
 
-def _build_draft(claim: str, tone: str) -> dict[str, Any]:
+def _build_draft(claim: str, tone: str, llm_client=None, session: dict[str, Any] | None = None) -> dict[str, Any]:
+    if llm_client and session:
+        try:
+            memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
+            seed = {"coreClaim": claim, "interestId": session.get("interestId", "")}
+            blueprint = session.get("blueprint", {})
+            result = llm_client.draft(
+                seed=seed,
+                materials=[],
+                blueprint=blueprint,
+                memory=memory,
+                tone=tone,
+            )
+            return {
+                "title": result.get("title", f"关于 {claim} 的工程视角"),
+                "tone": tone,
+                "outline": blueprint.get("arguments", []),
+                "body": result.get("body", f'以"{claim}"为核心，本文从工程视角拆开三层判断，并回应当前讨论中常见的反方质疑。'),
+                "aiDisclosureSuggestion": result.get("aiDisclosureSuggestion", "建议在发布时标注 AI 辅助整理。"),
+                "schemaVersion": "writing.draft.v1",
+            }
+        except Exception:
+            pass  # Fallback to mock below
+
     return {
         "title": f"关于 {claim} 的工程视角",
         "tone": tone,
@@ -83,19 +141,50 @@ def _build_draft(claim: str, tone: str) -> dict[str, Any]:
             "落地结论：一个可被检验的判断",
         ],
         "body": (
-            f"以“{claim}”为核心，本文从工程视角拆开三层判断，并回应当前讨论中常见的反方质疑。"
+            f'以"{claim}"为核心，本文从工程视角拆开三层判断，并回应当前讨论中常见的反方质疑。'
         ),
         "schemaVersion": "writing.draft.v1",
     }
 
 
-def _build_roundtable(claim: str) -> dict[str, Any]:
+def _build_roundtable(claim: str, llm_client=None, session: dict[str, Any] | None = None) -> dict[str, Any]:
+    if llm_client and session:
+        try:
+            memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
+            seed = {"coreClaim": claim, "interestId": session.get("interestId", "")}
+            draft = session.get("draft", {})
+            result = llm_client.roundtable_review(
+                seed=seed,
+                draft=draft,
+                memory=memory,
+            )
+            reviews = result.get("reviews", [])
+            return {
+                "reviewers": [
+                    {
+                        "role": review.get("role", "评审"),
+                        "comments": review.get("problems", []) + review.get("suggestions", []),
+                        "suggestion": review.get("suggestions", [""])[0] if review.get("suggestions") else "",
+                    }
+                    for review in reviews
+                ] or [
+                    {
+                        "role": "工程视角评审",
+                        "comments": [f'主张"{claim}"是否落到具体工程动作？', "是否补充了真实项目案例？"],
+                        "suggestion": "建议在第二段加入一次真实项目交付经历。",
+                    },
+                ],
+                "schemaVersion": "writing.roundtable.v1",
+            }
+        except Exception:
+            pass  # Fallback to mock below
+
     return {
         "reviewers": [
             {
                 "role": "工程视角评审",
                 "comments": [
-                    f"主张“{claim}”是否落到具体工程动作？",
+                    f'主张"{claim}"是否落到具体工程动作？',
                     "是否补充了真实项目案例？",
                 ],
                 "suggestion": "建议在第二段加入一次真实项目交付经历。",
@@ -124,6 +213,6 @@ def _build_roundtable(claim: str) -> dict[str, Any]:
 def _build_finalized(claim: str) -> dict[str, Any]:
     return {
         "title": f"定稿：{claim}",
-        "summary": f"围绕“{claim}”的工程视角文章定稿，未自动发布，等待用户确认。",
+        "summary": f'围绕"{claim}"的工程视角文章定稿，未自动发布，等待用户确认。',
         "publishingNotice": "请在知乎手动确认发布；本系统不会自动调用真实发布接口。",
     }

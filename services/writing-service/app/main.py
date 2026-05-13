@@ -20,6 +20,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
+from .llm_client import WritingLlmClient
 from .session_logic import InvalidTransition, SessionNotFound
 from .service import WritingService
 
@@ -29,14 +30,16 @@ _config = load_config()
 configure_logging("writing-service", _config.logging)
 logger = get_logger("kanshan.writing_service.main")
 
+_llm_client = WritingLlmClient(base_url=_config.service_urls.llm)
+
 if _config.storage_backend == "postgres":
     from .database import init_db
     init_db()
     from .pg_storage import PostgresSessionStorage
-    service = WritingService(storage=PostgresSessionStorage())
+    service = WritingService(storage=PostgresSessionStorage(), llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
-    service = WritingService()
+    service = WritingService(llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 

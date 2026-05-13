@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
 
+from kanshan_shared import load_config
+
 logger = logging.getLogger("kanshan.content.scheduler")
+_config = load_config()
 
 # In-memory cache fallback when Redis is not available
 _memory_cache: dict[str, Any] = {
@@ -33,7 +35,7 @@ def _get_redis():
     global _redis_client
     if _redis_client is not None:
         return _redis_client
-    redis_url = os.getenv("REDIS_URL", "")
+    redis_url = _config.cache.redis_url
     if not redis_url:
         return None
     try:
@@ -219,7 +221,7 @@ def _enrich_cached_cards(zhihu_base_url: str = "http://127.0.0.1:8070") -> None:
     from .enricher import LlmEnricher
     from .scorer import select_top_cards
 
-    llm_url = os.getenv("LLM_SERVICE_URL", "http://127.0.0.1:8080")
+    llm_url = _config.service_urls.llm
     enricher = LlmEnricher(llm_base_url=llm_url)
 
     cards_by_cat = _cache_get("kanshan:content:cards") or {}
@@ -237,7 +239,6 @@ def _enrich_cached_cards(zhihu_base_url: str = "http://127.0.0.1:8070") -> None:
             logger.warning("enrich_failed", extra={"categoryId": cat_id, "error": str(e)})
 
     _cache_set("kanshan:content:cards", cards_by_cat)
-    return cards_by_category
 
 
 def _fetch_profile(base_url: str) -> dict[str, Any]:

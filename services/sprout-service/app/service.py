@@ -14,8 +14,9 @@ class OpportunityNotFound(Exception):
 
 
 class SproutService:
-    def __init__(self, storage: Any = None) -> None:
+    def __init__(self, storage: Any = None, llm_client: Any = None) -> None:
         self._storage = storage  # If None, use in-memory dict
+        self._llm_client = llm_client
         if self._storage:
             self._storage.load_initial_opportunities(mock_data.initial_opportunities())
         self._opportunities: dict[str, dict[str, Any]] = {
@@ -75,9 +76,21 @@ class SproutService:
             run = self._get_run(cached_run_id)
             return {**run, "cacheHit": True}
         run_id = mock_data.create_id("run")
-        opportunities = self._list_opps()
-        if interest_id:
-            opportunities = [item for item in opportunities if item["interestId"] == interest_id]
+        opportunities: list[dict[str, Any]] = []
+        seeds = payload.get("seeds", [])
+        if seeds and self._llm_client:
+            try:
+                memory = payload.get("memory", {})
+                opportunities = self._llm_client.sprout_opportunities(seeds, memory=memory)
+                for opp in opportunities:
+                    self._save_opp(opp["id"], opp)
+            except Exception as e:
+                import logging
+                logging.getLogger("kanshan.sprout").warning("sprout_llm_failed", extra={"error": str(e)})
+        if not opportunities:
+            opportunities = self._list_opps()
+            if interest_id:
+                opportunities = [item for item in opportunities if item["interestId"] == interest_id]
         run = {
             "id": run_id,
             "userId": payload.get("userId", "demo-user"),

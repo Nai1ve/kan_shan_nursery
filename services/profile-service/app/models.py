@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, String, Text, func
+from sqlalchemy import Column, DateTime, Integer, String, Text, func
 
 from kanshan_shared.database import Base
 
@@ -72,3 +72,34 @@ class MemoryUpdateRequestTable(Base):
     reason = Column(Text, nullable=False)
     status = Column(String, nullable=False, default="pending")
     created_at = Column(String, nullable=False)
+
+
+class WritingStyleTable(Base):
+    __tablename__ = "writing_styles"
+    __table_args__ = {"schema": "profile"}
+
+    user_id = Column(String, primary_key=True)
+    logic_depth = Column(Integer, default=3)
+    stance_sharpness = Column(Integer, default=3)
+    personal_experience = Column(Integer, default=3)
+    expression_sharpness = Column(Integer, default=3)
+    uncertainty_tolerance = Column(Integer, default=3)
+    preferred_format = Column(String, default="long_article")
+    evidence_vs_judgment = Column(String, default="balanced")
+    opening_style = Column(String, default="question")
+    title_style = Column(String, default="controversy")
+    emotional_temperature = Column(String, default="rational")
+    ai_assistance_boundary = Column(String, default="draft_only")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LLMConfigTable(Base):
+    __tablename__ = "llm_configs"
+    __table_args__ = {"schema": "profile"}
+
+    user_id = Column(String, primary_key=True)
+    provider = Column(String, default="openai_compat")
+    model = Column(String, default="gpt-5.5")
+    base_url = Column(String)
+    api_key = Column(Text)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

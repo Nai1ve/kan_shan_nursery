@@ -13,16 +13,19 @@ class AuthError(Exception):
 class AuthService:
     SESSION_TTL_HOURS = 24
 
-    def __init__(self, repository: AuthRepository) -> None:
+    def __init__(self, repository: AuthRepository, zhihu_adapter_url: str = "http://127.0.0.1:8070") -> None:
         self._repo = repository
+        self._zhihu_adapter_url = zhihu_adapter_url
 
     def register(self, nickname: str, password: str, email: str | None = None, username: str | None = None) -> dict[str, Any]:
         if not nickname:
             raise AuthError("nickname is required")
+        if not email:
+            raise AuthError("email is required")
         if not password or len(password) < 6:
             raise AuthError("password must be at least 6 characters")
 
-        if email and self._repo.get_user_by_email(email):
+        if self._repo.get_user_by_email(email):
             raise AuthError("email already registered")
         if username and self._repo.get_user_by_username(username):
             raise AuthError("username already taken")
@@ -116,13 +119,44 @@ class AuthService:
             self._repo.save_zhihu_binding(binding)
         return {"success": True}
 
+    def exchange_zhihu_code(self, code: str) -> dict[str, Any]:
+        """Exchange authorization code for access token via zhihu-adapter."""
+        import json
+        import urllib.request
+        try:
+            url = f"{self._zhihu_adapter_url}/zhihu/oauth/callback?code={code}"
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            raise AuthError(f"Failed to exchange code: {e}")
+
+    def get_zhihu_user_info(self, access_token: str) -> dict[str, Any]:
+        """Get user info from zhihu-adapter using access token."""
+        import json
+        import urllib.request
+        try:
+            url = f"{self._zhihu_adapter_url}/zhihu/user?access_token={access_token}"
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                items = result.get("items", [])
+                return items[0] if items else {}
+        except Exception as e:
+            raise AuthError(f"Failed to get user info: {e}")
+
     def get_zhihu_authorize_url(self) -> dict[str, Any]:
-        return {"url": "https://www.zhihu.com/oauth/authorize?client_id=MOCK&redirect_uri=MOCK&response_type=code&scope=MOCK"}
+        """Get real Zhihu OAuth authorize URL from zhihu-adapter."""
+        import json
+        import urllib.request
+        try:
+            url = f"{self._zhihu_adapter_url}/zhihu/oauth/authorize"
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return result
+        except Exception as e:
+            raise AuthError(f"Failed to get authorize URL: {e}")
 
     def _get_user_by_identifier(self, identifier: str) -> User | None:
-        if "@" in identifier:
-            return self._repo.get_user_by_email(identifier)
-        return self._repo.get_user_by_username(identifier)
+        return self._repo.get_user_by_email(identifier)
 
     def _create_session(self, user_id: str) -> UserSession:
         now = now_iso()
@@ -141,4 +175,8 @@ class AuthService:
             return "zhihu_pending"
         if binding.binding_status == "expired":
             return "zhihu_pending"
+
+        # Check if user has completed onboarding (has profile data)
+        # For now, we'll assume zhihu binding completion means onboarding is done
+        # In a real system, we'd check for profile data existence
         return "ready"

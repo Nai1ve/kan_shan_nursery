@@ -7,8 +7,9 @@ from .session_logic import InvalidTransition, SessionNotFound, VALID_TONES
 
 
 class WritingService:
-    def __init__(self, storage: Any = None) -> None:
+    def __init__(self, storage: Any = None, llm_client: Any = None) -> None:
         self._storage = storage  # If None, use in-memory dict
+        self._llm_client = llm_client
         self._sessions: dict[str, dict[str, Any]] = {}
 
     def _store_get(self, session_id: str) -> dict[str, Any] | None:
@@ -83,8 +84,12 @@ class WritingService:
         session = self.get_session(session_id)
         if not session["confirmed"]:
             raise InvalidTransition("claim must be confirmed before blueprint")
-        blueprint = session_logic._build_blueprint(session.get("coreClaim") or "未确认观点")
-        next_session = {**session, "draftStatus": "blueprint_ready"}
+        blueprint = session_logic._build_blueprint(
+            session.get("coreClaim") or "未确认观点",
+            llm_client=self._llm_client,
+            session=session,
+        )
+        next_session = {**session, "draftStatus": "blueprint_ready", "blueprint": blueprint}
         self._store_save(session_id, next_session)
         return {"session": next_session, "blueprint": blueprint}
 
@@ -92,8 +97,13 @@ class WritingService:
         session = self.get_session(session_id)
         if session["draftStatus"] not in {"blueprint_ready", "draft_ready", "reviewing"}:
             raise InvalidTransition(f"cannot draft from status {session['draftStatus']}")
-        draft = session_logic._build_draft(session.get("coreClaim") or "未确认观点", session["tone"])
-        next_session = {**session, "draftStatus": "draft_ready", "savedDraft": True}
+        draft = session_logic._build_draft(
+            session.get("coreClaim") or "未确认观点",
+            session["tone"],
+            llm_client=self._llm_client,
+            session=session,
+        )
+        next_session = {**session, "draftStatus": "draft_ready", "savedDraft": True, "draft": draft}
         self._store_save(session_id, next_session)
         return {"session": next_session, "draft": draft}
 
@@ -101,7 +111,11 @@ class WritingService:
         session = self.get_session(session_id)
         if session["draftStatus"] not in {"draft_ready", "reviewing"}:
             raise InvalidTransition("draft must be ready before roundtable")
-        review = session_logic._build_roundtable(session.get("coreClaim") or "未确认观点")
+        review = session_logic._build_roundtable(
+            session.get("coreClaim") or "未确认观点",
+            llm_client=self._llm_client,
+            session=session,
+        )
         next_session = {**session, "draftStatus": "reviewing"}
         self._store_save(session_id, next_session)
         return {"session": next_session, "review": review}

@@ -35,7 +35,13 @@ def recalc_seed(seed: dict[str, Any]) -> dict[str, Any]:
     return next_seed
 
 
-def build_seed_from_card(card: dict[str, Any], reaction: str, user_note: str | None = None, seed_id: str | None = None) -> dict[str, Any]:
+def build_seed_from_card(
+    card: dict[str, Any],
+    reaction: str,
+    user_note: str | None = None,
+    seed_id: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
     sources = card.get("originalSources", [])
     first_source = sources[0] if sources else {}
     controversies = card.get("controversies", [])
@@ -43,6 +49,7 @@ def build_seed_from_card(card: dict[str, Any], reaction: str, user_note: str | N
     created_at = now_iso()
     seed = {
         "id": seed_id or create_id("seed"),
+        "userId": user_id,
         "interestId": card.get("categoryId", "unknown"),
         "title": (writing_angles[0] if writing_angles else card.get("title", "未命名观点种子")),
         "interestName": card.get("categoryId", "unknown"),
@@ -87,6 +94,7 @@ def build_manual_seed(payload: dict[str, Any]) -> dict[str, Any]:
     created_at = now_iso()
     seed = {
         "id": payload.get("id") or create_id("seed"),
+        "userId": payload.get("userId"),
         "interestId": payload.get("interestId", "manual"),
         "title": payload.get("title", "手动观点种子"),
         "interestName": payload.get("interestName", payload.get("interestId", "manual")),
@@ -112,14 +120,39 @@ def build_manual_seed(payload: dict[str, Any]) -> dict[str, Any]:
     return recalc_seed(seed)
 
 
-def answer_question(seed: dict[str, Any], question: str, parent_question_id: str | None = None) -> dict[str, Any]:
+def answer_question(seed: dict[str, Any], question: str, parent_question_id: str | None = None, llm_client=None) -> dict[str, Any]:
     question_id = create_id("question")
     thread_id = parent_question_id or create_id("thread")
-    answer = (
-        f"针对“{question}”，Agent 的 mock 判断是：先拆成事实判断和价值判断。"
-        f"事实层需要补来源证据，价值层需要连接你的个人经验和观点边界。"
-    )
-    material_type = "counterargument" if any(word in question for word in ["反方", "质疑", "漏洞", "风险", "不足", "边界"]) else "evidence"
+
+    # Try to get answer from LLM
+    if llm_client:
+        try:
+            result = llm_client.answer_seed_question(
+                seed=seed,
+                question=question,
+                materials=seed.get("wateringMaterials", []),
+            )
+            answer = result.get("answer", "")
+            material_type = result.get("materialType", "evidence")
+            follow_up_questions = result.get("followUpQuestions", [])
+        except Exception as e:
+            import logging
+            logging.getLogger("kanshan.seed").warning("llm_answer_failed", extra={"error": str(e)})
+            # Fallback to mock
+            answer = (
+                f'针对"{question}"，Agent 的判断是：先拆成事实判断和价值判断。'
+                f"事实层需要补来源证据，价值层需要连接你的个人经验和观点边界。"
+            )
+            material_type = "counterargument" if any(word in question for word in ["反方", "质疑", "漏洞", "风险", "不足", "边界"]) else "evidence"
+            follow_up_questions = []
+    else:
+        answer = (
+            f'针对"{question}"，Agent 的 mock 判断是：先拆成事实判断和价值判断。'
+            f"事实层需要补来源证据，价值层需要连接你的个人经验和观点边界。"
+        )
+        material_type = "counterargument" if any(word in question for word in ["反方", "质疑", "漏洞", "风险", "不足", "边界"]) else "evidence"
+        follow_up_questions = []
+
     question_record = {
         "id": question_id,
         "threadId": thread_id,
@@ -166,21 +199,58 @@ def mark_question(seed: dict[str, Any], question_id: str, status: str) -> dict[s
     return recalc_seed(next_seed)
 
 
-def agent_supplement(seed: dict[str, Any], material_type: str) -> dict[str, Any]:
-    if material_type == "counterargument":
-        material = build_material(
-            "counterargument",
-            "Agent 找到反方质疑",
-            f"针对“{seed.get('coreClaim', '')}”，反方可能会质疑当前证据是否足以支持这个判断。",
-            "继续浇水 / Agent 找反方",
-            True,
-        )
+def agent_supplement(seed: dict[str, Any], material_type: str, llm_client=None) -> dict[str, Any]:
+    # Try to get supplement from LLM
+    if llm_client:
+        try:
+            result = llm_client.supplement_material(
+                seed=seed,
+                material_type=material_type,
+                existing_materials=seed.get("wateringMaterials", []),
+            )
+            llm_material = result.get("material", {})
+            material = build_material(
+                llm_material.get("type", material_type),
+                llm_material.get("title", f"Agent {'找反方' if material_type == 'counterargument' else '补证据'}"),
+                llm_material.get("content", ""),
+                f"Agent {'找反方' if material_type == 'counterargument' else '补证据'}",
+                True,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("kanshan.seed").warning("llm_supplement_failed", extra={"error": str(e)})
+            # Fallback to mock
+            if material_type == "counterargument":
+                material = build_material(
+                    "counterargument",
+                    "Agent 找到反方质疑",
+                    f'针对"{seed.get("coreClaim", "")}"，反方可能会质疑当前证据是否足以支持这个判断。',
+                    "继续浇水 / Agent 找反方",
+                    True,
+                )
+            else:
+                material = build_material(
+                    "evidence",
+                    "Agent 补充事实证据",
+                    f'围绕"{seed.get("sourceTitle", "")}"，建议补充可验证来源和具体场景来支撑观点。',
+                    "继续浇水 / Agent 补证据",
+                    True,
+                )
     else:
-        material = build_material(
-            "evidence",
-            "Agent 补充事实证据",
-            f"围绕“{seed.get('sourceTitle', '')}”，建议补充可验证来源和具体场景来支撑观点。",
-            "继续浇水 / Agent 补证据",
-            True,
-        )
+        if material_type == "counterargument":
+            material = build_material(
+                "counterargument",
+                "Agent 找到反方质疑",
+                f'针对"{seed.get("coreClaim", "")}"，反方可能会质疑当前证据是否足以支持这个判断。',
+                "继续浇水 / Agent 找反方",
+                True,
+            )
+        else:
+            material = build_material(
+                "evidence",
+                "Agent 补充事实证据",
+                f'围绕"{seed.get("sourceTitle", "")}"，建议补充可验证来源和具体场景来支撑观点。',
+                "继续浇水 / Agent 补证据",
+                True,
+            )
     return recalc_seed({**seed, "wateringMaterials": [material, *seed.get("wateringMaterials", [])], "updatedAt": now_iso()})

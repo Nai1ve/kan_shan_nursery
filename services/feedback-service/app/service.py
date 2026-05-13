@@ -20,8 +20,9 @@ def _create_id(prefix: str) -> str:
 
 
 class FeedbackService:
-    def __init__(self, storage: Any = None) -> None:
+    def __init__(self, storage: Any = None, llm_client: Any = None) -> None:
         self._storage = storage  # If None, use in-memory dict
+        self._llm_client = llm_client
         if self._storage:
             self._storage.load_initial_articles([dict(item) for item in FEEDBACK_ARTICLES])
         self._articles: dict[str, dict[str, Any]] = {item["id"]: dict(item) for item in FEEDBACK_ARTICLES}
@@ -73,7 +74,31 @@ class FeedbackService:
         }
 
     def comments_summary(self, article_id: str) -> dict[str, Any]:
-        self.get_article(article_id)
+        article = self.get_article(article_id)
+        if self._llm_client:
+            try:
+                result = self._llm_client.feedback_summary(
+                    article=article,
+                    metrics={m.get("label", ""): m.get("value", 0) for m in article.get("metrics", [])},
+                    comments=article.get("commentInsights", []),
+                )
+                signals = result.get("signals", [])
+                supporting = [s.get("content", "") for s in signals if s.get("type") == "resonance"]
+                counter = [s.get("content", "") for s in signals if s.get("type") == "disagreement"]
+                request_more = [s.get("content", "") for s in signals if s.get("type") == "request_more"]
+                angles = result.get("secondArticleIdeas", [])
+                return {
+                    "articleId": article_id,
+                    "supportingViews": supporting or ["mock 暂无支持观点"],
+                    "counterArguments": counter or ["mock 暂无反方观点"],
+                    "supplementaryMaterials": request_more or ["mock 暂无补充材料"],
+                    "secondArticleAngles": angles or ["mock 暂无二次角度"],
+                    "schemaVersion": "feedback.comments.v1",
+                    "llmSummary": result.get("summary", ""),
+                }
+            except Exception as e:
+                import logging
+                logging.getLogger("kanshan.feedback").warning("feedback_summary_failed", extra={"error": str(e)})
         summary = COMMENT_SUMMARIES.get(article_id)
         if summary:
             return {**summary, "articleId": article_id, "schemaVersion": "feedback.comments.v1"}

@@ -43,6 +43,7 @@ class GatewayService:
         path: str,
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         target = self.targets[service_name]
         if not target.ready:
@@ -56,6 +57,7 @@ class GatewayService:
             params,
             payload,
             self.settings.request_timeout_seconds,
+            session_id,
         )
         if status_code >= 400:
             raise DownstreamHttpError(service_name, status_code, data)

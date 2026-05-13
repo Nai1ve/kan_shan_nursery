@@ -20,6 +20,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
+from .llm_client import FeedbackLlmClient
 from .service import ArticleNotFound, FeedbackService
 
 
@@ -28,14 +29,16 @@ _config = load_config()
 configure_logging("feedback-service", _config.logging)
 logger = get_logger("kanshan.feedback_service.main")
 
+_llm_client = FeedbackLlmClient(base_url=_config.service_urls.llm)
+
 if _config.storage_backend == "postgres":
     from .database import init_db
     init_db()
     from .pg_storage import PostgresFeedbackStorage
-    service = FeedbackService(storage=PostgresFeedbackStorage())
+    service = FeedbackService(storage=PostgresFeedbackStorage(), llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
-    service = FeedbackService()
+    service = FeedbackService(llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
-
+from kanshan_shared import load_config
 from kanshan_shared.database import Base, get_engine, get_session_factory
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan",
-)
+_config = load_config()
+DATABASE_URL = _config.database_url
 
 _engine = None
 _session_factory = None
@@ -30,5 +27,12 @@ def get_db_session_factory():
 
 
 def init_db():
+    from sqlalchemy import text
+
     from . import models  # noqa: F401
-    Base.metadata.create_all(get_db_engine())
+    engine = get_db_engine()
+    Base.metadata.create_all(engine)
+    # Backfill columns added after the initial schema was applied.
+    with engine.begin() as conn:
+        conn.execute(text('ALTER TABLE seed.seeds ADD COLUMN IF NOT EXISTS user_id VARCHAR'))
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_seeds_user_id ON seed.seeds(user_id)'))

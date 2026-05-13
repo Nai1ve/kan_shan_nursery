@@ -6,23 +6,26 @@ import { saveOnboarding } from "@/lib/auth/auth-client";
 import type { OnboardingPayload, OnboardingResponse, SelectedInterest, WritingStyleSurvey } from "@/lib/types";
 
 const INTEREST_OPTIONS = [
-  { id: "agent", name: "Agent 工程化", desc: "系统设计、质量评估、失败恢复" },
-  { id: "ai-coding", name: "AI Coding", desc: "工程交付、研发工作流、程序员成长" },
-  { id: "rag", name: "RAG / 检索", desc: "检索质量、文档解析、评估指标" },
-  { id: "backend", name: "后端工程", desc: "系统边界、数据一致性、工程交付" },
-  { id: "growth", name: "程序员成长", desc: "职业判断、学习路径、个人经历" },
-  { id: "finance-risk", name: "金融风控", desc: "风险暴露、可追责、流程控制" },
-  { id: "medical-ai", name: "医学 AI", desc: "指标解释、错误代价、临床风险" },
-  { id: "product-design", name: "产品设计", desc: "用户任务、协作流程、信息架构" },
-  { id: "content-creation", name: "内容创作", desc: "表达结构、社区语境、读者反馈" },
+  { id: "shuma", name: "数码科技", desc: "设备、软件、AI、消费电子" },
+  { id: "zhichang", name: "职场教育", desc: "职业成长、学习路径、技能提升" },
+  { id: "chuangzuo", name: "创作表达", desc: "写作方法、内容策略、表达技巧" },
+  { id: "shenghuo", name: "生活方式", desc: "日常生活、健康、兴趣爱好" },
+  { id: "shehui", name: "社会人文", desc: "社会观察、人文思考、文化评论" },
+  { id: "yule", name: "文娱体育", desc: "影视、音乐、游戏、运动" },
+  { id: "caijing", name: "财经商业", desc: "投资、理财、商业分析" },
+  { id: "jiankang", name: "健康医学", desc: "身心健康、医疗科普" },
+  { id: "qiche", name: "汽车出行", desc: "新能源、驾驶、出行方式" },
+  { id: "bendi", name: "本地城市", desc: "本地生活、城市观察、区域话题" },
+  { id: "lishi", name: "历史考古", desc: "历史事件、文化遗迹、考古发现" },
+  { id: "huanjing", name: "环境自然", desc: "环保、自然生态、户外探索" },
 ];
 
 const scaleQuestions: { key: keyof WritingStyleSurvey; question: string; low: string; high: string }[] = [
-  { key: "logicDepth", question: "文章逻辑严密度", low: "轻量表达", high: "严密推演" },
-  { key: "stanceSharpness", question: "立场鲜明程度", low: "保守克制", high: "明确锋利" },
-  { key: "personalExperienceWillingness", question: "个人经历占比", low: "少讲自己", high: "多讲经历" },
-  { key: "expressionSharpness", question: "表达锋芒", low: "平和", high: "犀利" },
-  { key: "uncertaintyTolerance", question: "暴露不确定性", low: "少暴露", high: "愿意展开" },
+  { key: "logicDepth", question: "你希望文章逻辑严密到什么程度？", low: "轻量表达", high: "严密推演" },
+  { key: "stanceSharpness", question: "你愿意在文章中表达鲜明立场吗？", low: "保守克制", high: "明确锋利" },
+  { key: "personalExperienceWillingness", question: "你喜欢加入个人经历和踩坑案例吗？", low: "少讲自己", high: "多讲经历" },
+  { key: "expressionSharpness", question: "你能接受比较犀利的表达吗？", low: "平和", high: "犀利" },
+  { key: "uncertaintyTolerance", question: "你是否愿意暴露自己的不确定和纠结？", low: "少暴露", high: "愿意展开" },
 ];
 
 const choiceGroups = [

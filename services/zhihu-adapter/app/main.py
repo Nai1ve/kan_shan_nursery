@@ -170,29 +170,12 @@ def oauth_authorize(request: Request, redirect: bool = False) -> Any:
 def oauth_callback(request: Request, code: str | None = None, error: str | None = None) -> Any:
     """Exchange the authorization code for an access_token.
 
-    The frontend redirects the user to this endpoint after the Zhihu
-    authorize page sends them back. The adapter does not persist the
-    token to disk; for v0.6 we render a minimal HTML so the operator
-    can copy the access_token into ``services/config.yaml`` under
-    ``zhihu.oauth.access_token``. A future release can write back to
-    profile-service or to a session store automatically.
+    Returns JSON with the token data for programmatic consumption.
+    The profile-service will handle saving the token to the database.
     """
     if error:
         raise HTTPException(status_code=400, detail={"code": "OAUTH_DENIED", "message": error})
     if not code:
         raise HTTPException(status_code=400, detail={"code": "OAUTH_CODE_MISSING", "message": "code is required"})
     token = _handle(request, "oauth_callback", lambda: service.exchange_oauth_code(code))
-    body = (
-        "<!doctype html>"
-        "<meta charset='utf-8'>"
-        "<title>看山小苗圃 · 知乎授权完成</title>"
-        "<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:640px;margin:48px auto;padding:0 24px;color:#1f2937}"
-        "h1{font-size:20px}code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:13px}"
-        "pre{background:#f9fafb;padding:16px;border-radius:8px;overflow:auto;font-size:12px}</style>"
-        "<h1>知乎授权已完成</h1>"
-        "<p>请把下面的 <code>access_token</code> 写入 <code>services/config.yaml</code> 的 "
-        "<code>zhihu.oauth.access_token</code> 字段（已通过 .gitignore 保护，不会被提交）。</p>"
-        f"<pre>{token}</pre>"
-        "<p>写入完成后回到看山小苗圃页面即可继续使用关注流 / 关注列表 / 关注动态等 OAuth 能力。</p>"
-    )
-    return HTMLResponse(content=body)
+    return token

@@ -14,6 +14,7 @@ TASKS = {
     "draft",
     "roundtable-review",
     "feedback-summary",
+    "profile-memory-synthesis",
 }
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"

@@ -12,25 +12,26 @@
     }
   },
   "routing": {
-    "default": {"provider": "mock", "fallback": null},
+    "default": {"provider": "openai_compat", "fallback": "mock"},
     "per_task": {
-      "summarize-content":      {"provider": "zhihu_direct", "fallback": "mock"},
-      "extract-controversies":  {"provider": "zhihu_direct", "fallback": "mock"},
-      "generate-writing-angles":{"provider": "zhihu_direct", "fallback": "mock"},
-      "answer-seed-question":   {"provider": "zhihu_direct", "fallback": "mock"},
-      "supplement-material":    {"provider": "zhihu_direct", "fallback": "mock"},
-      "sprout-opportunities":   {"provider": "zhihu_direct", "fallback": "mock"},
-      "argument-blueprint":     {"provider": "zhihu_direct", "fallback": "mock"},
-      "draft":                  {"provider": "zhihu_direct", "fallback": "mock"},
-      "feedback-summary":       {"provider": "zhihu_direct", "fallback": "mock"},
+      "summarize-content":      {"provider": "openai_compat", "fallback": "mock"},
+      "extract-controversies":  {"provider": "openai_compat", "fallback": "mock"},
+      "generate-writing-angles":{"provider": "openai_compat", "fallback": "mock"},
+      "answer-seed-question":   {"provider": "openai_compat", "fallback": "mock"},
+      "supplement-material":    {"provider": "openai_compat", "fallback": "mock"},
+      "sprout-opportunities":   {"provider": "openai_compat", "fallback": "mock"},
+      "argument-blueprint":     {"provider": "openai_compat", "fallback": "mock"},
+      "draft":                  {"provider": "openai_compat", "fallback": "mock"},
+      "feedback-summary":       {"provider": "openai_compat", "fallback": "mock"},
+      "profile-memory-synthesis": {"provider": "openai_compat", "fallback": "mock"},
       "roundtable-review": {
         "mode": "multi_persona",
         "fallback": "mock",
         "personas": [
-          {"id": "logic_reviewer",   "provider": "zhihu_direct", "persona_prompt": "personas/logic_reviewer.md"},
-          {"id": "human_editor",     "provider": "zhihu_direct", "persona_prompt": "personas/human_editor.md"},
-          {"id": "opponent_reader",  "provider": "zhihu_direct", "persona_prompt": "personas/opponent_reader.md"},
-          {"id": "community_editor", "provider": "zhihu_direct", "persona_prompt": "personas/community_editor.md"}
+          {"id": "logic_reviewer",   "provider": "openai_compat", "persona_prompt": "personas/logic_reviewer.md"},
+          {"id": "human_editor",     "provider": "openai_compat", "persona_prompt": "personas/human_editor.md"},
+          {"id": "opponent_reader",  "provider": "openai_compat", "persona_prompt": "personas/opponent_reader.md"},
+          {"id": "community_editor", "provider": "openai_compat", "persona_prompt": "personas/community_editor.md"}
         ]
       }
     }

@@ -13,7 +13,6 @@ interface RegisterPanelProps {
 export function RegisterPanel({ onSuccess, onSwitchToLogin }: RegisterPanelProps) {
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -27,8 +26,8 @@ export function RegisterPanel({ onSuccess, onSwitchToLogin }: RegisterPanelProps
       setError("请输入昵称");
       return;
     }
-    if (!email.trim() && !username.trim()) {
-      setError("请至少填写用户名或邮箱，后续登录需要使用");
+    if (!email.trim()) {
+      setError("请输入邮箱，后续登录使用");
       return;
     }
     if (!password || password.length < 6) {
@@ -44,8 +43,7 @@ export function RegisterPanel({ onSuccess, onSwitchToLogin }: RegisterPanelProps
     try {
       const response = await register({
         nickname: nickname.trim(),
-        email: email.trim() || undefined,
-        username: username.trim() || undefined,
+        email: email.trim(),
         password,
       });
       onSuccess(response);
@@ -82,30 +80,17 @@ export function RegisterPanel({ onSuccess, onSwitchToLogin }: RegisterPanelProps
           </div>
 
           <div className="form-group">
-            <label htmlFor="username">用户名</label>
+            <label htmlFor="email">邮箱 *</label>
             <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="用于登录"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com，登录使用"
               disabled={loading}
-              autoComplete="username"
+              autoComplete="email"
             />
           </div>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="email">邮箱</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com，也可用于登录"
-            disabled={loading}
-            autoComplete="email"
-          />
         </div>
 
         <div className="auth-form-grid">

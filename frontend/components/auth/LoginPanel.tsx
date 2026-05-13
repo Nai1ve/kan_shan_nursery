@@ -21,7 +21,7 @@ export function LoginPanel({ onSuccess, onSwitchToRegister }: LoginPanelProps) {
     setError("");
 
     if (!identifier.trim()) {
-      setError("请输入用户名或邮箱");
+      setError("请输入邮箱");
       return;
     }
     if (!password) {
@@ -52,15 +52,15 @@ export function LoginPanel({ onSuccess, onSwitchToRegister }: LoginPanelProps) {
 
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
-          <label htmlFor="identifier">用户名或邮箱</label>
+          <label htmlFor="identifier">邮箱</label>
           <input
             id="identifier"
-            type="text"
+            type="email"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="例如 liupeize 或 you@example.com"
+            placeholder="you@example.com"
             disabled={loading}
-            autoComplete="username"
+            autoComplete="email"
           />
         </div>
 

@@ -1,57 +1,169 @@
-# 看山小苗圃 · 服务本地凭证配置示例
-# 把此文件复制为 services/config.yaml 后填入真实值。
+# 看山小苗圃 · 服务配置示例
+# 复制为 services/config.yaml 后填入真实值。
 # services/config.yaml 已在 .gitignore，不会被提交。
+#
+# 配置优先级（低→高）：
+#   1. 此文件中的默认值
+#   2. services/config.yaml 中的值
+#   3. 环境变量（最高优先级）
+#
+# 环境变量覆盖说明见各字段注释。
 
-provider_mode: mock          # mock / live。所有 zhihu live 调用都受此开关。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 全局配置
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 运行模式：mock（模拟数据）/ live（真实知乎 API）
+# 环境变量：PROVIDER_MODE
+provider_mode: mock
+
+# 存储后端：memory（内存，重启丢失）/ postgres（PostgreSQL，持久化）
+# 环境变量：STORAGE_BACKEND
+storage_backend: memory
+
+# 数据库连接串（storage_backend=postgres 时必填）
+# 环境变量：DATABASE_URL
+database_url: "postgresql+psycopg://kanshan:kanshan_dev_password@127.0.0.1:5432/kanshan"
 
 # CORS 白名单（前端访问后端的来源地址）
+# 环境变量：CORS_ORIGINS（逗号分隔）
 cors_origins:
   - "http://127.0.0.1:3000"
   - "http://localhost:3000"
   # - "http://your-server-ip:3000"
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 知乎 API 凭证（live 模式必填）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 zhihu:
   community:
     # 用户 token：知乎个人主页 → "..." → 复制链接，取 people/ 后那串
+    # 环境变量：ZHIHU_APP_KEY
     app_key: ""
     # ring/moltbook 申请的密钥
+    # 环境变量：ZHIHU_APP_SECRET
     app_secret: ""
+    # 环境变量：ZHIHU_COMMUNITY_BASE_URL
+    base_url: "https://openapi.zhihu.com"
     # 文档列出的白名单圈子，发想法 / 评论 / 点赞前会校验
     writable_ring_ids:
       - "2001009660925334090"   # OpenClaw 人类观察员
       - "2015023739549529606"   # A2A for Reconnect
       - "2029619126742656657"   # 黑客松脑洞补给站
+    # 环境变量：ZHIHU_DEFAULT_RING_ID
     default_ring_id: "2029619126742656657"
-    base_url: "https://openapi.zhihu.com"
 
   oauth:
     # 黑客松 / 商务渠道申请，注意 OAuth 的 app_id 和 app_key 与 community 是两组不同凭证
+    # 环境变量：ZHIHU_OAUTH_APP_ID, ZHIHU_OAUTH_APP_KEY
     app_id: ""
     app_key: ""
+    # 回调地址必须与知乎开放平台配置一致
+    # 环境变量：ZHIHU_OAUTH_REDIRECT_URI
     redirect_uri: "http://127.0.0.1:8070/zhihu/oauth/callback"
+    # 环境变量：ZHIHU_OAUTH_BASE_URL
     base_url: "https://openapi.zhihu.com"
     # access_token 由 /zhihu/oauth/callback 流程写入；这里可以预填一个用于测试
+    # 环境变量：ZHIHU_ACCESS_TOKEN
     access_token: ""
-    access_token_expires_at: 0   # unix 秒，0 表示未知
+    # unix 秒，0 表示未知
+    # 环境变量：ZHIHU_ACCESS_TOKEN_EXPIRES_AT
+    access_token_expires_at: 0
 
   data_platform:
     # https://developer.zhihu.com/ 个人中心
+    # 环境变量：ZHIHU_ACCESS_SECRET
     access_secret: ""
+    # 环境变量：ZHIHU_DATA_PLATFORM_BASE_URL
     base_url: "https://developer.zhihu.com"
-    default_model: "zhida-thinking-1p5"   # 直答模型档位
+    # 直答模型档位
+    # 环境变量：LLM_DEFAULT_MODEL
+    default_model: "zhida-thinking-1p5"
 
   quota:
     # 每日每用户配额。命中缓存不扣额度，回源成功才 +1
+    # 环境变量：ZHIHU_QUOTA_HOT_LIST, ZHIHU_QUOTA_ZHIHU_SEARCH, 等
     hot_list: 100
     zhihu_search: 1000
     global_search: 1000
     direct_answer: 100
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 缓存配置
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 cache:
-  backend: memory          # memory / redis
-  redis_url: redis://127.0.0.1:6379/0
+  # 后端：memory（内存）/ redis
+  # 环境变量：ZHIHU_CACHE_BACKEND 或 LLM_CACHE_BACKEND
+  # 特殊行为：如果设置了 REDIS_URL 环境变量，默认使用 redis
+  backend: memory
+  # 环境变量：REDIS_URL
+  redis_url: "redis://127.0.0.1:6379/0"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 服务间通信 URL（Docker Compose 中自动配置）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+service_urls:
+  # 环境变量：PROFILE_SERVICE_URL
+  profile: "http://127.0.0.1:8010"
+  # 环境变量：CONTENT_SERVICE_URL
+  content: "http://127.0.0.1:8020"
+  # 环境变量：SEED_SERVICE_URL
+  seed: "http://127.0.0.1:8030"
+  # 环境变量：SPROUT_SERVICE_URL
+  sprout: "http://127.0.0.1:8040"
+  # 环境变量：WRITING_SERVICE_URL
+  writing: "http://127.0.0.1:8050"
+  # 环境变量：FEEDBACK_SERVICE_URL
+  feedback: "http://127.0.0.1:8060"
+  # 环境变量：ZHIHU_ADAPTER_URL
+  zhihu: "http://127.0.0.1:8070"
+  # 环境变量：LLM_SERVICE_URL
+  llm: "http://127.0.0.1:8080"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LLM 服务配置
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+llm:
+  # LLM 提供商模式（独立于全局 PROVIDER_MODE）
+  # 环境变量：LLM_PROVIDER_MODE
+  provider_mode: mock
+  # 默认模型
+  # 环境变量：LLM_DEFAULT_MODEL
+  default_model: "zhida-thinking-1p5"
+  # Prompt 版本
+  # 环境变量：LLM_PROMPT_VERSION
+  prompt_version: "v1"
+  # Schema 版本
+  # 环境变量：LLM_SCHEMA_VERSION
+  schema_version: "v1"
+  # 缓存后端（独立于全局 cache.backend）
+  # 环境变量：LLM_CACHE_BACKEND
+  cache_backend: memory
+  # 缓存 TTL（秒）
+  # 环境变量：LLM_CACHE_TTL_SECONDS
+  cache_ttl_seconds: 21600
+  # 请求超时（秒）
+  # 环境变量：LLM_REQUEST_TIMEOUT_SECONDS
+  request_timeout_seconds: 20
+  # Trace 输出目录
+  # 环境变量：LLM_TRACE_DIR
+  trace_dir: "output/llm-trace"
+  # 是否启用 Trace
+  # 环境变量：LLM_TRACE_ENABLED（1/true/True 为启用）
+  trace_enabled: true
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 日志配置
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 logging:
-  # 结构化日志输出。jsonl 文件给评测脚本读，console 给人读
+  # 结构化日志输出目录（jsonl 文件给评测脚本读）
+  # 环境变量：KANSHAN_LOG_DIR
   jsonl_dir: output/logs
-  console_level: INFO      # DEBUG / INFO / WARNING / ERROR
+  # 控制台日志级别：DEBUG / INFO / WARNING / ERROR
+  # 环境变量：KANSHAN_LOG_LEVEL
+  console_level: INFO

@@ -14,6 +14,7 @@ TASK_REQUIRED_KEYS = {
     "draft": {"title", "body", "aiDisclosureSuggestion"},
     "roundtable-review": {"reviews"},
     "feedback-summary": {"summary", "signals", "secondArticleIdeas"},
+    "profile-memory-synthesis": {"globalMemory", "interestMemories"},
 }
 
 

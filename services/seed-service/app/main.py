@@ -20,6 +20,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
+from .llm_client import SeedLlmClient
 from .service import SeedNotFound, SeedService
 
 
@@ -40,7 +41,8 @@ else:
     _repo = SeedRepository()
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
-service = SeedService(repository=_repo)
+_llm_client = SeedLlmClient(base_url=_config.service_urls.llm)
+service = SeedService(repository=_repo, llm_client=_llm_client)
 
 
 def handle_error(error: Exception) -> None:
@@ -62,8 +64,8 @@ def health() -> dict[str, str]:
 
 
 @app.get("/seeds")
-def list_seeds() -> dict[str, Any]:
-    return {"items": service.list_seeds()}
+def list_seeds(user_id: str | None = None) -> dict[str, Any]:
+    return {"items": service.list_seeds(user_id=user_id)}
 
 
 @app.post("/seeds")

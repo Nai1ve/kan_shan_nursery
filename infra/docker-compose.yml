@@ -263,7 +263,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
-      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_PROVIDER_MODE: ${LLM_PROVIDER_MODE:-mock}
       LLM_API_BASE_URL: ${LLM_API_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
     depends_on:

@@ -20,6 +20,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
+from .llm_client import SproutLlmClient
 from .service import OpportunityNotFound, RunNotFound, SproutService
 
 
@@ -28,14 +29,16 @@ _config = load_config()
 configure_logging("sprout-service", _config.logging)
 logger = get_logger("kanshan.sprout_service.main")
 
+_llm_client = SproutLlmClient(base_url=_config.service_urls.llm)
+
 if _config.storage_backend == "postgres":
     from .database import init_db
     init_db()
     from .pg_storage import PostgresSproutStorage
-    service = SproutService(storage=PostgresSproutStorage())
+    service = SproutService(storage=PostgresSproutStorage(), llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
-    service = SproutService()
+    service = SproutService(llm_client=_llm_client)
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 

@@ -11,13 +11,30 @@ Only put framework-level helpers here:
 Do not put business logic here.
 """
 
+from .categories import (
+    ALL_CATEGORIES,
+    CATEGORY_MAP,
+    INTEREST_CATEGORIES,
+    SPECIAL_CATEGORIES,
+    CategoryDef,
+    get_interest_names,
+)
 from .config import KanshanConfig, ZhihuConfig, load_config
+from .llm_client import LLMClient, LLMClientError
 from .logger import LoggerFactory, configure_logging, get_logger
 
 __all__ = [
+    "ALL_CATEGORIES",
+    "CATEGORY_MAP",
+    "CategoryDef",
+    "INTEREST_CATEGORIES",
     "KanshanConfig",
+    "SPECIAL_CATEGORIES",
     "ZhihuConfig",
+    "get_interest_names",
     "load_config",
+    "LLMClient",
+    "LLMClientError",
     "LoggerFactory",
     "configure_logging",
     "get_logger",

@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+
+from kanshan_shared import load_config
+
+_config = load_config()
 
 
 @dataclass(frozen=True)
 class Settings:
-    provider_mode: str = os.getenv("LLM_PROVIDER_MODE", "mock")
-    zhihu_adapter_url: str = os.getenv("ZHIHU_ADAPTER_URL", "http://127.0.0.1:8070")
-    default_model: str = os.getenv("LLM_DEFAULT_MODEL", "zhida-thinking-1p5")
-    prompt_version: str = os.getenv("LLM_PROMPT_VERSION", "v1")
-    schema_version: str = os.getenv("LLM_SCHEMA_VERSION", "v1")
-    cache_backend: str = os.getenv("LLM_CACHE_BACKEND", "memory")
-    redis_url: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
-    cache_ttl_seconds: int = int(os.getenv("LLM_CACHE_TTL_SECONDS", str(6 * 60 * 60)))
-    request_timeout_seconds: float = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "20"))
-    trace_dir: str = os.getenv("LLM_TRACE_DIR", "output/llm-trace")
-    trace_enabled: bool = os.getenv("LLM_TRACE_ENABLED", "1") not in {"0", "false", "False"}
+    provider_mode: str = _config.llm.provider_mode
+    zhihu_adapter_url: str = _config.service_urls.zhihu
+    default_model: str = _config.llm.default_model
+    prompt_version: str = _config.llm.prompt_version
+    schema_version: str = _config.llm.schema_version
+    cache_backend: str = _config.llm.cache_backend
+    redis_url: str = _config.cache.redis_url
+    cache_ttl_seconds: int = _config.llm.cache_ttl_seconds
+    request_timeout_seconds: float = float(_config.llm.request_timeout_seconds)
+    trace_dir: str = _config.llm.trace_dir
+    trace_enabled: bool = _config.llm.trace_enabled
 
 
 def get_settings() -> Settings:

@@ -24,6 +24,7 @@ class PostgresSeedRepository:
                 for seed in initial_seeds():
                     session.add(SeedTable(
                         id=seed["id"],
+                        user_id=seed.get("userId"),
                         title=seed.get("title", ""),
                         interest_id=seed.get("interestId"),
                         core_claim=seed.get("coreClaim"),
@@ -69,6 +70,7 @@ class PostgresSeedRepository:
         try:
             row = SeedTable(
                 id=seed["id"],
+                user_id=seed.get("userId"),
                 title=seed.get("title", ""),
                 interest_id=seed.get("interestId"),
                 core_claim=seed.get("coreClaim"),

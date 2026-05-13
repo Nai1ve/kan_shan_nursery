@@ -12,6 +12,7 @@ class SeedTable(Base):
     __table_args__ = {"schema": "seed"}
 
     id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=True, index=True)
     title = Column(String, nullable=False)
     interest_id = Column(String, nullable=True)
     core_claim = Column(Text, nullable=True)

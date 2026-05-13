@@ -1454,7 +1454,7 @@ export function KanshanApp() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="user-pill" onClick={() => goTab("profile")} type="button">
-              <img src="/images/roundtable/agent-human.png" alt="用户" className="avatar" style={{ objectFit: "cover" }} />
+              <img src="/images/roundtable/agent-human_transparent.png" alt="用户" className="avatar" style={{ objectFit: "cover" }} />
               <div>
                 <div className="user-name">{data.profile.nickname}</div>
                 <div className="user-mode">{data.profile.accountStatus}</div>
@@ -4127,10 +4127,10 @@ function RoundtableDiscussion({
   showToast: (msg: string) => void;
 }) {
   const speakers = [
-    { id: "logic", name: "逻辑审稿 Agent", avatar: "/images/roundtable/agent-logic.png", messages: ['我仔细审阅了这篇文章的论证逻辑。主要问题在于"能力同质化"到"工作流壁垒"之间的推导不够清晰。', "建议在第三段增加一个过渡论证：先说明为什么同质化会导致价格战，再引出工作流壁垒作为差异化竞争的必要条件。"] },
-    { id: "human", name: "人味编辑 Agent", avatar: "/images/roundtable/agent-human.png", messages: ["从内容角度来说，这篇文章的技术分析很扎实，但缺少个人视角和真实案例。", '建议在开头或中间插入一个亲身经历的项目场景，比如"去年我参与的一个项目中，团队遇到了类似的问题..."'] },
-    { id: "devil", name: "反方读者 Agent", avatar: "/images/roundtable/agent-devil.png", messages: ['我要提出一个关键质疑：文章认为"上下文是核心壁垒"，但未来长上下文模型可能会改变这个假设。', "如果 AI 能够一次性理解整个代码库，那么上下文管理的技术壁垒是否还成立？"] },
-    { id: "spread", name: "社区传播 Agent", avatar: "/images/roundtable/agent-spread.png", messages: ['从传播角度来看，当前标题"AI Agent 的技术壁垒"比较平淡，建议改成更有冲击力的表达。', '开头建议从一个具体的工程场景切入，比如"上周我花了3天时间调试一个 Agent 的记忆系统..."'] },
+    { id: "logic", name: "逻辑审稿 Agent", avatar: "/images/roundtable/agent-logic_transparent.png", messages: ['我仔细审阅了这篇文章的论证逻辑。主要问题在于"能力同质化"到"工作流壁垒"之间的推导不够清晰。', "建议在第三段增加一个过渡论证：先说明为什么同质化会导致价格战，再引出工作流壁垒作为差异化竞争的必要条件。"] },
+    { id: "human", name: "人味编辑 Agent", avatar: "/images/roundtable/agent-human_transparent.png", messages: ["从内容角度来说，这篇文章的技术分析很扎实，但缺少个人视角和真实案例。", '建议在开头或中间插入一个亲身经历的项目场景，比如"去年我参与的一个项目中，团队遇到了类似的问题..."'] },
+    { id: "devil", name: "反方读者 Agent", avatar: "/images/roundtable/agent-devil_transparent.png", messages: ['我要提出一个关键质疑：文章认为"上下文是核心壁垒"，但未来长上下文模型可能会改变这个假设。', "如果 AI 能够一次性理解整个代码库，那么上下文管理的技术壁垒是否还成立？"] },
+    { id: "spread", name: "社区传播 Agent", avatar: "/images/roundtable/agent-spread_transparent.png", messages: ['从传播角度来看，当前标题"AI Agent 的技术壁垒"比较平淡，建议改成更有冲击力的表达。', '开头建议从一个具体的工程场景切入，比如"上周我花了3天时间调试一个 Agent 的记忆系统..."'] },
   ];
 
   const [currentTurn, setCurrentTurn] = useState(-1);
@@ -4146,7 +4146,7 @@ function RoundtableDiscussion({
 
   function showNextMessage(speakerIdx: number) {
     if (speakerIdx >= speakers.length) {
-      addMessage("系统", "/images/roundtable/host.png", "所有 Agent 已发言完毕，主持人可以输入回应或结束讨论。");
+      addMessage("系统", "/images/roundtable/host_transparent.png", "所有 Agent 已发言完毕，主持人可以输入回应或结束讨论。");
       return;
     }
     const speaker = speakers[speakerIdx];
@@ -4161,7 +4161,7 @@ function RoundtableDiscussion({
   function handleStart() {
     setStarted(true);
     setCurrentTurn(0);
-    addMessage("系统", "/images/roundtable/host.png", "圆桌审稿会开始，请各位 Agent 依次发表意见。");
+    addMessage("系统", "/images/roundtable/host_transparent.png", "圆桌审稿会开始，请各位 Agent 依次发表意见。");
     showNextMessage(0);
   }
 
@@ -4188,13 +4188,13 @@ function RoundtableDiscussion({
 
   function handleSendHost() {
     if (!hostInput.trim()) return;
-    addMessage("主持人", "/images/roundtable/host.png", hostInput.trim(), true);
+    addMessage("主持人", "/images/roundtable/host_transparent.png", hostInput.trim(), true);
     setSpeakingId("host");
     setHostInput("");
   }
 
   function handleEnd() {
-    addMessage("系统", "/images/roundtable/host.png", "讨论结束，进入定稿阶段。");
+    addMessage("系统", "/images/roundtable/host_transparent.png", "讨论结束，进入定稿阶段。");
     setSpeakingId(null);
     onComplete();
     showToast("圆桌讨论完成，已进入定稿草案");
@@ -4206,14 +4206,14 @@ function RoundtableDiscussion({
         <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "clamp(24px, 8vw, 80px)", width: "100%", flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => setSpeakingId("host")}>
             <div style={{ position: "relative", width: "clamp(60px, 12vw, 100px)", height: "clamp(60px, 12vw, 100px)" }}>
-              <img src="/images/roundtable/host.png" alt="主持人" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+              <img src="/images/roundtable/host_transparent.png" alt="主持人" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "host" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
             </div>
             <span style={{ marginTop: "6px", padding: "4px 12px", background: "var(--primary)", color: "#fff", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>主持人（你）</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("spread")}>
             <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
-              <img src="/images/roundtable/agent-spread.png" alt="社区传播" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+              <img src="/images/roundtable/agent-spread_transparent.png" alt="社区传播" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "spread" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
             </div>
             <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>社区传播</span>

@@ -11,6 +11,14 @@ from .repository import ProfileRepository
 PROFILE_FIELDS = {"nickname", "accountStatus", "role", "interests", "avoidances", "globalMemory", "interestMemories"}
 
 
+def _mask_api_key(api_key: str | None) -> str | None:
+    if not api_key:
+        return None
+    if len(api_key) <= 8:
+        return "****"
+    return f"{api_key[:4]}...{api_key[-4:]}"
+
+
 class ProfileService:
     def __init__(self, repository: ProfileRepository) -> None:
         self.repository = repository
@@ -168,25 +176,79 @@ class ProfileService:
         profile["writingStyle"] = payload
         return self.repository.save_profile(profile, "update_writing_style")
 
-    def get_llm_config(self) -> dict[str, Any]:
+    def get_llm_config(self, user_id: str | None = None, *, include_secret: bool = False) -> dict[str, Any]:
         """Get user's LLM configuration."""
-        # Try to get from dedicated table first (if pg_repository)
-        if hasattr(self.repository, 'get_llm_config'):
-            config = self.repository.get_llm_config("default")
-            if config:
-                return config
-        # Return default config
-        return {
-            "provider": "openai_compat",
-            "model": "gpt-5.5",
-            "baseUrl": "",
-            "apiKey": "",
-        }
+        config = None
+        if hasattr(self.repository, "get_llm_config"):
+            config = self.repository.get_llm_config(user_id or "default")
 
-    def update_llm_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not config:
+            config = {
+                "status": "platform_free",
+                "activeProvider": "platform_free",
+                "provider": "openai_compat",
+                "displayName": "平台免费额度",
+                "model": "知乎直答 / 平台托管模型",
+                "baseUrl": "",
+                "apiKey": "",
+            }
+
+        normalized = self._normalize_llm_config(config)
+        if include_secret:
+            return normalized
+        public = {key: value for key, value in normalized.items() if key != "apiKey"}
+        public["maskedKey"] = _mask_api_key(normalized.get("apiKey"))
+        return public
+
+    def update_llm_config(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
         """Update user's LLM configuration."""
-        # Save to dedicated table if available
-        if hasattr(self.repository, 'save_llm_config'):
-            return self.repository.save_llm_config("default", payload)
-        # LLM config is not stored in profile data for security
-        return payload
+        existing = self.get_llm_config(user_id, include_secret=True)
+        config = self._normalize_llm_config(payload, existing=existing)
+        if hasattr(self.repository, "save_llm_config"):
+            self.repository.save_llm_config(user_id or "default", config)
+        public = {key: value for key, value in config.items() if key != "apiKey"}
+        public["maskedKey"] = _mask_api_key(config.get("apiKey"))
+        return public
+
+    def _normalize_llm_config(self, payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
+        explicit_active_provider = (
+            payload.get("activeProvider")
+            or payload.get("active_provider")
+            or payload.get("status")
+        )
+
+        existing = existing or {}
+        base_url = payload.get("baseUrl") or payload.get("base_url") or existing.get("baseUrl") or existing.get("base_url") or ""
+        model = payload.get("model") or existing.get("model") or ""
+        api_key = payload.get("apiKey") or payload.get("api_key")
+
+        active_provider = explicit_active_provider
+        if active_provider == "user_configured":
+            active_provider = "user_provider"
+        elif active_provider == "not_configured":
+            active_provider = "none"
+        if active_provider not in {"platform_free", "user_provider", "none"}:
+            active_provider = "user_provider" if base_url and (api_key or existing.get("apiKey") or existing.get("api_key")) else "platform_free"
+        if not api_key and active_provider == "user_provider":
+            api_key = existing.get("apiKey") or existing.get("api_key") or ""
+
+        if active_provider == "user_provider":
+            status = "user_configured"
+            display_name = payload.get("displayName") or existing.get("displayName") or payload.get("provider") or "自有 LLM"
+            model = model or "gpt-4o-mini"
+        elif active_provider == "none":
+            status = "not_configured"
+            display_name = payload.get("displayName") or "稍后配置"
+        else:
+            status = "platform_free"
+            display_name = payload.get("displayName") or "平台免费额度"
+
+        return {
+            "status": status,
+            "activeProvider": active_provider,
+            "provider": "openai_compat",
+            "displayName": display_name,
+            "model": model,
+            "baseUrl": base_url,
+            "apiKey": api_key or "",
+        }

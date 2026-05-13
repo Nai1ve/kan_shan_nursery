@@ -63,6 +63,21 @@ function getSessionId(): string | null {
   }
 }
 
+function shouldUseSameOriginGateway(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!window.location.hostname.endsWith(".trycloudflare.com")) return false;
+  try {
+    const gateway = new URL(GATEWAY_URL);
+    return gateway.hostname === "127.0.0.1" || gateway.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+function getGatewayBaseUrl(): string {
+  return shouldUseSameOriginGateway() ? "" : GATEWAY_URL;
+}
+
 function saveSession(sessionId: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, savedAt: Date.now() }));
@@ -295,7 +310,7 @@ async function mockRequest<T>(path: string, method: string, payload?: unknown): 
 }
 
 async function gatewayRequest<T>(path: string, method: string, payload?: unknown): Promise<T> {
-  const url = `${GATEWAY_URL}${path}`;
+  const url = `${getGatewayBaseUrl()}${path}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const sessionId = getSessionId();
   if (sessionId) headers["x-session-id"] = sessionId;

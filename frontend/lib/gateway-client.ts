@@ -10,7 +10,9 @@
  */
 
 import type {
+  FeedbackAnalysis,
   FeedbackArticle,
+  FeedbackSnapshot,
   IdeaSeed,
   InputCategory,
   MemorySummary,
@@ -235,6 +237,43 @@ export async function gatewayStartWritingFromOpportunity(
 export async function gatewayFetchFeedbackArticles(): Promise<FeedbackArticle[]> {
   const body = await request<{ items: FeedbackArticle[] }>("GET", "/api/v1/feedback/articles");
   return body.items ?? [];
+}
+
+export async function gatewayCreateFeedbackFromSession(payload: {
+  writingSessionId: string;
+  seedId?: string;
+  interestId: string;
+  title: string;
+  coreClaim?: string;
+  articleType?: string;
+  publishMode: "mock" | "zhihu_ring";
+  publishedAt: string;
+}): Promise<FeedbackArticle> {
+  return request<FeedbackArticle>("POST", "/api/v1/feedback/articles/from-writing-session", payload);
+}
+
+export async function gatewayRefreshFeedback(articleId: string): Promise<FeedbackSnapshot> {
+  return request<FeedbackSnapshot>("POST", `/api/v1/feedback/articles/${encodeURIComponent(articleId)}/refresh`);
+}
+
+export async function gatewayAnalyzeFeedback(articleId: string): Promise<FeedbackAnalysis> {
+  return request<FeedbackAnalysis>("POST", `/api/v1/feedback/articles/${encodeURIComponent(articleId)}/analyze`);
+}
+
+export async function gatewayGetFeedbackArticle(articleId: string): Promise<{
+  article: FeedbackArticle;
+  snapshots: FeedbackSnapshot[];
+  latestAnalysis?: FeedbackAnalysis;
+}> {
+  return request("GET", `/api/v1/feedback/articles/${encodeURIComponent(articleId)}`);
+}
+
+export async function gatewaySecondSeed(articleId: string, payload?: { angle?: string }): Promise<IdeaSeed> {
+  return request<IdeaSeed>("POST", `/api/v1/feedback/articles/${encodeURIComponent(articleId)}/second-seed`, payload);
+}
+
+export async function gatewayMemoryUpdateRequest(articleId: string, candidateId: string): Promise<{ requestId: string }> {
+  return request("POST", `/api/v1/feedback/articles/${encodeURIComponent(articleId)}/memory-update-request`, { candidateId });
 }
 
 export async function gatewayCreateSeedFromCard(payload: {

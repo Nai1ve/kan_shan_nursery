@@ -1,10 +1,17 @@
 import pathlib
 import sys
 import unittest
+import asyncio
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SHARED_ROOT = ROOT.parents[1] / "packages" / "shared-python"
+sys.path.insert(0, str(SHARED_ROOT))
 sys.path.insert(0, str(ROOT))
 
+from app.auth.models import ZhihuBinding
+from app.enrichment.models import ProfileSignalBundle
+from app.enrichment.runner import EnrichmentRunner
+from app.enrichment.transformer import transform_bundle_to_llm_input
 from app.memory.service import MemoryNotFound, MemoryService
 from app.profile.repository import ProfileRepository
 from app.profile.service import ProfileService
@@ -90,6 +97,68 @@ class ProfileServiceTests(unittest.TestCase):
 
         with self.assertRaises(MemoryNotFound):
             memory_service.get_interest_memory("missing")
+
+    def test_llm_config_is_user_scoped_and_public_response_masks_key(self) -> None:
+        profile_service, _ = self.make_services()
+
+        saved = profile_service.update_llm_config(
+            {
+                "activeProvider": "user_provider",
+                "displayName": "DeepSeek",
+                "baseUrl": "https://api.example.com/v1",
+                "apiKey": "sk-test-secret",
+                "model": "deepseek-chat",
+            },
+            user_id="user-1",
+        )
+        other = profile_service.get_llm_config("user-2")
+        secret = profile_service.get_llm_config("user-1", include_secret=True)
+
+        self.assertEqual(saved["activeProvider"], "user_provider")
+        self.assertNotIn("apiKey", saved)
+        self.assertEqual(saved["maskedKey"], "sk-t...cret")
+        self.assertEqual(secret["apiKey"], "sk-test-secret")
+        self.assertEqual(other["activeProvider"], "platform_free")
+
+    def test_enrichment_transformer_accepts_string_interest_catalog(self) -> None:
+        bundle = ProfileSignalBundle(
+            user_id="user-1",
+            generated_at="2026-05-13T00:00:00+00:00",
+            onboarding={"selectedInterestIds": ["AI Coding"]},
+            signals=[],
+        )
+
+        result = transform_bundle_to_llm_input(
+            bundle=bundle,
+            existing_memory={},
+            interest_catalog=["AI Coding", "RAG"],
+            profile={"nickname": "测试用户", "interests": ["AI Coding"]},
+        )
+
+        self.assertEqual(result["user"]["interests"], ["AI Coding"])
+
+    def test_enrichment_runner_reads_access_token_from_binding_model(self) -> None:
+        class AuthRepo:
+            def get_zhihu_binding(self, user_id: str):
+                return ZhihuBinding(
+                    user_id=user_id,
+                    zhihu_uid="zhihu-1",
+                    access_token="token-1",
+                    binding_status="bound",
+                    bound_at=None,
+                    expired_at=None,
+                )
+
+        runner = EnrichmentRunner(
+            repo=None,
+            enrichment_service=None,
+            profile_repo=None,
+            auth_repo=AuthRepo(),
+        )
+
+        token = asyncio.run(runner._get_access_token("user-1"))
+
+        self.assertEqual(token, "token-1")
 
 
 if __name__ == "__main__":

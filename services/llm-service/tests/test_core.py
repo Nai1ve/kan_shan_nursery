@@ -1,17 +1,19 @@
 import json
-import os
 import pathlib
 import sys
 import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SHARED_ROOT = ROOT.parents[1] / "packages" / "shared-python"
+sys.path.insert(0, str(SHARED_ROOT))
 sys.path.insert(0, str(ROOT))
 
 from app.cache import MemoryCache
 from app.providers import MockProvider, ProviderError, ProviderResult
 from app.registry import Registry
 from app.service import LlmService
+import app.service as service_module
 from app.settings import Settings
 from app.validators import TASK_REQUIRED_KEYS
 
@@ -93,13 +95,143 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(response["routeMeta"]["provider"], "zhihu_direct")
         self.assertTrue(response["fallback"])
 
-    def test_openai_compat_provider_not_registered_when_env_missing(self) -> None:
-        for env in ("OPENAI_COMPAT_BASE_URL", "OPENAI_COMPAT_API_KEY"):
-            os.environ.pop(env, None)
-        registry = Registry.load_default(make_settings())
+    def test_openai_compat_provider_not_registered_when_config_missing(self) -> None:
+        registry = Registry.load_default(make_settings(openai_compat_base_url="", openai_compat_api_key=""))
         self.assertFalse(registry.has_provider("openai_compat"))
         self.assertTrue(registry.has_provider("mock"))
         self.assertTrue(registry.has_provider("zhihu_direct"))
+
+    def test_provider_mode_openai_compat_uses_openai_provider_and_falls_back(self) -> None:
+        settings = make_settings(
+            provider_mode="openai_compat",
+            openai_compat_base_url="http://127.0.0.1:1",
+            openai_compat_api_key="test-key",
+            openai_compat_model="test-model",
+            request_timeout_seconds=0.01,
+        )
+        service = LlmService(settings, MemoryCache())
+
+        response = service.run_task(request("summarize-content"))
+
+        self.assertEqual(response["routeMeta"]["provider"], "openai_compat")
+        self.assertTrue(response["fallback"])
+        self.assertEqual(response["routeMeta"]["fallbackTo"], "mock")
+
+    def test_provider_invalid_schema_falls_back_to_mock(self) -> None:
+        class BadProvider:
+            name = "openai_compat"
+
+            def run(self, task_type, input_data, prompt, persona=None):
+                return ProviderResult(output={"content": "not the required schema"}, provider_meta={})
+
+        settings = make_settings(
+            provider_mode="openai_compat",
+            openai_compat_base_url="http://example.invalid",
+            openai_compat_api_key="test-key",
+        )
+        registry = Registry.load_default(settings)
+        registry._providers["openai_compat"] = BadProvider()  # type: ignore[index]
+        service = LlmService(settings, MemoryCache(), registry=registry)
+
+        response = service.run_task(request("summarize-content"))
+
+        self.assertTrue(response["fallback"])
+        self.assertEqual(response["routeMeta"]["provider"], "openai_compat")
+        self.assertEqual(response["routeMeta"]["fallbackTo"], "mock")
+        self.assertIn("summary", response["output"])
+
+    def test_generic_extraction_ignores_user_provider_config(self) -> None:
+        service = LlmService(make_settings(provider_mode="mock"), MemoryCache())
+        response = service.run_task({
+            **request("summarize-content"),
+            "userLlmConfig": {
+                "activeProvider": "user_provider",
+                "baseUrl": "http://127.0.0.1:1",
+                "apiKey": "user-key",
+                "model": "user-model",
+            },
+        })
+
+        self.assertEqual(response["routeMeta"]["provider"], "mock")
+        self.assertEqual(response["routeMeta"]["providerSource"], "platform_free")
+        self.assertNotIn("notices", response)
+
+    def test_personal_task_uses_user_provider_first(self) -> None:
+        class GoodUserProvider:
+            name = "openai_compat"
+
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, task_type, input_data, prompt, persona=None):
+                return ProviderResult(
+                    output={
+                        "answer": "用户模型回答",
+                        "statusRecommendation": "resolved",
+                        "materials": [],
+                        "followUpQuestions": [],
+                    },
+                    provider_meta={},
+                )
+
+        original = service_module.OpenAICompatProvider
+        service_module.OpenAICompatProvider = GoodUserProvider  # type: ignore[assignment]
+        try:
+            service = LlmService(
+                make_settings(provider_mode="mock"),
+                MemoryCache(),
+                quota_limits={"answer-seed-question": 1},
+            )
+            response = service.run_task({
+                **request("answer-seed-question", {"question": "证据是什么？"}),
+                "userLlmConfig": {
+                    "activeProvider": "user_provider",
+                    "baseUrl": "http://user-llm.local/v1",
+                    "apiKey": "user-key",
+                    "model": "user-model",
+                },
+            })
+        finally:
+            service_module.OpenAICompatProvider = original  # type: ignore[assignment]
+
+        self.assertFalse(response["fallback"])
+        self.assertEqual(response["routeMeta"]["provider"], "user_provider")
+        self.assertEqual(response["routeMeta"]["providerSource"], "user_provider")
+        self.assertEqual(response["output"]["answer"], "用户模型回答")
+        self.assertNotIn("notices", response)
+        self.assertEqual(service.get_quota()["answer-seed-question"]["used"], 0)
+
+    def test_user_provider_failure_falls_back_with_notice(self) -> None:
+        class BadUserProvider:
+            name = "openai_compat"
+
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, task_type, input_data, prompt, persona=None):
+                raise ProviderError("user endpoint unreachable")
+
+        original = service_module.OpenAICompatProvider
+        service_module.OpenAICompatProvider = BadUserProvider  # type: ignore[assignment]
+        try:
+            service = LlmService(make_settings(provider_mode="mock"), MemoryCache())
+            response = service.run_task({
+                **request("answer-seed-question", {"question": "证据是什么？"}),
+                "userLlmConfig": {
+                    "activeProvider": "user_provider",
+                    "baseUrl": "http://user-llm.local/v1",
+                    "apiKey": "user-key",
+                    "model": "user-model",
+                },
+            })
+        finally:
+            service_module.OpenAICompatProvider = original  # type: ignore[assignment]
+
+        self.assertTrue(response["fallback"])
+        self.assertTrue(response["routeMeta"]["userProviderFailed"])
+        self.assertEqual(response["routeMeta"]["providerSource"], "platform_free")
+        self.assertEqual(response["notices"][0]["code"], "USER_LLM_PROVIDER_FAILED")
+        self.assertIn("answer", response["output"])
 
 
 class MultiPersonaTests(unittest.TestCase):

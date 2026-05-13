@@ -52,6 +52,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kanshan:kanshan_dev_password@postgres:5432/kanshan}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:3000,http://localhost:3000}
       PROFILE_SERVICE_URL: http://profile-service:8010
       CONTENT_SERVICE_URL: http://content-service:8020
       SEED_SERVICE_URL: http://seed-service:8030

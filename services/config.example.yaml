@@ -155,6 +155,21 @@ llm:
   # 是否启用 Trace
   # 环境变量：LLM_TRACE_ENABLED（1/true/True 为启用）
   trace_enabled: true
+  # 每日每用户每任务类型配额。命中缓存不扣额度，回源成功才 +1
+  # 字段名与 TASKS 对齐（kebab-case 转 snake_case）
+  quota:
+    summarize_content: 50
+    answer_seed_question: 30
+    supplement_material: 30
+    sprout_opportunities: 20
+    argument_blueprint: 15
+    generate_outline: 15
+    draft: 10
+    roundtable_review: 10
+    feedback_summary: 10
+    profile_memory_synthesis: 5
+    extract_controversies: 20
+    generate_writing_angles: 20
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 日志配置

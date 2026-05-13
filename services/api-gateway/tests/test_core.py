@@ -4,6 +4,8 @@ import unittest
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SHARED_ROOT = ROOT.parents[1] / "packages" / "shared-python"
+sys.path.insert(0, str(SHARED_ROOT))
 sys.path.insert(0, str(ROOT))
 
 from app.errors import DownstreamHttpError, ServiceNotReady
@@ -29,6 +31,7 @@ class FakeClient:
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
         timeout_seconds: float = 20,
+        session_id: str | None = None,
     ) -> tuple[int, Any]:
         self.calls.append(
             {
@@ -40,6 +43,7 @@ class FakeClient:
                 "params": params,
                 "payload": payload,
                 "timeout": timeout_seconds,
+                "session_id": session_id,
             }
         )
         return self.responses.get((method.upper(), base_url, path), (200, {"ok": True}))

@@ -27,7 +27,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addSeedQuestion,
   agentSupplementSeed,
+  analyzeFeedback,
   applyMemoryUpdate,
+  createFeedbackFromSession,
   createManualSeed,
   createSeedFromCard,
   enrichCard,
@@ -50,6 +52,7 @@ import {
   markSeedQuestion,
   mergeSeedsApi,
   refreshCategory,
+  refreshFeedback,
   rejectMemoryUpdate,
   updateBasicProfile,
   updateInterests,
@@ -1012,27 +1015,75 @@ export function KanshanApp() {
     });
   }
 
-  function publishWriting() {
+  async function publishWriting() {
     const session = data?.writingSession;
     const seed = data?.seeds.find((item) => item.id === session?.seedId);
     if (!session || !seed) return;
     const articleId = createId("article", seed.id);
-    const article: FeedbackArticle = {
-      id: articleId,
-      title: seed.possibleAngles[0] ?? seed.title,
-      interestId: seed.interestId,
-      linkedSeedId: seed.id,
-      status: "新发布",
-      statusTone: "blue",
-      performanceSummary: "刚发布，系统已进入 2-3 周反馈观察期。当前先记录首批评论和收藏趋势。",
-      commentInsights: ["等待第一批评论进入。", "建议重点关注反方是否质疑证据不足。", "收藏率会影响下一轮选题判断。"],
-      memoryAction: `把"${seed.interestName}：发布后需要观察反方质疑"写入 Memory 候选。`,
-      metrics: [
-        { label: "阅读完成率", value: 18 },
-        { label: "收藏率", value: 7 },
-        { label: "评论争议度", value: 12 },
-      ],
-    };
+
+    let article: FeedbackArticle;
+
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      try {
+        // Call backend to create feedback article
+        const backendArticle = await createFeedbackFromSession({
+          writingSessionId: session.sessionId,
+          seedId: seed.id,
+          interestId: seed.interestId,
+          title: seed.possibleAngles[0] ?? seed.title,
+          coreClaim: seed.coreClaim,
+          articleType: session.articleType,
+          publishMode: "mock",
+          publishedAt: new Date().toISOString(),
+        });
+        article = {
+          ...backendArticle,
+          // Ensure backward-compatible fields exist
+          id: backendArticle.id || articleId,
+          statusTone: backendArticle.statusTone || "blue",
+          performanceSummary: backendArticle.performanceSummary || "文章已发布，等待读者反馈。",
+          commentInsights: backendArticle.commentInsights || [],
+          memoryAction: backendArticle.memoryAction || "等待反馈分析",
+          metrics: backendArticle.metrics || [],
+        };
+      } catch (err) {
+        console.error("Failed to create feedback article in backend:", err);
+        // Fallback to client-side mock
+        article = {
+          id: articleId,
+          title: seed.possibleAngles[0] ?? seed.title,
+          interestId: seed.interestId,
+          linkedSeedId: seed.id,
+          status: "tracking",
+          statusTone: "blue",
+          performanceSummary: "文章已发布，等待读者反馈。",
+          commentInsights: [],
+          memoryAction: "等待反馈分析",
+          metrics: [],
+          publishMode: "mock",
+          publishedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      // Mock mode: client-side only
+      article = {
+        id: articleId,
+        title: seed.possibleAngles[0] ?? seed.title,
+        interestId: seed.interestId,
+        linkedSeedId: seed.id,
+        status: "tracking",
+        statusTone: "blue",
+        performanceSummary: "刚发布，系统已进入 2-3 周反馈观察期。当前先记录首批评论和收藏趋势。",
+        commentInsights: ["等待第一批评论进入。", "建议重点关注反方是否质疑证据不足。", "收藏率会影响下一轮选题判断。"],
+        memoryAction: `把"${seed.interestName}：发布后需要观察反方质疑"写入 Memory 候选。`,
+        metrics: [
+          { label: "阅读完成率", value: 18 },
+          { label: "收藏率", value: 7 },
+          { label: "评论争议度", value: 12 },
+        ],
+      };
+    }
+
     updateData((current) => ({
       ...current,
       writingSession: { ...session, draftStatus: "published", publishedArticleId: articleId },
@@ -1043,15 +1094,68 @@ export function KanshanApp() {
     showToast("已模拟发布，并进入历史反馈监控");
   }
 
-  function syncFeedback() {
-    updateData((current) => ({
-      ...current,
-      feedbackArticles: current.feedbackArticles.map((article) => ({
-        ...article,
-        metrics: article.metrics.map((metric, index) => ({ ...metric, value: Math.min(96, metric.value + 3 + index) })),
-      })),
-    }));
-    showToast("已同步最新互动数据");
+  async function syncFeedback() {
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      // Refresh each article from backend
+      const articles = data?.feedbackArticles || [];
+      for (const article of articles) {
+        try {
+          await refreshFeedback(article.id);
+        } catch (err) {
+          console.error(`Failed to refresh article ${article.id}:`, err);
+        }
+      }
+      // Re-fetch articles to get updated data
+      try {
+        const updatedArticles = await fetchFeedbackArticles();
+        updateData((current) => ({ ...current, feedbackArticles: updatedArticles }));
+      } catch (err) {
+        console.error("Failed to re-fetch feedback articles:", err);
+      }
+      showToast("已同步最新互动数据");
+    } else {
+      // Mock mode: client-side simulation
+      updateData((current) => ({
+        ...current,
+        feedbackArticles: current.feedbackArticles.map((article) => ({
+          ...article,
+          metrics: article.metrics.map((metric, index) => ({ ...metric, value: Math.min(96, metric.value + 3 + index) })),
+        })),
+      }));
+      showToast("已同步最新互动数据");
+    }
+  }
+
+  async function handleAnalyzeFeedback(articleId: string) {
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      try {
+        const analysis = await analyzeFeedback(articleId);
+        updateData((current) => ({
+          ...current,
+          feedbackArticles: current.feedbackArticles.map((a) =>
+            a.id === articleId
+              ? {
+                  ...a,
+                  latestAnalysis: analysis,
+                  status: "analyzed",
+                  performanceSummary: analysis.performanceSummary || a.performanceSummary,
+                  commentInsights: [
+                    ...analysis.positiveFeedback.slice(0, 2),
+                    ...analysis.negativeFeedback.slice(0, 2),
+                  ],
+                  memoryAction: analysis.memoryUpdateCandidates?.[0]?.reason || a.memoryAction,
+                }
+              : a,
+          ),
+        }));
+        showToast("反馈分析完成");
+      } catch (err) {
+        console.error("Failed to analyze feedback:", err);
+        showToast("反馈分析失败，请稍后重试");
+      }
+    } else {
+      showToast("Mock 模式下无需分析");
+    }
   }
 
   function generateSecondArticle(article: FeedbackArticle) {
@@ -1457,6 +1561,7 @@ export function KanshanApp() {
           <HistorySection
             articles={data.feedbackArticles}
             syncFeedback={syncFeedback}
+            analyzeFeedbackHandler={handleAnalyzeFeedback}
             generateSecondArticle={generateSecondArticle}
             openComments={setCommentArticle}
           />
@@ -2570,11 +2675,13 @@ function WritingStageContent({
 function HistorySection({
   articles,
   syncFeedback,
+  analyzeFeedbackHandler,
   generateSecondArticle,
   openComments,
 }: {
   articles: FeedbackArticle[];
   syncFeedback: () => void;
+  analyzeFeedbackHandler: (articleId: string) => void;
   generateSecondArticle: (article: FeedbackArticle) => void;
   openComments: (article: FeedbackArticle) => void;
 }) {
@@ -2587,44 +2694,92 @@ function HistorySection({
             <p className="panel-subtitle">监控已发布文章表现，提取反馈信号，反哺用户画像、种子库和下一篇文章。</p>
           </div>
           <button className="btn primary" onClick={syncFeedback} type="button">
+            <RefreshCw size={14} />
             同步反馈
           </button>
         </div>
         <div className="panel-body grid-1">
-          {articles.map((article) => (
-            <article className="card history-card" key={article.id}>
-              <div>
-                <div className="tag-row">
-                  <span className="tag blue">已发布</span>
-                  <span className={`tag ${article.statusTone}`}>{article.status}</span>
-                </div>
-                <h3>{article.title}</h3>
-                <InfoBlock title="表现摘要" text={article.performanceSummary} />
-                <ListBlock ordered title="评论反馈提取" items={article.commentInsights} />
-                <InfoBlock title="反哺动作" text={article.memoryAction} />
-                <div className="action-row">
-                  <button className="btn primary" onClick={() => generateSecondArticle(article)} type="button">
-                    生成二次文章
-                  </button>
-                  <button className="btn ghost" onClick={() => openComments(article)} type="button">
-                    查看评论摘要
-                  </button>
-                </div>
-              </div>
-              <div className="mini-bars">
-                {article.metrics.map((metric) => (
-                  <div key={metric.label}>
-                    <div className="field-title">
-                      {metric.label} {metric.value}%
-                    </div>
-                    <div className="mini-bar">
-                      <span style={{ width: `${metric.value}%` }} />
-                    </div>
+          {articles.map((article) => {
+            const analysis = article.latestAnalysis;
+            return (
+              <article className="card history-card" key={article.id}>
+                <div>
+                  <div className="tag-row">
+                    <span className="tag blue">{article.publishMode === "mock" ? "Demo 发布" : "已发布"}</span>
+                    <span className={`tag ${article.statusTone}`}>{article.status === "analyzed" ? "已分析" : article.status === "tracking" ? "追踪中" : article.status}</span>
+                    {article.latestMetrics?.metricSource === "mock" && <span className="tag orange">Demo 数据</span>}
                   </div>
-                ))}
-              </div>
-            </article>
-          ))}
+                  <h3>{article.title}</h3>
+                  <InfoBlock title="表现摘要" text={analysis?.performanceSummary || article.performanceSummary} />
+                  {analysis ? (
+                    <>
+                      {analysis.positiveFeedback.length > 0 && <ListBlock title="读者认可点" items={analysis.positiveFeedback} />}
+                      {analysis.negativeFeedback.length > 0 && <ListBlock title="主要质疑点" items={analysis.negativeFeedback} />}
+                      {analysis.openQuestions.length > 0 && <ListBlock title="未解决问题" items={analysis.openQuestions} />}
+                      {analysis.counterArguments.length > 0 && <ListBlock title="反方观点" items={analysis.counterArguments} />}
+                      {analysis.secondArticleIdeas.length > 0 && (
+                        <ListBlock
+                          title="二次创作建议"
+                          items={analysis.secondArticleIdeas.map((idea) => `${idea.title}：${idea.reason}`)}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <ListBlock ordered title="评论反馈提取" items={article.commentInsights} />
+                      <InfoBlock title="反哺动作" text={article.memoryAction} />
+                    </>
+                  )}
+                  <div className="action-row">
+                    {!analysis && (
+                      <button className="btn primary" onClick={() => analyzeFeedbackHandler(article.id)} type="button">
+                        <Sparkles size={14} />
+                        生成反馈分析
+                      </button>
+                    )}
+                    <button className="btn primary" onClick={() => generateSecondArticle(article)} type="button">
+                      生成二次文章
+                    </button>
+                    <button className="btn ghost" onClick={() => openComments(article)} type="button">
+                      查看评论摘要
+                    </button>
+                  </div>
+                </div>
+                <div className="mini-bars">
+                  {article.metrics.map((metric) => (
+                    <div key={metric.label}>
+                      <div className="field-title">
+                        {metric.label} {metric.value}%
+                      </div>
+                      <div className="mini-bar">
+                        <span style={{ width: `${metric.value}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  {article.latestMetrics && (
+                    <>
+                      <div>
+                        <div className="field-title">
+                          点赞 {article.latestMetrics.likeCount}
+                        </div>
+                        <div className="mini-bar">
+                          <span style={{ width: `${Math.min(100, article.latestMetrics.likeCount)}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="field-title">
+                          评论 {article.latestMetrics.commentCount}
+                        </div>
+                        <div className="mini-bar">
+                          <span style={{ width: `${Math.min(100, article.latestMetrics.commentCount * 3)}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -3685,21 +3840,62 @@ function MergeSeedModal({
 }
 
 function CommentDialog({ article, onClose }: { article: FeedbackArticle; onClose: () => void }) {
+  const analysis = article.latestAnalysis;
   return (
     <div className="overlay">
       <section className="modal">
         <div className="modal-header">
           <div>
-            <span className="tag blue">评论摘要</span>
+            <span className="tag blue">{analysis ? "反馈分析" : "评论摘要"}</span>
             <h2>{article.title}</h2>
           </div>
-          <button className="icon-btn" onClick={onClose} type="button" aria-label="关闭评论摘要">
+          <button className="icon-btn" onClick={onClose} type="button" aria-label="关闭">
             <X size={18} />
           </button>
         </div>
         <div className="modal-body">
-          <ListBlock ordered title="评论反馈提取" items={article.commentInsights} />
-          <InfoBlock title="Memory 候选更新" text={article.memoryAction} />
+          {analysis ? (
+            <>
+              <InfoBlock title="表现摘要" text={analysis.performanceSummary} />
+              {analysis.positiveFeedback.length > 0 && <ListBlock title="读者认可点" items={analysis.positiveFeedback} />}
+              {analysis.negativeFeedback.length > 0 && <ListBlock title="主要质疑点" items={analysis.negativeFeedback} />}
+              {analysis.openQuestions.length > 0 && <ListBlock title="未解决问题" items={analysis.openQuestions} />}
+              {analysis.counterArguments.length > 0 && <ListBlock title="反方观点" items={analysis.counterArguments} />}
+              {analysis.missingMaterials.length > 0 && <ListBlock title="材料缺口" items={analysis.missingMaterials} />}
+              {analysis.articlePortrait && (
+                <>
+                  <InfoBlock title="最强观点" text={analysis.articlePortrait.strongestPoint} />
+                  <InfoBlock title="最弱环节" text={analysis.articlePortrait.weakestPoint} />
+                  <InfoBlock title="读者类型" text={analysis.articlePortrait.readerProfile} />
+                  <InfoBlock title="表达风格反馈" text={analysis.articlePortrait.styleFeedback} />
+                  <InfoBlock title="下一篇优先改进点" text={analysis.articlePortrait.nextImprovement} />
+                </>
+              )}
+              {analysis.secondArticleIdeas.length > 0 && (
+                <ListBlock
+                  title="二次创作建议"
+                  items={analysis.secondArticleIdeas.map((idea) => `${idea.title}：${idea.reason}`)}
+                />
+              )}
+              {analysis.seedCandidates.length > 0 && (
+                <ListBlock
+                  title="可转种子的评论"
+                  items={analysis.seedCandidates.map((c) => `${c.title}：${c.reason}`)}
+                />
+              )}
+              {analysis.memoryUpdateCandidates.length > 0 && (
+                <ListBlock
+                  title="Memory 更新建议"
+                  items={analysis.memoryUpdateCandidates.map((c) => `${c.targetField}：${c.reason}`)}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <ListBlock ordered title="评论反馈提取" items={article.commentInsights} />
+              <InfoBlock title="Memory 候选更新" text={article.memoryAction} />
+            </>
+          )}
         </div>
       </section>
     </div>
@@ -4005,32 +4201,32 @@ function RoundtableDiscussion({
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 1.2fr)", gap: "20px", minHeight: "500px" }}>
-      <div style={{ background: "linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-strong) 100%)", borderRadius: "var(--radius-xl)", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "28px" }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "80px", width: "100%" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 1.2fr)", gap: "20px", minHeight: "500px" }}>
+      <div style={{ background: "linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-strong) 100%)", borderRadius: "var(--radius-xl)", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "clamp(24px, 8vw, 80px)", width: "100%", flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => setSpeakingId("host")}>
-            <div style={{ position: "relative" }}>
-              <img src="/images/roundtable/host.png" alt="主持人" style={{ height: "100px", width: "auto", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+            <div style={{ position: "relative", width: "clamp(60px, 12vw, 100px)", height: "clamp(60px, 12vw, 100px)" }}>
+              <img src="/images/roundtable/host.png" alt="主持人" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "host" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
             </div>
             <span style={{ marginTop: "6px", padding: "4px 12px", background: "var(--primary)", color: "#fff", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>主持人（你）</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("spread")}>
-            <div style={{ position: "relative" }}>
-              <img src="/images/roundtable/agent-spread.png" alt="社区传播" style={{ height: "90px", width: "auto", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+            <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
+              <img src="/images/roundtable/agent-spread.png" alt="社区传播" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "spread" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
             </div>
             <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>社区传播</span>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "32px", width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "clamp(16px, 4vw, 32px)", width: "100%", flexWrap: "wrap" }}>
           {["logic", "human", "devil"].map((id) => {
             const agent = speakers.find((s) => s.id === id)!;
             const labels: Record<string, string> = { logic: "逻辑审稿", human: "人味编辑", devil: "反方读者" };
             return (
               <div key={id} style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent(id)}>
-                <div style={{ position: "relative" }}>
-                  <img src={agent.avatar} alt={labels[id]} style={{ height: "90px", width: "auto", filter: speakingId === id ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+                <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
+                  <img src={agent.avatar} alt={labels[id]} style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === id ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
                   {speakingId === id && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
                 </div>
                 <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>{labels[id]}</span>

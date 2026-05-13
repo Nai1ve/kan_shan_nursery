@@ -29,6 +29,8 @@ class PostgresSproutStorage:
                 id=opp_id,
                 seed_id=data.get("seedId"),
                 interest_id=data.get("interestId"),
+                run_id=data.get("runId"),
+                trigger_type=data.get("triggerType"),
                 status=data.get("status"),
                 score=str(data.get("score", 0)),
                 data=json.dumps(data, ensure_ascii=False),
@@ -85,6 +87,42 @@ class PostgresSproutStorage:
             )
             session.merge(row)
             session.commit()
+        finally:
+            session.close()
+
+    # Dismissed pairs
+    def get_dismissed_pairs(self, user_id: str, days: int = 7) -> set[tuple[str, str]]:
+        """Scan dismissed opportunities and return (seedId, triggerCardId) pairs."""
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        session = self._SessionFactory()
+        try:
+            rows = (
+                session.query(SproutOpportunityTable)
+                .filter(SproutOpportunityTable.status == "dismissed")
+                .all()
+            )
+            pairs: set[tuple[str, str]] = set()
+            for row in rows:
+                opp = json.loads(row.data)
+                if opp.get("userId") and opp.get("userId") != user_id:
+                    continue
+                dismissed_at = opp.get("dismissedAt")
+                if dismissed_at:
+                    try:
+                        dt = datetime.fromisoformat(dismissed_at.replace("Z", "+00:00"))
+                        if dt < cutoff:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                seed_id = opp.get("seedId", "")
+                trigger_ids = opp.get("triggerCardIds") or []
+                for card_id in trigger_ids:
+                    pairs.add((seed_id, card_id))
+                if not trigger_ids:
+                    pairs.add((seed_id, ""))
+            return pairs
         finally:
             session.close()
 

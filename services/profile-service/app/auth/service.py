@@ -109,6 +109,17 @@ class AuthService:
             }
         return binding.to_dict()
 
+    def get_zhihu_token(self, user_id: str) -> dict[str, Any]:
+        """Internal endpoint: return raw access_token for inter-service calls."""
+        binding = self._repo.get_zhihu_binding(user_id)
+        if not binding or not binding.access_token:
+            return {"access_token": None, "zhihu_uid": None, "binding_status": "not_started"}
+        return {
+            "access_token": binding.access_token,
+            "zhihu_uid": binding.zhihu_uid,
+            "binding_status": binding.binding_status,
+        }
+
     def create_zhihu_binding(self, user_id: str, zhihu_uid: str, access_token: str, expires_in: int) -> dict[str, Any]:
         now = now_iso()
         expired_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else None

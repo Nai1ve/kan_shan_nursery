@@ -1,6 +1,8 @@
 import type {
   EnrichmentJob,
+  FeedbackAnalysis,
   FeedbackArticle,
+  FeedbackSnapshot,
   IdeaSeed,
   InputCategory,
   ProfileData,
@@ -16,6 +18,8 @@ import {
   gatewayAddSeedMaterial,
   gatewayAddSeedQuestion,
   gatewayAgentSupplementSeed,
+  gatewayAnalyzeFeedback,
+  gatewayCreateFeedbackFromSession,
   gatewayCreateManualSeed,
   gatewayCreateSeedFromCard,
   gatewayDeleteSeedMaterial,
@@ -27,6 +31,7 @@ import {
   gatewayFetchProfile,
   gatewayFetchProfileInterests,
   gatewayRefreshCategory,
+  gatewayRefreshFeedback,
   gatewayFetchSeeds,
   gatewayFetchSproutOpportunities,
   gatewayStartSproutRun,
@@ -178,6 +183,27 @@ export async function fetchFeedbackArticles(): Promise<FeedbackArticle[]> {
   return USE_GATEWAY
     ? gatewayFetchFeedbackArticles()
     : getJson<FeedbackArticle[]>("/api/mock/feedback");
+}
+
+export async function createFeedbackFromSession(payload: {
+  writingSessionId: string;
+  seedId?: string;
+  interestId: string;
+  title: string;
+  coreClaim?: string;
+  articleType?: string;
+  publishMode: "mock" | "zhihu_ring";
+  publishedAt: string;
+}): Promise<FeedbackArticle> {
+  return gatewayCreateFeedbackFromSession(payload);
+}
+
+export async function refreshFeedback(articleId: string): Promise<FeedbackSnapshot> {
+  return gatewayRefreshFeedback(articleId);
+}
+
+export async function analyzeFeedback(articleId: string): Promise<FeedbackAnalysis> {
+  return gatewayAnalyzeFeedback(articleId);
 }
 
 export async function createSeedFromCard(payload: {

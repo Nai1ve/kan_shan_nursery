@@ -10,6 +10,7 @@ class ProfileRepository:
         self._profiles: dict[str, dict[str, Any]] = {}
         self._update_requests: dict[str, dict[str, dict[str, Any]]] = {}
         self._versions: list[dict[str, Any]] = []
+        self._llm_configs: dict[str, dict[str, Any]] = {}
 
     def _profile_key(self, user_id: str | None) -> str:
         return user_id or "default"
@@ -50,3 +51,12 @@ class ProfileRepository:
             self._update_requests[target_user_id] = {}
         self._update_requests[target_user_id][request["id"]] = clone(request)
         return clone(request)
+
+    def get_llm_config(self, user_id: str | None = None) -> dict[str, Any] | None:
+        config = self._llm_configs.get(self._profile_key(user_id))
+        return clone(config) if config else None
+
+    def save_llm_config(self, user_id: str | None, config: dict[str, Any]) -> dict[str, Any]:
+        key = self._profile_key(user_id)
+        self._llm_configs[key] = clone(config)
+        return clone(config)

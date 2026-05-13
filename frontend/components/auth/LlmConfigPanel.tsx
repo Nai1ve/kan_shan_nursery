@@ -2,6 +2,7 @@
 
 import { CheckCircle2, KeyRound, ShieldCheck, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
+import { updateLLMConfig } from "@/lib/api-client";
 import type { LlmConfigViewModel } from "@/lib/types";
 
 interface LlmConfigPanelProps {
@@ -31,6 +32,7 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
   const [apiKey, setApiKey] = useState("");
   const [tested, setTested] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const platformQuota = useMemo(
     () => ({
@@ -56,7 +58,7 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
     setTested(true);
   }
 
-  function submit() {
+  async function submit() {
     setError("");
     if (choice === "user_provider" && !tested) {
       setError("请先测试连接，或选择平台免费额度 / 稍后配置");
@@ -64,6 +66,15 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
     }
 
     if (choice === "platform_free") {
+      setSaving(true);
+      try {
+        await updateLLMConfig({ activeProvider: "platform_free", status: "platform_free" });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "保存 LLM 配置失败");
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
       onComplete({
         status: "platform_free",
         activeProvider: "platform_free",
@@ -75,6 +86,23 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
     }
 
     if (choice === "user_provider") {
+      setSaving(true);
+      try {
+        await updateLLMConfig({
+          activeProvider: "user_provider",
+          status: "user_configured",
+          provider: "openai_compat",
+          displayName,
+          baseUrl,
+          model,
+          apiKey,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "保存 LLM 配置失败");
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
       onComplete({
         status: "user_configured",
         activeProvider: "user_provider",
@@ -85,6 +113,15 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
       return;
     }
 
+    setSaving(true);
+    try {
+      await updateLLMConfig({ activeProvider: "none", status: "not_configured" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存 LLM 配置失败");
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
     onComplete({ status: "not_configured", activeProvider: "none", displayName: "稍后配置" });
   }
 
@@ -168,7 +205,9 @@ export function LlmConfigPanel({ onComplete }: LlmConfigPanelProps) {
       {error ? <div className="auth-error">{error}</div> : null}
 
       <div className="auth-action-grid single">
-        <button className="auth-button primary" onClick={submit} type="button">保存 LLM 设置，继续画像采集</button>
+        <button className="auth-button primary" disabled={saving} onClick={submit} type="button">
+          {saving ? "保存中..." : "保存 LLM 设置，继续画像采集"}
+        </button>
       </div>
     </div>
   );

@@ -69,6 +69,26 @@ class WritingLlmClient:
             },
         )
 
+    def generate_outline(
+        self,
+        blueprint: dict[str, Any],
+        materials: list[dict[str, Any]],
+        memory: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._call(
+            "generate-outline",
+            {
+                "taskType": "generate-outline",
+                "input": {
+                    "blueprint": blueprint,
+                    "materials": materials,
+                    "memory": memory,
+                },
+                "promptVersion": "v1",
+                "schemaVersion": "v1",
+            },
+        )
+
     def draft(
         self,
         seed: dict[str, Any],

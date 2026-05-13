@@ -16,10 +16,11 @@ from kanshan_shared import configure_logging, get_logger, load_config
 from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
+from .data_fetcher import SproutDataFetcher
 from .llm_client import SproutLlmClient
 from .service import OpportunityNotFound, RunNotFound, SproutService
 
@@ -30,15 +31,16 @@ configure_logging("sprout-service", _config.logging)
 logger = get_logger("kanshan.sprout_service.main")
 
 _llm_client = SproutLlmClient(base_url=_config.service_urls.llm)
+_data_fetcher = SproutDataFetcher(_config.service_urls)
 
 if _config.storage_backend == "postgres":
     from .database import init_db
     init_db()
     from .pg_storage import PostgresSproutStorage
-    service = SproutService(storage=PostgresSproutStorage(), llm_client=_llm_client)
+    service = SproutService(storage=PostgresSproutStorage(), llm_client=_llm_client, data_fetcher=_data_fetcher)
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
-    service = SproutService(llm_client=_llm_client)
+    service = SproutService(llm_client=_llm_client, data_fetcher=_data_fetcher)
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 
@@ -58,9 +60,17 @@ def health() -> dict[str, str]:
 
 
 @app.post("/sprout/start")
-def start_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def start_run(request: Request, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    # Inject session_id and user_id from gateway-forwarded headers
+    session_id = request.headers.get("x-session-id")
+    if session_id:
+        payload.setdefault("sessionId", session_id)
+    user_id = request.headers.get("x-user-id")
+    if user_id:
+        payload.setdefault("userId", user_id)
     result = service.start_run(payload)
-    logger.info("sprout_start", extra={"runId": result.get("runId", "")})
+    logger.info("sprout_start", extra={"runId": result.get("id", ""), "userId": payload.get("userId", "")})
     return result
 
 

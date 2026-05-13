@@ -170,10 +170,115 @@ export interface ProfileData {
   interestMemories: MemorySummary[];
 }
 
+export interface FeedbackMetrics {
+  readCount?: number;
+  likeCount: number;
+  commentCount: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  metricSource: "real" | "estimated" | "mock" | "unavailable";
+  unavailableFields?: string[];
+  capturedAt: string;
+}
+
+export interface FeedbackComment {
+  commentId: string;
+  author?: string;
+  content: string;
+  likeCount?: number;
+  createdAt?: string;
+  parentCommentId?: string;
+}
+
+export interface FeedbackSnapshot {
+  snapshotId: string;
+  articleId: string;
+  capturedAt: string;
+  metrics: FeedbackMetrics;
+  comments: FeedbackComment[];
+}
+
+export interface ReaderSignal {
+  type: "agree" | "disagree" | "question" | "evidence" | "experience" | "noise";
+  summary: string;
+  commentIds: string[];
+  severity?: "low" | "medium" | "high";
+}
+
+export interface ArticlePortrait {
+  strongestPoint: string;
+  weakestPoint: string;
+  readerProfile: string;
+  controversyMap: string[];
+  styleFeedback: string;
+  nextImprovement: string;
+}
+
+export interface SecondArticleIdea {
+  ideaId: string;
+  title: string;
+  angle: string;
+  reason: string;
+  sourceCommentIds: string[];
+  suggestedArticleType: string;
+}
+
+export interface FeedbackSeedCandidate {
+  candidateId: string;
+  title: string;
+  coreClaim: string;
+  sourceCommentIds: string[];
+  reason: string;
+  suggestedMaterials: {
+    evidence: string[];
+    counterargument: string[];
+    openQuestion: string[];
+  };
+}
+
+export interface MemoryUpdateCandidate {
+  candidateId: string;
+  interestId: string;
+  targetField: string;
+  suggestedValue: string;
+  reason: string;
+  sourceArticleId: string;
+}
+
+export interface FeedbackAnalysis {
+  articleId: string;
+  generatedAt: string;
+  performanceSummary: string;
+  readerSignals: ReaderSignal[];
+  positiveFeedback: string[];
+  negativeFeedback: string[];
+  openQuestions: string[];
+  counterArguments: string[];
+  missingMaterials: string[];
+  articlePortrait: ArticlePortrait;
+  secondArticleIdeas: SecondArticleIdea[];
+  seedCandidates: FeedbackSeedCandidate[];
+  memoryUpdateCandidates: MemoryUpdateCandidate[];
+}
+
 export interface FeedbackArticle {
   id: string;
-  title: string;
+  userId?: string;
+  seedId?: string;
+  writingSessionId?: string;
   interestId: string;
+  title: string;
+  contentExcerpt?: string;
+  coreClaim?: string;
+  articleType?: string;
+  publishMode?: "mock" | "zhihu_ring";
+  platformContentId?: string;
+  ringId?: string;
+  url?: string;
+  publishedAt?: string;
+  latestMetrics?: FeedbackMetrics;
+  latestAnalysis?: FeedbackAnalysis;
+  // Backward-compatible fields
   linkedSeedId?: string;
   status: string;
   statusTone: "green" | "orange" | "blue";

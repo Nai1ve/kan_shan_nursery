@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from kanshan_shared import load_config
 
 from .providers import (
     MockProvider,
@@ -15,8 +12,6 @@ from .providers import (
     ZhihuDirectProvider,
 )
 from .settings import Settings
-
-_shared_config = load_config()
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
@@ -58,27 +53,16 @@ class Registry:
             if ptype == "mock":
                 self._providers[name] = MockProvider()
             elif ptype == "zhihu_direct":
-                self._providers[name] = ZhihuDirectProvider(
-                    base_url=self.settings.zhihu_adapter_url,
-                    model=self.settings.default_model,
-                    timeout_seconds=self.settings.request_timeout_seconds,
-                )
+                if self.settings.zhihu_adapter_url:
+                    self._providers[name] = ZhihuDirectProvider(
+                        base_url=self.settings.zhihu_adapter_url,
+                        model=self.settings.default_model,
+                        timeout_seconds=self.settings.request_timeout_seconds,
+                    )
             elif ptype == "openai_compat":
-                # Try config.yaml first, then env vars
-                openai_config = getattr(_shared_config, 'openai_compat', None)
-                base_url = ""
-                api_key = ""
-                model = "gpt-4o-mini"
-
-                if openai_config and hasattr(openai_config, 'base_url'):
-                    base_url = openai_config.base_url
-                    api_key = openai_config.api_key
-                    model = openai_config.model or model
-                else:
-                    # Fallback to env vars
-                    base_url = os.getenv("OPENAI_COMPAT_BASE_URL", "")
-                    api_key = os.getenv("OPENAI_COMPAT_API_KEY", "")
-                    model = os.getenv("OPENAI_COMPAT_MODEL", "gpt-4o-mini")
+                base_url = self.settings.openai_compat_base_url
+                api_key = self.settings.openai_compat_api_key
+                model = self.settings.openai_compat_model or "gpt-4o-mini"
 
                 if base_url and api_key:
                     self._providers[name] = OpenAICompatProvider(
@@ -126,15 +110,22 @@ class Registry:
         - mock: force every single-mode task onto mock; multi_persona personas
           fall back to mock too (handled at run time when the configured
           provider is missing or LLM_PROVIDER_MODE=mock).
-        - zhihu: use the route as configured (zhihu_direct + mock fallback).
+        - zhihu: force zhihu_direct + mock fallback.
+        - openai_compat: force openai_compat + mock fallback.
         """
         if self.settings.provider_mode == "mock":
             return "mock"
+        if self.settings.provider_mode == "zhihu":
+            return "zhihu_direct"
+        if self.settings.provider_mode == "openai_compat":
+            return "openai_compat"
         return route.provider or "mock"
 
     def effective_persona_provider(self, persona: PersonaSpec) -> str:
         if self.settings.provider_mode == "mock":
             return "mock"
-        if persona.provider in self._providers:
-            return persona.provider
-        return "mock"
+        if self.settings.provider_mode == "zhihu":
+            return "zhihu_direct"
+        if self.settings.provider_mode == "openai_compat":
+            return "openai_compat"
+        return persona.provider

@@ -3,10 +3,12 @@
 Handles:
 - New user profile enrichment (hourly)
 - Nightly Memory review (daily at 2:00 AM)
+- Enrichment job polling (every 10 seconds)
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
@@ -20,17 +22,45 @@ logger = logging.getLogger("kanshan.profile.scheduler")
 class ProfileScheduler:
     """Background scheduler for periodic profile tasks."""
 
-    def __init__(self, repository=None, llm_service_url: str = "http://127.0.0.1:8080"):
+    def __init__(self, repository=None, llm_service_url: str = "http://127.0.0.1:8080", enrichment_runner=None):
         self.repository = repository
         self.llm_service_url = llm_service_url
+        self.enrichment_runner = enrichment_runner
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._enrichment_loop: asyncio.AbstractEventLoop | None = None
 
     def start(self) -> None:
         """Start the background scheduler."""
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
+
+        # Start enrichment runner if available
+        if self.enrichment_runner:
+            self._start_enrichment_runner()
+
         logger.info("profile_scheduler_started")
+
+    def _start_enrichment_runner(self) -> None:
+        """Start the enrichment runner in a separate thread with its own event loop."""
+        def run_async():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._enrichment_loop = loop
+            try:
+                loop.run_until_complete(self.enrichment_runner.start())
+                # Keep the loop running
+                while not self._stop_event.is_set():
+                    loop.run_until_complete(asyncio.sleep(1))
+            except Exception as e:
+                logger.error(f"enrichment_runner_error: {e}")
+            finally:
+                loop.run_until_complete(self.enrichment_runner.stop())
+                loop.close()
+
+        thread = threading.Thread(target=run_async, daemon=True)
+        thread.start()
+        logger.info("enrichment_runner_thread_started")
 
     def stop(self) -> None:
         """Stop the scheduler."""

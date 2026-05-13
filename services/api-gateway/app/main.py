@@ -296,12 +296,23 @@ def auth_zhihu_unbind(request: Request, user_id: str | None = None) -> JSONRespo
 
 @app.get("/api/v1/llm/config/me")
 def get_llm_config(request: Request) -> JSONResponse:
-    return run_proxy(request, "llm", "GET", "/llm/config/me")
+    user_id = _resolve_user_id(request)
+    params = {"user_id": user_id} if user_id else None
+    return run_proxy(request, "llm", "GET", "/llm/config/me", params=params)
+
+
+@app.put("/api/v1/llm/config/me")
+def update_llm_config(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    user_id = _resolve_user_id(request)
+    params = {"user_id": user_id} if user_id else None
+    return run_proxy(request, "profile", "PUT", "/profiles/me/llm-config", params=params, payload=payload)
 
 
 @app.get("/api/v1/llm/quota/me")
 def get_llm_quota(request: Request) -> JSONResponse:
-    return run_proxy(request, "llm", "GET", "/llm/quota/me")
+    user_id = _resolve_user_id(request)
+    params = {"user_id": user_id} if user_id else None
+    return run_proxy(request, "llm", "GET", "/llm/quota/me", params=params)
 
 
 @app.put("/api/v1/profile/me")
@@ -349,6 +360,16 @@ def reject_memory_update_request(request: Request, request_id_value: str) -> JSO
     return run_proxy(request, "profile", "POST", f"/memory/update-requests/{request_id_value}/reject")
 
 
+@app.post("/api/v1/profile/enrichment-jobs")
+def create_enrichment_job(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/profiles/me/enrichment-jobs", payload=payload)
+
+
+@app.get("/api/v1/profile/enrichment-jobs/latest")
+def get_latest_enrichment_job(request: Request) -> JSONResponse:
+    return run_proxy(request, "profile", "GET", "/profiles/me/enrichment-jobs/latest")
+
+
 @app.get("/api/v1/categories")
 def list_categories(request: Request) -> JSONResponse:
     """Return the canonical category list from shared definitions."""
@@ -368,19 +389,40 @@ def list_categories(request: Request) -> JSONResponse:
 
 @app.get("/api/v1/content")
 def content_bootstrap(request: Request) -> JSONResponse:
+    user_id = _resolve_user_id(request)
     interest_ids = _resolve_user_interests(request)
-    return run_proxy(request, "content", "GET", "/content", params={"interest_ids": interest_ids})
+    params: dict[str, Any] = {"interest_ids": interest_ids}
+    if user_id:
+        params["user_id"] = user_id
+    return run_proxy(request, "content", "GET", "/content", params=params)
 
 
 @app.get("/api/v1/content/cards")
-def content_cards(request: Request, categoryId: str | None = None) -> JSONResponse:
-    interest_ids = _resolve_user_interests(request) if not categoryId else None
+def content_cards(
+    request: Request,
+    categoryId: str | None = None,
+    category_id: str | None = None,
+    limit: int = 2,
+    excludeIds: str | None = None,
+    exclude_ids: str | None = None,
+) -> JSONResponse:
+    user_id = _resolve_user_id(request)
+    resolved_category_id = categoryId or category_id
+    interest_ids = _resolve_user_interests(request) if not resolved_category_id else None
+    params: dict[str, Any] = {
+        "category_id": resolved_category_id,
+        "interest_ids": interest_ids,
+        "limit": limit,
+        "exclude_ids": excludeIds or exclude_ids,
+    }
+    if user_id:
+        params["user_id"] = user_id
     return run_proxy(
         request,
         "content",
         "GET",
         "/content/cards",
-        params={"category_id": categoryId, "interest_ids": interest_ids},
+        params=params,
     )
 
 
@@ -395,13 +437,30 @@ def content_card_source(request: Request, card_id: str, source_id: str) -> JSONR
 
 
 @app.post("/api/v1/content/categories/{category_id}/refresh")
-def refresh_content_category(request: Request, category_id: str) -> JSONResponse:
-    return run_proxy(request, "content", "POST", f"/content/categories/{category_id}/refresh")
+async def refresh_content_category(request: Request, category_id: str) -> JSONResponse:
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    user_id = _resolve_user_id(request)
+    if user_id and "user_id" not in payload:
+        payload["user_id"] = user_id
+    return run_proxy(request, "content", "POST", f"/content/categories/{category_id}/refresh", payload=payload)
 
 
 @app.post("/api/v1/content/cards/{card_id}/summarize")
-def summarize_content_card(request: Request, card_id: str, payload: dict[str, Any] | None = None) -> JSONResponse:
+async def summarize_content_card(request: Request, card_id: str) -> JSONResponse:
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    user_id = _resolve_user_id(request)
+    if user_id and "user_id" not in payload:
+        payload["user_id"] = user_id
     return run_proxy(request, "content", "POST", f"/content/cards/{card_id}/summarize", payload=payload)
+
+
+@app.post("/api/v1/content/cards/{card_id}/enrich")
+async def enrich_content_card(request: Request, card_id: str) -> JSONResponse:
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    user_id = _resolve_user_id(request)
+    if user_id and "user_id" not in payload:
+        payload["user_id"] = user_id
+    return run_proxy(request, "content", "POST", f"/content/cards/{card_id}/enrich", payload=payload)
 
 
 @app.get("/api/v1/seeds")
@@ -470,11 +529,14 @@ def merge_seed(request: Request, target_seed_id: str, payload: dict[str, Any]) -
 
 @app.post("/api/v1/llm/tasks/{task_type}")
 def run_llm_task(request: Request, task_type: str, payload: dict[str, Any]) -> JSONResponse:
-    return run_proxy(request, "llm", "POST", f"/llm/tasks/{task_type}", payload=payload)
+    user_id = _resolve_user_id(request)
+    params = {"user_id": user_id} if user_id else None
+    return run_proxy(request, "llm", "POST", f"/llm/tasks/{task_type}", params=params, payload=payload)
 
 
 @app.post("/api/v1/sprout/start")
 def start_sprout(request: Request, payload: dict[str, Any] | None = None) -> JSONResponse:
+    payload = _inject_user_id(request, payload)
     return run_proxy(request, "sprout", "POST", "/sprout/start", payload=payload)
 
 
@@ -581,3 +643,19 @@ def feedback_second_seed(request: Request, article_id: str, payload: dict[str, A
 @app.post("/api/v1/feedback/articles/{article_id}/memory-update-request")
 def feedback_memory_update_request(request: Request, article_id: str, payload: dict[str, Any] | None = None) -> JSONResponse:
     return run_proxy(request, "feedback", "POST", f"/feedback/articles/{article_id}/memory-update-request", payload=payload)
+
+
+@app.post("/api/v1/feedback/articles/from-writing-session")
+def create_feedback_from_session(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    payload = _inject_user_id(request, payload)
+    return run_proxy(request, "feedback", "POST", "/feedback/articles/from-writing-session", payload=payload)
+
+
+@app.post("/api/v1/feedback/articles/{article_id}/refresh")
+def refresh_feedback(request: Request, article_id: str) -> JSONResponse:
+    return run_proxy(request, "feedback", "POST", f"/feedback/articles/{article_id}/refresh")
+
+
+@app.post("/api/v1/feedback/articles/{article_id}/analyze")
+def analyze_feedback(request: Request, article_id: str) -> JSONResponse:
+    return run_proxy(request, "feedback", "POST", f"/feedback/articles/{article_id}/analyze")

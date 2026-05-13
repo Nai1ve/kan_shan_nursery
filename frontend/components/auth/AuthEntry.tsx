@@ -22,6 +22,16 @@ import { LlmConfigPanel } from "./LlmConfigPanel";
 import { PreferenceOnboardingPanel } from "./PreferenceOnboardingPanel";
 import { ProfileGenerationPanel } from "./ProfileGenerationPanel";
 
+function isTrustedOauthMessageOrigin(origin: string): boolean {
+  if (typeof window === "undefined") return false;
+  if (origin === window.location.origin) return true;
+  try {
+    return new URL(origin).hostname.endsWith(".trycloudflare.com");
+  } catch {
+    return false;
+  }
+}
+
 type AuthStep = "loading" | "zhihu" | "llm" | "preferences" | "generating";
 type ProgressStepId = "zhihu" | "llm" | "interest" | "style" | "generation";
 
@@ -144,7 +154,7 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     };
 
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) {
+      if (!isTrustedOauthMessageOrigin(event.origin)) {
         console.warn("[oauth][auth-entry] reject message: origin mismatch", {
           eventOrigin: event.origin,
           currentOrigin: window.location.origin,

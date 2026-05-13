@@ -104,3 +104,20 @@ class LLMConfigTable(Base):
     base_url = Column(String)
     api_key = Column(Text)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class EnrichmentJobTable(Base):
+    __tablename__ = "enrichment_jobs"
+    __table_args__ = {"schema": "profile"}
+
+    job_id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="queued")  # queued|running|completed|failed|fallback
+    trigger = Column(String, nullable=False, default="oauth_bound")
+    include_sources = Column(Text, nullable=True)  # JSON array
+    temporary_profile = Column(Text, nullable=True)  # JSON
+    signal_counts = Column(Text, nullable=True)  # JSON
+    memory_update_request_ids = Column(Text, nullable=True)  # JSON array
+    error_message = Column(Text, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)

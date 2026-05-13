@@ -4,6 +4,30 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth/auth-client";
 
+interface OAuthStatePayload {
+  opener_origin?: string;
+  session_id?: string;
+}
+
+function parseOauthState(state: string | null): OAuthStatePayload {
+  if (!state) return {};
+  try {
+    const decoded = decodeURIComponent(window.atob(state));
+    const parsed = JSON.parse(decoded) as OAuthStatePayload;
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function inferReferrerOrigin(): string | null {
+  try {
+    return document.referrer ? new URL(document.referrer).origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function ZhihuCallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -16,7 +40,9 @@ function ZhihuCallbackContent() {
 
     const code = searchParams.get("authorization_code") || searchParams.get("code");
     const error = searchParams.get("error");
-    const stateSessionId = searchParams.get("state");
+    const state = searchParams.get("state");
+    const statePayload = parseOauthState(state);
+    const stateSessionId = statePayload.session_id || state;
     const localSessionId = getSession();
     const sessionId = stateSessionId || localSessionId;
 
@@ -35,6 +61,7 @@ function ZhihuCallbackContent() {
 
     const callbackParams = new URLSearchParams({ code });
     if (sessionId) callbackParams.set("session_id", sessionId);
+    if (state) callbackParams.set("state", state);
 
     const callbackUrl = `/api/v1/auth/zhihu/callback?${callbackParams.toString()}`;
     console.info("[oauth][callback] request", {
@@ -72,7 +99,9 @@ function ZhihuCallbackContent() {
           throw new Error("missing login ticket in response.data.ticket");
         }
         setStatus("授权成功，正在返回主页面...");
-        const openerOrigin = encodeURIComponent(window.location.origin);
+        const openerOrigin = encodeURIComponent(
+          statePayload.opener_origin || searchParams.get("opener_origin") || inferReferrerOrigin() || window.location.origin,
+        );
         router.replace(`/oauth/zhihu/success?ticket=${encodeURIComponent(ticket)}&opener_origin=${openerOrigin}`);
       })
       .catch((err: Error) => {

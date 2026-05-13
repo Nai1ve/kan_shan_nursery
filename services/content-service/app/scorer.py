@@ -6,7 +6,16 @@ and selects top N cards per category for display.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger("kanshan.content.scorer")
+
+
+def _tag_label(tag: Any) -> str:
+    if isinstance(tag, dict):
+        return str(tag.get("label", ""))
+    return str(tag or "")
 
 
 def score_card(card: dict[str, Any], interest_memory: dict[str, Any] | None = None) -> float:
@@ -50,7 +59,7 @@ def score_card(card: dict[str, Any], interest_memory: dict[str, Any] | None = No
     if interest_memory:
         # Boost if card tags match preferred perspectives
         perspectives = set(interest_memory.get("preferredPerspective", []))
-        tags = set(card.get("tags", []))
+        tags = {_tag_label(tag) for tag in card.get("tags", [])}
         overlap = len(perspectives & tags)
         memory_fit = min(100, 50 + overlap * 20)
     memory_fit *= 0.05
@@ -69,6 +78,12 @@ def select_top_cards(
     max_cards: int = 5,
 ) -> list[dict[str, Any]]:
     """Score and select top N cards for display."""
+    logger.info("scorer_select_top", extra={
+        "inputCount": len(cards),
+        "maxCards": max_cards,
+        "hasMemory": interest_memory is not None,
+    })
+
     for card in cards:
         card["_score"] = score_card(card, interest_memory)
 
@@ -94,5 +109,13 @@ def select_top_cards(
     result = deduped[:max_cards]
     for card in result:
         card.pop("_score", None)
+
+    logger.info("scorer_select_done", extra={
+        "inputCount": len(cards),
+        "dedupedCount": len(deduped),
+        "outputCount": len(result),
+        "topScores": [round(c.get("_score", 0), 1) for c in ranked[:max_cards]],
+        "topTitles": [c.get("title", "")[:30] for c in ranked[:max_cards]],
+    })
 
     return result

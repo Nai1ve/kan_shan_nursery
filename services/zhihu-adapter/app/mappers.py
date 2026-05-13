@@ -159,17 +159,24 @@ def map_story_detail(raw: dict[str, Any]) -> dict[str, Any]:
 def map_following_feed(raw: dict[str, Any]) -> list[dict[str, Any]]:
     mapped: list[dict[str, Any]] = []
     for item in raw.get("data", []):
+        actor = item.get("actor", {})
         target = item.get("target", {})
         author = target.get("author", {})
+        action_text = item.get("action_text", "")
+        title = target.get("title", "") or action_text or "关注动态"
+        excerpt = target.get("excerpt", "") or target.get("summary", "") or ""
         mapped.append(
             {
                 "sourceType": "following",
-                "sourceId": stable_hash(f"{target.get('title', '')}:{item.get('action_time', '')}"),
-                "contentType": item.get("action_text", ""),
-                "title": target.get("title", ""),
+                "sourceId": stable_hash(f"{title}:{item.get('action_time', '')}:{actor.get('name', '')}"),
+                "contentType": action_text,
+                "title": title,
+                "url": target.get("url") or target.get("link") or "",
                 "author": author.get("name", ""),
+                "actor": actor.get("name", ""),
                 "publishedAt": unix_to_iso(item.get("action_time")),
-                "summary": target.get("excerpt", ""),
+                "summary": excerpt,
+                "fullContent": target.get("content") or target.get("text") or excerpt,
                 "raw": item,
             }
         )

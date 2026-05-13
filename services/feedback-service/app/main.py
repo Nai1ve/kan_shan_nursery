@@ -24,21 +24,42 @@ from .llm_client import FeedbackLlmClient
 from .service import ArticleNotFound, FeedbackService
 
 
-app = FastAPI(title="Kanshan Feedback Service", version="0.1.0")
+app = FastAPI(title="Kanshan Feedback Service", version="0.2.0")
 _config = load_config()
 configure_logging("feedback-service", _config.logging)
 logger = get_logger("kanshan.feedback_service.main")
 
 _llm_client = FeedbackLlmClient(base_url=_config.service_urls.llm)
 
+# Optional service clients (import lazily to avoid hard dependency)
+_seed_client = None
+_profile_client = None
+
+try:
+    from .service_clients import ProfileServiceClient, SeedServiceClient
+    _seed_client = SeedServiceClient(base_url=_config.service_urls.seed)
+    _profile_client = ProfileServiceClient(base_url=_config.service_urls.profile)
+except Exception:
+    logger.info("service_clients_not_available", extra={"note": "seed/profile calls will fallback to payload-only"})
+
+
 if _config.storage_backend == "postgres":
     from .database import init_db
     init_db()
     from .pg_storage import PostgresFeedbackStorage
-    service = FeedbackService(storage=PostgresFeedbackStorage(), llm_client=_llm_client)
+    service = FeedbackService(
+        storage=PostgresFeedbackStorage(),
+        llm_client=_llm_client,
+        seed_client=_seed_client,
+        profile_client=_profile_client,
+    )
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
-    service = FeedbackService(llm_client=_llm_client)
+    service = FeedbackService(
+        llm_client=_llm_client,
+        seed_client=_seed_client,
+        profile_client=_profile_client,
+    )
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 
@@ -66,6 +87,39 @@ def list_articles(interest_id: str | None = None) -> dict[str, Any]:
 def get_article(article_id: str) -> dict[str, Any]:
     try:
         return service.get_article(article_id)
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
+@app.post("/feedback/articles/from-writing-session")
+def create_from_writing_session(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        article = service.create_from_writing_session(payload)
+        logger.info("feedback_article_created", extra={"articleId": article["id"], "interestId": article.get("interestId")})
+        return article
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
+@app.post("/feedback/articles/{article_id}/refresh")
+def refresh_feedback(article_id: str) -> dict[str, Any]:
+    try:
+        snapshot = service.refresh_feedback(article_id)
+        logger.info("feedback_refreshed", extra={"articleId": article_id, "snapshotId": snapshot.get("snapshotId")})
+        return snapshot
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
+@app.post("/feedback/articles/{article_id}/analyze")
+def analyze_feedback(article_id: str) -> dict[str, Any]:
+    try:
+        analysis = service.analyze_feedback(article_id)
+        logger.info("feedback_analyzed", extra={"articleId": article_id})
+        return analysis
     except Exception as error:
         handle_error(error)
         raise

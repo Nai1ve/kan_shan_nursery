@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ZhihuLoginTicketMessage } from "@/lib/types";
 
@@ -17,30 +17,25 @@ function isLocalOrigin(origin: string): boolean {
 
 function ZhihuOauthSuccessContent() {
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState("正在通知主页面...");
-  const [countdown, setCountdown] = useState<number | null>(null);
   const nonceRef = useRef(createNonce());
+  const statusRef = useRef<HTMLParagraphElement | null>(null);
+  const countdownRef = useRef<HTMLParagraphElement | null>(null);
 
   const ticket = searchParams.get("ticket");
   const error = searchParams.get("error");
   const openerOriginParam = searchParams.get("opener_origin");
   const localFallbackDone = searchParams.get("local_fallback") === "1";
-  const message = useMemo<ZhihuLoginTicketMessage | null>(() => {
-    if (!ticket) return null;
-    return {
-      type: "zhihu-login-ticket",
-      ticket,
-      nonce: nonceRef.current,
-      ts: Date.now(),
-    };
-  }, [ticket]);
 
   useEffect(() => {
+    function setStatus(text: string) {
+      if (statusRef.current) statusRef.current.textContent = text;
+    }
+
     if (error) {
       setStatus(`授权失败: ${error}`);
       return;
     }
-    if (!message) {
+    if (!ticket) {
       setStatus("授权失败: 缺少登录票据");
       return;
     }
@@ -48,7 +43,7 @@ function ZhihuOauthSuccessContent() {
     const currentOrigin = window.location.origin;
     if (!isLocalOrigin(currentOrigin) && !localFallbackDone) {
       const next = new URL(`${LOCAL_FALLBACK_ORIGIN}/oauth/zhihu/success`);
-      next.searchParams.set("ticket", message.ticket);
+      next.searchParams.set("ticket", ticket);
       next.searchParams.set("opener_origin", LOCAL_FALLBACK_ORIGIN);
       next.searchParams.set("local_fallback", "1");
       console.info("[oauth][success] redirecting to local fallback", {
@@ -59,6 +54,13 @@ function ZhihuOauthSuccessContent() {
       return;
     }
 
+    const message: ZhihuLoginTicketMessage = {
+      type: "zhihu-login-ticket",
+      ticket,
+      nonce: nonceRef.current,
+      ts: Date.now(),
+    };
+
     if (window.opener && !window.opener.closed) {
       const targetOrigin = openerOriginParam || window.location.origin;
       console.info("[oauth][success] postMessage start", {
@@ -68,23 +70,30 @@ function ZhihuOauthSuccessContent() {
         ticketLength: message.ticket.length,
       });
       try {
-        for (let i = 0; i < 3; i += 1) {
+        const sendToOpener = () => {
+          if (!window.opener || window.opener.closed) return;
           window.opener.postMessage(message, targetOrigin);
-        }
-        localStorage.setItem(OAUTH_TICKET_BRIDGE_KEY, JSON.stringify(message));
-        setStatus("授权成功，主页面正在登录。你可以返回主页面或等待自动关闭。");
-        setCountdown(12);
-        const timer = window.setInterval(() => {
-          setCountdown((prev) => {
-            if (prev === null) return prev;
-            if (prev <= 1) {
-              window.clearInterval(timer);
-              window.close();
-              return 0;
-            }
-            return prev - 1;
-          });
+        };
+
+        sendToOpener();
+        const messageTimer = window.setInterval(sendToOpener, 500);
+        setStatus("授权成功，正在通知主页面。你可以返回主页面或等待自动关闭。");
+        let countdown = 12;
+        if (countdownRef.current) countdownRef.current.textContent = `${countdown} 秒后返回主页`;
+        const closeTimer = window.setInterval(() => {
+          countdown -= 1;
+          if (countdownRef.current) countdownRef.current.textContent = `${Math.max(0, countdown)} 秒后返回主页`;
+          if (countdown <= 0) {
+            window.clearInterval(messageTimer);
+            window.clearInterval(closeTimer);
+            window.close();
+          }
         }, 1000);
+
+        return () => {
+          window.clearInterval(messageTimer);
+          window.clearInterval(closeTimer);
+        };
       } catch {
         setStatus("通知主页面失败，请手动返回主页重试");
       }
@@ -93,14 +102,14 @@ function ZhihuOauthSuccessContent() {
 
     localStorage.setItem(OAUTH_TICKET_BRIDGE_KEY, JSON.stringify(message));
     console.warn("[oauth][success] opener missing", { origin: window.location.origin });
-    setStatus("未检测到主页面窗口，已写入本地票据，请返回主页继续");
-  }, [error, message]);
+    setStatus("未检测到主页面窗口。若主页面与本页同源，可返回主页继续；不同源时请重新从主页面发起授权。");
+  }, [error, localFallbackDone, openerOriginParam, ticket]);
 
   return (
     <div style={{ padding: "48px", textAlign: "center", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <h1 style={{ fontSize: "24px", marginBottom: "16px" }}>知乎授权结果</h1>
-      <p style={{ fontSize: "16px", color: "#666" }}>{status}</p>
-      {countdown !== null ? <p style={{ fontSize: "14px", color: "#999" }}>{countdown} 秒后返回主页</p> : null}
+      <p ref={statusRef} style={{ fontSize: "16px", color: "#666" }}>正在通知主页面...</p>
+      <p ref={countdownRef} style={{ fontSize: "14px", color: "#999" }} />
     </div>
   );
 }

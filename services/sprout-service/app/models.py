@@ -14,6 +14,8 @@ class SproutOpportunityTable(Base):
     id = Column(String, primary_key=True)
     seed_id = Column(String, nullable=True)
     interest_id = Column(String, nullable=True)
+    run_id = Column(String, nullable=True, index=True)
+    trigger_type = Column(String, nullable=True)
     status = Column(String, nullable=True)
     score = Column(String, nullable=True)
     data = Column(Text, nullable=False)  # Full opportunity as JSON

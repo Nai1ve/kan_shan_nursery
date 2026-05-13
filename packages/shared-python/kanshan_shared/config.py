@@ -102,6 +102,23 @@ class ServiceUrlsConfig:
 
 
 @dataclass
+class LLMQuotaConfig:
+    """Per-task-type daily quota limits for LLM usage."""
+    summarize_content: int = 50
+    answer_seed_question: int = 30
+    supplement_material: int = 30
+    sprout_opportunities: int = 20
+    argument_blueprint: int = 15
+    generate_outline: int = 15
+    draft: int = 10
+    roundtable_review: int = 10
+    feedback_summary: int = 10
+    profile_memory_synthesis: int = 5
+    extract_controversies: int = 20
+    generate_writing_angles: int = 20
+
+
+@dataclass
 class LLMConfig:
     """LLM service specific config."""
     provider_mode: str = "mock"
@@ -113,6 +130,7 @@ class LLMConfig:
     request_timeout_seconds: int = 20
     trace_dir: str = "output/llm-trace"
     trace_enabled: bool = True
+    quota: LLMQuotaConfig = field(default_factory=LLMQuotaConfig)
 
 
 @dataclass
@@ -199,6 +217,17 @@ def _flat_legacy(zhihu_section: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if legacy_key in zhihu_section and isinstance(zhihu_section[legacy_key], (str, int)):
             out[section][field_name] = zhihu_section[legacy_key]
     return out
+
+
+def _build_llm_quota(raw: Any) -> LLMQuotaConfig:
+    if not raw or not isinstance(raw, dict):
+        return LLMQuotaConfig()
+    defaults = LLMQuotaConfig()
+    kwargs: dict[str, int] = {}
+    for field_name in defaults.__dataclass_fields__:
+        if field_name in raw:
+            kwargs[field_name] = int(raw[field_name] or getattr(defaults, field_name))
+    return LLMQuotaConfig(**kwargs)
 
 
 def _parse_cors_origins(env_value: str | None, yaml_value: Any) -> list[str]:
@@ -366,6 +395,7 @@ def load_config(path: str | Path | None = None) -> KanshanConfig:
             request_timeout_seconds=int(_pick(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS"), llm_raw.get("request_timeout_seconds"), 20) or 20),
             trace_dir=_pick(os.getenv("LLM_TRACE_DIR"), llm_raw.get("trace_dir"), "output/llm-trace"),
             trace_enabled=_pick(os.getenv("LLM_TRACE_ENABLED"), llm_raw.get("trace_enabled"), "1") in ("1", "true", "True"),
+            quota=_build_llm_quota(llm_raw.get("quota")),
         ),
         openai_compat=OpenAICompatConfig(
             base_url=_pick(os.getenv("OPENAI_COMPAT_BASE_URL"), openai_compat_raw.get("base_url"), ""),

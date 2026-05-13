@@ -21,6 +21,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
 from app.auth import AuthError, AuthRepository, AuthService
+from app.enrichment.models import EnrichmentJob
+from app.enrichment.repository import EnrichmentRepository
+from app.enrichment.runner import EnrichmentRunner
+from app.enrichment.service import EnrichmentService
 from app.memory.service import MemoryNotFound, MemoryService
 from app.profile.repository import ProfileRepository
 from app.profile.service import ProfileService
@@ -36,24 +40,44 @@ if _config.storage_backend == "postgres":
     from app.database import init_db
     init_db()
     from app.auth.pg_repository import PostgresAuthRepository
+    from app.enrichment.pg_repository import PostgresEnrichmentRepository
     from app.profile.pg_repository import PostgresProfileRepository
     repository = PostgresProfileRepository()
     auth_repository = PostgresAuthRepository()
+    enrichment_repository = PostgresEnrichmentRepository()
     logger.info("storage_backend_selected", extra={"backend": "postgres"})
 else:
+    from app.enrichment.memory_repository import MemoryEnrichmentRepository
     repository = ProfileRepository()
     auth_repository = AuthRepository()
+    enrichment_repository = MemoryEnrichmentRepository()
     logger.info("storage_backend_selected", extra={"backend": "memory"})
 
 profile_service = ProfileService(repository)
 memory_service = MemoryService(repository)
 auth_service = AuthService(auth_repository, zhihu_adapter_url=_config.service_urls.zhihu)
 
+# Initialize enrichment service
+enrichment_service = EnrichmentService(
+    repo=enrichment_repository,
+    zhihu_adapter_url=_config.service_urls.zhihu,
+    llm_service_url=_config.service_urls.llm,
+    profile_service_url=f"http://127.0.0.1:{_config.port if hasattr(_config, 'port') else 8010}",
+    memory_service=memory_service,
+)
+enrichment_runner = EnrichmentRunner(
+    repo=enrichment_repository,
+    enrichment_service=enrichment_service,
+    profile_repo=repository,
+    auth_repo=auth_repository,
+)
+
 # Start background scheduler
 from app.scheduler import ProfileScheduler
 _profile_scheduler = ProfileScheduler(
     repository=repository,
     llm_service_url=_config.service_urls.llm,
+    enrichment_runner=enrichment_runner,
 )
 _profile_scheduler.start()
 
@@ -162,6 +186,12 @@ def delete_zhihu_binding(request: Request, user_id: str | None = None) -> dict[s
     if not user_id:
         raise HTTPException(status_code=400, detail={"code": "USER_ID_MISSING", "message": "user_id is required"})
     return auth_service.delete_zhihu_binding(user_id)
+
+
+@app.get("/internal/auth/zhihu-token")
+def get_zhihu_token_internal(user_id: str) -> dict[str, Any]:
+    """Internal endpoint: return raw access_token for inter-service calls."""
+    return auth_service.get_zhihu_token(user_id)
 
 
 @app.post("/auth/zhihu/exchange-ticket")
@@ -425,23 +455,86 @@ def update_writing_style(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/profiles/me/llm-config")
-def get_llm_config() -> dict[str, Any]:
+def get_llm_config(request: Request, user_id: str | None = None, include_secret: bool = False) -> dict[str, Any]:
     try:
-        return profile_service.get_llm_config()
+        resolved_user_id = user_id or _resolve_user_id(request)
+        return profile_service.get_llm_config(resolved_user_id, include_secret=include_secret)
     except Exception as error:
         handle_error(error)
         raise
 
 
 @app.put("/profiles/me/llm-config")
-def update_llm_config(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+def update_llm_config(request: Request, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
     try:
-        user_id = _resolve_user_id(request)
-        result = profile_service.update_llm_config(payload)
-        if user_id:
-            auth_service.set_user_setup_state(user_id, "preferences_pending")
+        resolved_user_id = user_id or _resolve_user_id(request)
+        result = profile_service.update_llm_config(payload, resolved_user_id)
+        if resolved_user_id:
+            auth_service.set_user_setup_state(resolved_user_id, "preferences_pending")
         logger.info("llm_config_update")
         return result
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
+@app.post("/profiles/me/enrichment-jobs")
+async def create_enrichment_job(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Create a new enrichment job."""
+    try:
+        user_id = _resolve_user_id(request)
+        if not user_id:
+            raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Session required"})
+
+        trigger = payload.get("trigger", "oauth_bound")
+        include_sources = payload.get("includeSources", ["zhihu_user", "followed", "followers", "moments"])
+
+        job = await enrichment_service.create_job(
+            user_id=user_id,
+            trigger=trigger,
+            include_sources=include_sources,
+        )
+
+        logger.info("enrichment_job_created", extra={"jobId": job.job_id, "userId": user_id})
+
+        return {
+            "jobId": job.job_id,
+            "status": job.status,
+            "temporaryProfileReady": True,
+        }
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
+@app.get("/profiles/me/enrichment-jobs/latest")
+async def get_latest_enrichment_job(request: Request) -> dict[str, Any]:
+    """Get the latest enrichment job for the current user."""
+    try:
+        user_id = _resolve_user_id(request)
+        if not user_id:
+            raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Session required"})
+
+        job = await enrichment_service.get_latest_job(user_id)
+
+        if not job:
+            return {
+                "jobId": None,
+                "status": "not_started",
+                "temporaryProfile": None,
+                "signalCounts": {},
+                "memoryUpdateRequestIds": [],
+                "errorMessage": None,
+            }
+
+        return {
+            "jobId": job.job_id,
+            "status": job.status,
+            "temporaryProfile": job.temporary_profile,
+            "signalCounts": job.signal_counts,
+            "memoryUpdateRequestIds": job.memory_update_request_ids,
+            "errorMessage": job.error_message,
+        }
     except Exception as error:
         handle_error(error)
         raise

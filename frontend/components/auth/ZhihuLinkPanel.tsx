@@ -2,7 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Database, ExternalLink, Link2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getMe, getZhihuAuthorizeUrl } from "@/lib/auth/auth-client";
+import { getMe, getSession, getZhihuAuthorizeUrl } from "@/lib/auth/auth-client";
 import type { ZhihuBindingStatus, ZhihuLoginTicketMessage } from "@/lib/types";
 
 interface ZhihuLinkPanelProps {
@@ -17,6 +17,25 @@ const dataScopes = [
   ["粉丝列表", "理解潜在读者结构，辅助后续写作风格判断。"],
   ["关注动态", "汇总近期阅读偏好，作为今日输入和画像增强信号。"],
 ];
+
+function encodeOauthState(payload: Record<string, string>): string {
+  return window.btoa(encodeURIComponent(JSON.stringify(payload)));
+}
+
+function attachOpenerState(rawUrl: string): string {
+  const url = new URL(rawUrl);
+  const sessionId = getSession();
+  if (!url.searchParams.get("state")) {
+    url.searchParams.set(
+      "state",
+      encodeOauthState({
+        opener_origin: window.location.origin,
+        session_id: sessionId ?? "",
+      }),
+    );
+  }
+  return url.toString();
+}
 
 export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelProps) {
   const [bindingStatus, setBindingStatus] = useState<ZhihuBindingStatus>("not_started");
@@ -50,13 +69,14 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
     setBindingStatus("authorizing");
     try {
       const { url } = await getZhihuAuthorizeUrl();
-      setAuthorizeUrl(url);
-      if (url.includes("MOCK") || url.includes("client_id=MOCK")) {
+      const authorizeUrlWithState = url.includes("MOCK") ? url : attachOpenerState(url);
+      setAuthorizeUrl(authorizeUrlWithState);
+      if (authorizeUrlWithState.includes("MOCK") || authorizeUrlWithState.includes("client_id=MOCK")) {
         setBindingStatus("unavailable");
         setError("知乎 OAuth 鉴权暂未开放，当前建议先跳过，用填写内容生成临时画像。");
         return;
       }
-      const win = window.open(url, "_blank", "width=640,height=760");
+      const win = window.open(authorizeUrlWithState, "_blank", "width=640,height=760");
       if (!win) {
         setBindingStatus("failed");
         setError("浏览器拦截了授权弹窗，请允许弹窗后重试。");

@@ -359,32 +359,56 @@ class ZhihuAdapterService:
     def user_followed(self, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
         normalized_per_page = min(max(per_page, 1), 50)
         key = f"zhihu:user_followed:{self.settings.demo_user_id}:{page}:{normalized_per_page}:{stable_hash(access_token or 'configured')}"
-        return self._cached(
-            "user_followed",
-            key,
-            lambda: mappers.map_oauth_users(
+
+        def _load():
+            raw = (
                 self.clients.oauth.get("/user/followed", {"page": page, "per_page": normalized_per_page}, access_token=access_token)
                 if self._live_enabled()
                 else [
                     {"uid": 1, "hash_id": "mock-author", "fullname": "关注作者", "headline": "AI Coding 观察者"},
                 ]
-            ),
-        )
+            )
+            logger.info(
+                "zhihu_user_followed_raw",
+                extra={"type": type(raw).__name__, "isList": isinstance(raw, list), "keys": sorted(list(raw.keys())) if isinstance(raw, dict) else []},
+            )
+            # Handle wrapped response: {"data": [...]} or bare array
+            if isinstance(raw, dict) and "data" in raw:
+                items = raw["data"]
+            elif isinstance(raw, list):
+                items = raw
+            else:
+                items = []
+            return mappers.map_oauth_users(items if isinstance(items, list) else [])
+
+        return self._cached("user_followed", key, _load)
 
     def user_followers(self, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
         normalized_per_page = min(max(per_page, 1), 50)
         key = f"zhihu:user_followers:{self.settings.demo_user_id}:{page}:{normalized_per_page}:{stable_hash(access_token or 'configured')}"
-        return self._cached(
-            "user_followers",
-            key,
-            lambda: mappers.map_oauth_users(
+
+        def _load():
+            raw = (
                 self.clients.oauth.get("/user/followers", {"page": page, "per_page": normalized_per_page}, access_token=access_token)
                 if self._live_enabled()
                 else [
                     {"uid": 2, "hash_id": "mock-reader", "fullname": "读者 A", "headline": "技术读者"},
                 ]
-            ),
-        )
+            )
+            logger.info(
+                "zhihu_user_followers_raw",
+                extra={"type": type(raw).__name__, "isList": isinstance(raw, list), "keys": sorted(list(raw.keys())) if isinstance(raw, dict) else []},
+            )
+            # Handle wrapped response: {"data": [...]} or bare array
+            if isinstance(raw, dict) and "data" in raw:
+                items = raw["data"]
+            elif isinstance(raw, list):
+                items = raw
+            else:
+                items = []
+            return mappers.map_oauth_users(items if isinstance(items, list) else [])
+
+        return self._cached("user_followers", key, _load)
 
     # ---- guards -------------------------------------------------------------------
 

@@ -131,18 +131,18 @@ def user_info(request: Request, access_token: str | None = None) -> dict[str, An
 
 
 @app.get("/zhihu/following-feed")
-def following_feed(request: Request) -> dict[str, Any]:
-    return _handle(request, "following_feed", lambda: service.following_feed())
+def following_feed(request: Request, access_token: str | None = None) -> dict[str, Any]:
+    return _handle(request, "following_feed", lambda: service.following_feed(access_token=access_token))
 
 
 @app.get("/zhihu/user-followed")
-def user_followed(request: Request, page: int = 0, per_page: int = 10) -> dict[str, Any]:
-    return _handle(request, "user_followed", lambda: service.user_followed(page, per_page))
+def user_followed(request: Request, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
+    return _handle(request, "user_followed", lambda: service.user_followed(page, per_page, access_token=access_token))
 
 
 @app.get("/zhihu/user-followers")
-def user_followers(request: Request, page: int = 0, per_page: int = 10) -> dict[str, Any]:
-    return _handle(request, "user_followers", lambda: service.user_followers(page, per_page))
+def user_followers(request: Request, page: int = 0, per_page: int = 10, access_token: str | None = None) -> dict[str, Any]:
+    return _handle(request, "user_followers", lambda: service.user_followers(page, per_page, access_token=access_token))
 
 
 @app.post("/zhihu/publish/mock-or-live")

@@ -7,7 +7,15 @@ const nextConfig: NextConfig = {
   // 127.0.0.1 and the frontend on the same host, but the browser still sees
   // 127.0.0.1:3000 vs localhost:3000 as different origins. Allow both so
   // either URL works for the operator.
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  allowedDevOrigins: ["127.0.0.1", "localhost", "curve-bytes-weed-delivering.trycloudflare.com"],
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${process.env.KANSHAN_GATEWAY_URL || "http://127.0.0.1:8000"}/api/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

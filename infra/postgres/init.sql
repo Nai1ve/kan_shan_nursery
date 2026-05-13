@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS profile.users (
     email VARCHAR UNIQUE,
     username VARCHAR UNIQUE,
     password_hash VARCHAR NOT NULL,
-    created_at VARCHAR NOT NULL
+    created_at VARCHAR NOT NULL,
+    setup_state VARCHAR NOT NULL DEFAULT 'zhihu_pending'
 );
 
 CREATE TABLE IF NOT EXISTS profile.sessions (

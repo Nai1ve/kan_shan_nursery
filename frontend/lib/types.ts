@@ -327,6 +327,23 @@ export interface LlmConfigViewModel {
   errorMessage?: string;
 }
 
+export interface ZhihuExchangeTicketRequest {
+  ticket: string;
+}
+
+export interface ZhihuExchangeTicketResponse {
+  user: CurrentUser;
+  session: UserSession;
+  setupState: UserSetupState;
+}
+
+export interface ZhihuLoginTicketMessage {
+  type: "zhihu-login-ticket";
+  ticket: string;
+  nonce: string;
+  ts: number;
+}
+
 export interface UserSetupStateData {
   authStatus: AuthStatus;
   setupState: UserSetupState;

@@ -31,7 +31,7 @@ from .errors import (
     from_data_platform,
     from_oauth,
 )
-from .security import sign_community_request
+from .security import sign_community_request, stable_hash
 from .settings import Settings
 
 
@@ -42,26 +42,99 @@ class _Transport:
     timeout_seconds: float = 15
 
     def _do(self, request: urllib.request.Request) -> Any:
+        started = time.perf_counter()
+        parsed = urllib.parse.urlparse(request.full_url)
+        query_keys = sorted(list(urllib.parse.parse_qs(parsed.query).keys()))
+        body_keys: list[str] = []
+        if request.data:
+            try:
+                text = request.data.decode("utf-8")
+                body_keys = sorted(list(urllib.parse.parse_qs(text).keys()))
+                if not body_keys:
+                    parsed_json = json.loads(text)
+                    if isinstance(parsed_json, dict):
+                        body_keys = sorted(list(parsed_json.keys()))
+            except Exception:
+                body_keys = []
+
+        logger.info(
+            "zhihu_upstream_request",
+            extra={
+                "method": request.get_method(),
+                "path": parsed.path,
+                "queryKeys": query_keys,
+                "bodyKeys": body_keys,
+            },
+        )
+
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = response.read().decode("utf-8")
+                duration_ms = int((time.perf_counter() - started) * 1000)
+                logger.info(
+                    "zhihu_upstream_response",
+                    extra={
+                        "method": request.get_method(),
+                        "path": parsed.path,
+                        "status": response.status,
+                        "durationMs": duration_ms,
+                    },
+                )
         except urllib.error.HTTPError as error:
             body = ""
             try:
                 body = error.read().decode("utf-8")
             except Exception:  # pragma: no cover
                 pass
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            detail_keys: list[str] = []
+            try:
+                parsed_error = json.loads(body)
+                if isinstance(parsed_error, dict):
+                    detail_keys = sorted(list(parsed_error.keys()))
+            except Exception:
+                detail_keys = []
+            logger.warning(
+                "zhihu_upstream_http_error",
+                extra={
+                    "method": request.get_method(),
+                    "path": parsed.path,
+                    "status": error.code,
+                    "durationMs": duration_ms,
+                    "errorBodyKeys": detail_keys,
+                },
+            )
             if error.code in (401, 403):
                 raise ZhihuAuthError(f"upstream auth failed: {error.code}", detail={"body": body}) from error
             if error.code == 429:
                 raise ZhihuRateLimited("upstream rate limited", detail={"body": body}) from error
             raise ZhihuApiError(f"upstream {error.code}", detail={"body": body}) from error
         except (urllib.error.URLError, TimeoutError) as error:
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            logger.warning(
+                "zhihu_upstream_network_error",
+                extra={"method": request.get_method(), "path": parsed.path, "durationMs": duration_ms, "error": str(error)},
+            )
             raise ZhihuUnavailable(f"network: {error}", detail=None) from error
 
         try:
-            return json.loads(payload)
+            parsed_payload = json.loads(payload)
+            top_level_keys = sorted(list(parsed_payload.keys())) if isinstance(parsed_payload, dict) else []
+            logger.info(
+                "zhihu_upstream_payload",
+                extra={
+                    "method": request.get_method(),
+                    "path": parsed.path,
+                    "responseTopLevelKeys": top_level_keys,
+                    "responseType": type(parsed_payload).__name__,
+                },
+            )
+            return parsed_payload
         except json.JSONDecodeError as error:
+            logger.warning(
+                "zhihu_upstream_invalid_json",
+                extra={"method": request.get_method(), "path": parsed.path, "payloadPrefix": payload[:120]},
+            )
             raise ZhihuApiError("invalid json from upstream", detail={"body": payload[:512]}) from error
 
 
@@ -134,6 +207,15 @@ class OAuthClient(_Transport):
         token = self._resolve_token(access_token)
         query = urllib.parse.urlencode({k: v for k, v in (params or {}).items() if v is not None})
         suffix = f"?{query}" if query else ""
+        logger.info(
+            "zhihu_oauth_get_prepare",
+            extra={
+                "path": path,
+                "queryKeys": sorted(list((params or {}).keys())),
+                "hasAccessToken": bool(token),
+                "tokenHash": stable_hash(token) if token else None,
+            },
+        )
         request = urllib.request.Request(
             f"{self.settings.zhihu.oauth.base_url}{path}{suffix}",
             headers={"Authorization": f"Bearer {token}"},
@@ -153,6 +235,16 @@ class OAuthClient(_Transport):
         oauth = self.settings.zhihu.oauth
         if not (oauth.app_id and oauth.app_key and oauth.redirect_uri):
             raise ZhihuAuthError("OAuth app_id/app_key/redirect_uri missing")
+        logger.info(
+            "zhihu_oauth_exchange_prepare",
+            extra={
+                "path": "/access_token",
+                "hasCode": bool(code),
+                "codeHash": stable_hash(code) if code else None,
+                "hasAppId": bool(oauth.app_id),
+                "hasAppKey": bool(oauth.app_key),
+            },
+        )
         body = urllib.parse.urlencode(
             {
                 "app_id": oauth.app_id,
@@ -174,15 +266,16 @@ class OAuthClient(_Transport):
             raise error
         return raw
 
-    def authorize_url(self) -> str:
+    def authorize_url(self, state: str | None = None) -> str:
         oauth = self.settings.zhihu.oauth
-        params = urllib.parse.urlencode(
-            {
-                "redirect_uri": oauth.redirect_uri,
-                "app_id": oauth.app_id,
-                "response_type": "code",
-            }
-        )
+        payload = {
+            "redirect_uri": oauth.redirect_uri,
+            "app_id": oauth.app_id,
+            "response_type": "code",
+        }
+        if state:
+            payload["state"] = state
+        params = urllib.parse.urlencode(payload)
         return f"{oauth.base_url}/authorize?{params}"
 
     def _resolve_token(self, access_token: str | None = None) -> str:

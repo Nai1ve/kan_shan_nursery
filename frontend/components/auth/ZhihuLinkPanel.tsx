@@ -1,12 +1,12 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, Database, ExternalLink, Link2 } from "lucide-react";
-import { useState } from "react";
-import { getZhihuAuthorizeUrl, getZhihuBinding } from "@/lib/auth/auth-client";
-import type { ZhihuBindingStatus } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import { getMe, getZhihuAuthorizeUrl } from "@/lib/auth/auth-client";
+import type { ZhihuBindingStatus, ZhihuLoginTicketMessage } from "@/lib/types";
 
 interface ZhihuLinkPanelProps {
-  userId: string;
+  userId?: string;
   onComplete: () => void;
   onSkip: () => void;
 }
@@ -24,12 +24,23 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
   const [error, setError] = useState("");
   const [authorizeUrl, setAuthorizeUrl] = useState("");
   const [showDetails, setShowDetails] = useState(false);
+  const autoTriggered = useRef(false);
+  const pollTimer = useRef<number | null>(null);
 
   async function checkBindingStatus() {
-    const binding = await getZhihuBinding(userId);
-    setBindingStatus(binding.bindingStatus);
-    if (binding.bindingStatus === "bound") {
+    try {
+      const me = await getMe().catch(() => null);
+      if (!me?.authenticated || !me.user?.userId) {
+        return;
+      }
+      setBindingStatus("bound");
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
       onComplete();
+    } catch {
+      // 授权回调后会话写入可能有短暂延迟，交给轮询重试
     }
   }
 
@@ -45,8 +56,26 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
         setError("知乎 OAuth 鉴权暂未开放，当前建议先跳过，用填写内容生成临时画像。");
         return;
       }
-      window.open(url, "_blank", "width=640,height=760");
-      await checkBindingStatus();
+      const win = window.open(url, "_blank", "width=640,height=760");
+      if (!win) {
+        setBindingStatus("failed");
+        setError("浏览器拦截了授权弹窗，请允许弹窗后重试。");
+        return;
+      }
+
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+      pollTimer.current = window.setInterval(() => {
+        void checkBindingStatus();
+      }, 1000);
+      window.setTimeout(() => {
+        if (pollTimer.current) {
+          window.clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        }
+      }, 60000);
     } catch (err) {
       setBindingStatus("failed");
       setError(err instanceof Error ? err.message : "获取知乎授权链接失败");
@@ -54,6 +83,38 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (autoTriggered.current) return;
+    autoTriggered.current = true;
+    void handleAuthorize();
+    return () => {
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const consumed = new Set<string>();
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data as Partial<ZhihuLoginTicketMessage> | undefined;
+      if (payload?.type !== "zhihu-login-ticket") return;
+      if (!payload.ticket || !payload.nonce || typeof payload.ts !== "number") return;
+      if (Date.now() - payload.ts > 2 * 60 * 1000) return;
+      const dedupeKey = `${payload.nonce}:${payload.ticket}`;
+      if (consumed.has(dedupeKey)) return;
+      consumed.add(dedupeKey);
+
+      window.setTimeout(() => {
+        void checkBindingStatus();
+      }, 500);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [userId]);
 
   function handleSkip() {
     setBindingStatus("skipped");
@@ -65,8 +126,8 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
       <div className="auth-card-head">
         <div className="auth-icon-badge"><Link2 size={18} /></div>
         <div>
-          <h3>关联知乎账号</h3>
-          <p>授权后会把知乎公开输入汇总成画像信号；不可用时也能先用本地问卷生成临时画像。</p>
+          <h3>知乎 OAuth 授权</h3>
+          <p>授权后会把知乎公开输入汇总成画像信号，并绑定为当前平台身份。</p>
         </div>
       </div>
 

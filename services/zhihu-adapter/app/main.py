@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 # Make kanshan_shared importable when running uvicorn without installing the package.
 # In Docker, shared-python is installed via pip, so no sys.path manipulation needed.
@@ -22,6 +23,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
 from .errors import ZhihuApiError
+from .security import stable_hash
 from .service import ZhihuAdapterService
 
 
@@ -35,7 +37,7 @@ service = ZhihuAdapterService()
 
 
 def _request_id(request: Request) -> str:
-    return request.headers.get("x-request-id") or ""
+    return request.headers.get("x-request-id") or f"zh-{uuid4().hex[:12]}"
 
 
 def _zhihu_http_exception(error: ZhihuApiError) -> HTTPException:
@@ -115,8 +117,17 @@ def story_detail(request: Request, work_id: str) -> dict[str, Any]:
 
 
 @app.get("/zhihu/user")
-def user_info(request: Request) -> dict[str, Any]:
-    return _handle(request, "user_info", lambda: service.user_info())
+def user_info(request: Request, access_token: str | None = None) -> dict[str, Any]:
+    request_id = _request_id(request)
+    logger.info(
+        "zhihu_user_info_received",
+        extra={
+            "requestId": request_id,
+            "hasAccessToken": bool(access_token),
+            "accessTokenHash": stable_hash(access_token) if access_token else None,
+        },
+    )
+    return _handle(request, "user_info", lambda: service.user_info(access_token=access_token))
 
 
 @app.get("/zhihu/following-feed")
@@ -152,7 +163,7 @@ def reaction(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
 # ---- OAuth flow --------------------------------------------------------------
 
 @app.get("/zhihu/oauth/authorize")
-def oauth_authorize(request: Request, redirect: bool = False) -> Any:
+def oauth_authorize(request: Request, redirect: bool = False, state: str | None = None) -> Any:
     """Return the Zhihu authorize URL.
 
     With ``redirect=true`` the adapter returns an HTTP 302 to that URL so
@@ -160,7 +171,11 @@ def oauth_authorize(request: Request, redirect: bool = False) -> Any:
     button). Without it (default) the adapter returns JSON for backend
     introspection.
     """
-    info = _handle(request, "oauth_authorize", lambda: service.authorize_url())
+    logger.info(
+        "zhihu_oauth_authorize_received",
+        extra={"requestId": _request_id(request), "redirect": redirect, "hasState": bool(state)},
+    )
+    info = _handle(request, "oauth_authorize", lambda: service.authorize_url(state=state))
     if redirect:
         return RedirectResponse(url=info["url"])
     return info
@@ -173,6 +188,16 @@ def oauth_callback(request: Request, code: str | None = None, error: str | None 
     Returns JSON with the token data for programmatic consumption.
     The profile-service will handle saving the token to the database.
     """
+    request_id = _request_id(request)
+    logger.info(
+        "zhihu_oauth_callback_received",
+        extra={
+            "requestId": request_id,
+            "hasCode": bool(code),
+            "codeHash": stable_hash(code) if code else None,
+            "hasError": bool(error),
+        },
+    )
     if error:
         raise HTTPException(status_code=400, detail={"code": "OAUTH_DENIED", "message": error})
     if not code:

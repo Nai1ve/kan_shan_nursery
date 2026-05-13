@@ -246,20 +246,51 @@ def auth_zhihu_authorize(request: Request) -> JSONResponse:
     return run_proxy(request, "profile", "GET", "/auth/zhihu/authorize")
 
 
+@app.post("/api/v1/auth/zhihu/exchange-ticket")
+def auth_zhihu_exchange_ticket(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "POST", "/auth/zhihu/exchange-ticket", payload=payload)
+
+
 @app.get("/api/v1/auth/zhihu/callback")
-def auth_zhihu_callback(request: Request, code: str | None = None, error: str | None = None) -> JSONResponse:
-    """Proxy OAuth callback to profile-service with session_id from header."""
-    session_id = request.headers.get("x-session-id")
-    return run_proxy(request, "profile", "GET", "/auth/zhihu/callback", params={"code": code, "error": error, "session_id": session_id})
+def auth_zhihu_callback(
+    request: Request,
+    code: str | None = None,
+    error: str | None = None,
+    session_id: str | None = None,
+    state: str | None = None,
+) -> JSONResponse:
+    """Proxy OAuth callback to profile-service with session_id from header/query/state and keep ticket in response.data."""
+    header_session_id = request.headers.get("x-session-id")
+    resolved_session_id = header_session_id or session_id
+    request_id_value = request_id(request)
+    logger.info(
+        "网关收到知乎回调",
+        extra={
+            "请求ID": request_id_value,
+            "有授权码": bool(code),
+            "有错误参数": bool(error),
+            "有Header会话": bool(header_session_id),
+            "有Query会话": bool(session_id),
+            "有State": bool(state),
+            "会话来源": "header" if header_session_id else ("query" if session_id else "none"),
+        },
+    )
+    return run_proxy(
+        request,
+        "profile",
+        "GET",
+        "/auth/zhihu/callback",
+        params={"code": code, "error": error, "session_id": resolved_session_id, "state": state},
+    )
 
 
 @app.get("/api/v1/auth/zhihu/binding")
-def auth_zhihu_binding(request: Request, user_id: str) -> JSONResponse:
+def auth_zhihu_binding(request: Request, user_id: str | None = None) -> JSONResponse:
     return run_proxy(request, "profile", "GET", "/auth/zhihu/binding", params={"user_id": user_id})
 
 
 @app.delete("/api/v1/auth/zhihu/binding")
-def auth_zhihu_unbind(request: Request, user_id: str) -> JSONResponse:
+def auth_zhihu_unbind(request: Request, user_id: str | None = None) -> JSONResponse:
     return run_proxy(request, "profile", "DELETE", "/auth/zhihu/binding", params={"user_id": user_id})
 
 

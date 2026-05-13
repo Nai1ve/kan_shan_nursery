@@ -17,6 +17,7 @@ class UserTable(Base):
     username = Column(String, unique=True, nullable=True)
     password_hash = Column(String, nullable=False)
     created_at = Column(String, nullable=False)
+    setup_state = Column(String, nullable=False, default="zhihu_pending")
 
 
 class SessionTable(Base):

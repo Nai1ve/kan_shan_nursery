@@ -30,8 +30,8 @@ class ProfileService:
             })
         return normalized
 
-    def get_profile(self) -> dict[str, Any]:
-        return self.repository.get_profile()
+    def get_profile(self, user_id: str | None = None) -> dict[str, Any]:
+        return self.repository.get_profile(user_id=user_id)
 
     def update_profile(self, payload: dict[str, Any], reason: str = "update_profile") -> dict[str, Any]:
         unknown = set(payload.keys()) - PROFILE_FIELDS

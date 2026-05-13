@@ -24,6 +24,7 @@ class User:
         username: str | None,
         password_hash: str,
         created_at: str,
+        setup_state: str = "zhihu_pending",
     ) -> None:
         self.user_id = user_id
         self.nickname = nickname
@@ -31,6 +32,7 @@ class User:
         self.username = username
         self.password_hash = password_hash
         self.created_at = created_at
+        self.setup_state = setup_state
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +41,7 @@ class User:
             "email": self.email,
             "username": self.username,
             "createdAt": self.created_at,
+            "setupState": self.setup_state,
         }
 
 
@@ -82,6 +85,34 @@ class ZhihuBinding:
             "bindingStatus": self.binding_status,
             "boundAt": self.bound_at,
             "expiredAt": self.expired_at,
+        }
+
+
+class LoginTicket:
+    def __init__(
+        self,
+        ticket: str,
+        user_id: str,
+        created_at: str,
+        expires_at: str,
+        consumed_at: str | None = None,
+        setup_state_hint: str | None = None,
+    ) -> None:
+        self.ticket = ticket
+        self.user_id = user_id
+        self.created_at = created_at
+        self.expires_at = expires_at
+        self.consumed_at = consumed_at
+        self.setup_state_hint = setup_state_hint
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ticket": self.ticket,
+            "userId": self.user_id,
+            "createdAt": self.created_at,
+            "expiresAt": self.expires_at,
+            "consumedAt": self.consumed_at,
+            "setupStateHint": self.setup_state_hint,
         }
 
 

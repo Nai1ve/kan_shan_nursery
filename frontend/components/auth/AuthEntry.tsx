@@ -5,7 +5,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getMe } from "@/lib/auth/auth-client";
+import { exchangeZhihuTicket, getMe, getZhihuBinding, setSession } from "@/lib/auth/auth-client";
+
+const OAUTH_TICKET_BRIDGE_KEY = "kanshan:oauth:zhihu:ticket:v1";
 import type {
   AuthResponse,
   AuthStatus,
@@ -13,16 +15,15 @@ import type {
   OnboardingResponse,
   ProfileData,
   UserSetupState,
+  ZhihuLoginTicketMessage,
 } from "@/lib/types";
-import { LoginPanel } from "./LoginPanel";
-import { RegisterPanel } from "./RegisterPanel";
 import { ZhihuLinkPanel } from "./ZhihuLinkPanel";
 import { LlmConfigPanel } from "./LlmConfigPanel";
 import { PreferenceOnboardingPanel } from "./PreferenceOnboardingPanel";
 import { ProfileGenerationPanel } from "./ProfileGenerationPanel";
 
-type AuthStep = "loading" | "login" | "register" | "zhihu" | "llm" | "preferences" | "generating";
-type ProgressStepId = "auth" | "zhihu" | "llm" | "interest" | "style" | "generation";
+type AuthStep = "loading" | "zhihu" | "llm" | "preferences" | "generating";
+type ProgressStepId = "zhihu" | "llm" | "interest" | "style" | "generation";
 
 interface AuthEntryProps {
   onComplete: (profile?: ProfileData) => void;
@@ -30,8 +31,7 @@ interface AuthEntryProps {
 }
 
 const setupSteps: { id: ProgressStepId; label: string; desc: string }[] = [
-  { id: "auth", label: "注册", desc: "绑定本地用户身份" },
-  { id: "zhihu", label: "知乎关联", desc: "授权或跳过" },
+  { id: "zhihu", label: "知乎授权", desc: "OAuth 绑定身份" },
   { id: "llm", label: "LLM 配置", desc: "免费额度或自有模型" },
   { id: "interest", label: "兴趣领域", desc: "选择长期 Memory 主类" },
   { id: "style", label: "创作画像", desc: "资料 + 风格问卷" },
@@ -74,17 +74,27 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
       if (me.authenticated && me.user) {
         setUser(me.user);
         setAuthStatus("authenticated");
-        setSetupState(me.setupState || "zhihu_pending");
-        navigateToStep(me.setupState || "zhihu_pending");
-      } else {
-        setAuthStatus("guest");
-        setStep("login");
+        const binding = await getZhihuBinding(me.user.userId).catch(() => null);
+        if (binding?.bindingStatus === "bound") {
+          if (me.setupState === "ready" || me.setupState === "provisional_ready") {
+            onComplete();
+            return;
+          }
+          setSetupState(me.setupState || "llm_pending");
+          navigateToStep(me.setupState || "llm_pending");
+          return;
+        }
+        setSetupState("zhihu_pending");
+        setStep("zhihu");
+        return;
       }
     } catch {
-      setAuthStatus("guest");
-      setStep("login");
+      // ignore
     }
-  }, [navigateToStep]);
+
+    setAuthStatus("guest");
+    setStep("zhihu");
+  }, [navigateToStep, onComplete]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -93,21 +103,77 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     return () => window.clearTimeout(timer);
   }, [checkAuthStatus]);
 
-  function handleRegisterSuccess(response: AuthResponse) {
-    setUser(response.user);
-    setSetupState(response.setupState);
-    setAuthStatus("authenticated");
-    setZhihuSkipped(false);
-    setStep("zhihu");
-  }
+  useEffect(() => {
+    const consumed = new Set<string>();
+    const consumePayload = (payload: Partial<ZhihuLoginTicketMessage> | undefined, source: "message" | "storage") => {
+      if (payload?.type !== "zhihu-login-ticket") return;
+      const ticket = payload.ticket;
+      const nonce = payload.nonce;
+      const ts = payload.ts;
+      if (!ticket || !nonce || typeof ts !== "number") {
+        console.warn(`[oauth][auth-entry] reject ${source}: payload invalid`, payload);
+        return;
+      }
+      if (Date.now() - ts > 5 * 60 * 1000) {
+        console.warn(`[oauth][auth-entry] reject ${source}: expired`, { ageMs: Date.now() - ts });
+        return;
+      }
+      const dedupeKey = `${nonce}:${ticket}`;
+      if (consumed.has(dedupeKey)) return;
+      consumed.add(dedupeKey);
 
-  function handleLoginSuccess(response: AuthResponse) {
-    setUser(response.user);
-    setSetupState(response.setupState);
-    setAuthStatus("authenticated");
-    // 登录直接进入工作台，不走引导流程
-    onComplete();
-  }
+      void (async () => {
+        try {
+          const exchanged = await exchangeZhihuTicket(ticket);
+          setSession(exchanged.session.sessionId);
+          localStorage.removeItem(OAUTH_TICKET_BRIDGE_KEY);
+          setUser(exchanged.user);
+          setAuthStatus("authenticated");
+          const nextState = exchanged.setupState || "llm_pending";
+          setSetupState(nextState);
+          if (nextState === "ready" || nextState === "provisional_ready") {
+            onComplete();
+          } else {
+            navigateToStep(nextState);
+          }
+          console.info(`[oauth][auth-entry] exchange success via ${source}, setupState=${nextState}`);
+        } catch (error) {
+          console.error(`[oauth][auth-entry] exchange failed via ${source}`, error);
+        }
+      })();
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        console.warn("[oauth][auth-entry] reject message: origin mismatch", {
+          eventOrigin: event.origin,
+          currentOrigin: window.location.origin,
+        });
+        return;
+      }
+      consumePayload(event.data as Partial<ZhihuLoginTicketMessage> | undefined, "message");
+    };
+
+    const onStorageTick = () => {
+      const raw = localStorage.getItem(OAUTH_TICKET_BRIDGE_KEY);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as Partial<ZhihuLoginTicketMessage>;
+        consumePayload(parsed, "storage");
+      } catch {
+        localStorage.removeItem(OAUTH_TICKET_BRIDGE_KEY);
+      }
+    };
+
+    const storageTimer = window.setInterval(onStorageTick, 600);
+    onStorageTick();
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.clearInterval(storageTimer);
+      window.removeEventListener("message", onMessage);
+    };
+  }, [checkAuthStatus, navigateToStep, onComplete]);
+
 
   function handleZhihuComplete() {
     setSetupState("llm_pending");
@@ -145,27 +211,23 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
             : "interest"
           : step === "generating"
             ? "generation"
-            : "auth";
+            : "zhihu";
   const activeIndex = Math.max(0, setupSteps.findIndex((item) => item.id === progressStep));
   const stepTitle =
-    progressStep === "auth"
-      ? "登录 / 注册"
-      : progressStep === "zhihu"
-        ? "关联知乎账号"
-        : progressStep === "llm"
-          ? "配置 LLM 使用方式"
+    progressStep === "zhihu"
+      ? "知乎 OAuth 授权"
+      : progressStep === "llm"
+        ? "配置 LLM 使用方式"
           : progressStep === "interest"
             ? "选择兴趣领域"
             : progressStep === "style"
               ? "建立创作画像"
               : "临时画像已生成";
   const stepDesc =
-    progressStep === "auth"
-      ? "用户必须先拥有本地账号，后续 OAuth、LLM 配置和画像才能绑定到用户。"
-      : progressStep === "zhihu"
-        ? "OAuth 暂未开放时可以跳过，系统会先根据显式填写内容生成临时画像。"
-        : progressStep === "llm"
-          ? "可使用平台免费额度，也可配置自己的 OpenAI-compatible 模型。"
+    progressStep === "zhihu"
+      ? "系统将直接使用知乎 OAuth 返回的用户信息作为本地身份。"
+      : progressStep === "llm"
+        ? "可使用平台免费额度，也可配置自己的 OpenAI-compatible 模型。"
           : progressStep === "interest"
             ? "兴趣是长期 Memory 的主分类，关注流和偶遇输入只是内容来源。"
             : progressStep === "style"
@@ -183,111 +245,6 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     );
   }
 
-  // 登录页面 - 简洁布局
-  if (step === "login") {
-    return (
-      <main className="login-shell">
-        <div className="login-container">
-          {/* 左侧：登录表单 */}
-          <div className="login-left">
-            <div className="login-brand">
-              <div className="login-logo">苗</div>
-              <div>
-                <h1>看山小苗圃</h1>
-                <p>知乎读写一体创作 Agent</p>
-              </div>
-            </div>
-
-            <div className="login-form-container">
-              <h2>登录</h2>
-              <p className="login-subtitle">登录你的账号继续使用</p>
-
-              <LoginPanel
-                onSuccess={handleLoginSuccess}
-                onSwitchToRegister={() => setStep("register")}
-              />
-
-              <div className="login-divider">
-                <span>或</span>
-              </div>
-
-              <button
-                className="btn ghost login-demo-btn"
-                onClick={onShowDemo}
-                type="button"
-              >
-                进入演示模式
-              </button>
-            </div>
-          </div>
-
-          {/* 右侧：刘看山图片区域 */}
-          <div className="login-right">
-            <div className="login-image-placeholder">
-              <div className="login-mascot">
-                <div className="mascot-character">刘</div>
-                <div className="mascot-name">看山</div>
-              </div>
-              <p className="login-tagline">看到好内容，形成好观点，写出好文章</p>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // 注册页面 - 左侧表单，右侧图片
-  if (step === "register") {
-    return (
-      <main className="login-shell">
-        <div className="login-container">
-          {/* 左侧：注册表单 */}
-          <div className="login-left">
-            <div className="login-brand">
-              <div className="login-logo">苗</div>
-              <div>
-                <h1>看山小苗圃</h1>
-                <p>知乎读写一体创作 Agent</p>
-              </div>
-            </div>
-
-            <div className="login-form-container">
-              <h2>注册</h2>
-              <p className="login-subtitle">创建账号开始你的创作之旅</p>
-
-              <RegisterPanel
-                onSuccess={handleRegisterSuccess}
-                onSwitchToLogin={() => setStep("login")}
-              />
-
-              <div className="login-divider">
-                <span>或</span>
-              </div>
-
-              <button
-                className="btn ghost login-demo-btn"
-                onClick={onShowDemo}
-                type="button"
-              >
-                进入演示模式
-              </button>
-            </div>
-          </div>
-
-          {/* 右侧：刘看山图片区域 */}
-          <div className="login-right">
-            <div className="login-image-placeholder">
-              <div className="login-mascot">
-                <div className="mascot-character">刘</div>
-                <div className="mascot-name">看山</div>
-              </div>
-              <p className="login-tagline">看到好内容，形成好观点，写出好文章</p>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
 
   // 后续步骤（知乎关联、LLM配置、兴趣选择、画像生成）
   return (
@@ -335,9 +292,9 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
           </div>
 
           <div className="panel-body">
-            {step === "zhihu" && user ? (
+            {step === "zhihu" ? (
               <section className="auth-step-panel active">
-                <ZhihuLinkPanel userId={user.userId} onComplete={handleZhihuComplete} onSkip={handleZhihuSkip} />
+                <ZhihuLinkPanel userId={user?.userId} onComplete={handleZhihuComplete} onSkip={handleZhihuSkip} />
               </section>
             ) : null}
 

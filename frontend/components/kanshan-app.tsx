@@ -9,6 +9,7 @@ import {
   Home,
   Leaf,
   Loader2,
+  LogOut,
   MessageCircleQuestion,
   PenLine,
   Plus,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/api-client";
 import type {
   ContentSource,
+  CurrentUser,
   DemoState,
   FeedbackArticle,
   IdeaSeed,
@@ -58,8 +60,10 @@ import type {
   WateringMaterialType,
   WorthReadingCard,
   WritingSession,
+  ZhihuBindingViewModel,
 } from "@/lib/types";
 import { AuthEntry } from "./auth/AuthEntry";
+import { getMe, getZhihuAuthorizeUrl, getZhihuBinding, logout } from "@/lib/auth/auth-client";
 
 const STORAGE_KEY = "kanshan:nursery:demo-state:v2";
 
@@ -203,6 +207,8 @@ export function KanshanApp() {
   const [mergeSeedId, setMergeSeedId] = useState<string | null>(null);
   const [commentArticle, setCommentArticle] = useState<FeedbackArticle | null>(null);
   const [sproutLoading, setSproutLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [zhihuBinding, setZhihuBinding] = useState<ZhihuBindingViewModel | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -215,6 +221,18 @@ export function KanshanApp() {
         fetchSproutOpportunities(),
         fetchFeedbackArticles(),
       ]);
+
+      // Fetch real user info and Zhihu binding status (sequential: need userId for binding)
+      try {
+        const me = await getMe();
+        if (mounted && me.user) {
+          setCurrentUser(me.user);
+          const binding = await getZhihuBinding(me.user.userId);
+          if (mounted) setZhihuBinding(binding);
+        }
+      } catch {
+        // ignore — will show fallback values
+      }
 
       if (!mounted) return;
 
@@ -305,12 +323,7 @@ export function KanshanApp() {
     })();
   }
 
-  function enterApp(mode: "zhihu" | "onboarding" | "demo") {
-    if (mode === "zhihu") {
-      const adapterUrl = process.env.NEXT_PUBLIC_ZHIHU_ADAPTER_URL || "http://127.0.0.1:8070";
-      window.location.href = `${adapterUrl}/zhihu/oauth/authorize?redirect=true`;
-      return;
-    }
+  function enterApp(mode: "onboarding" | "demo") {
     setEntered(true);
     const nextTab = mode === "onboarding" ? "onboarding" : "today";
     setActiveTab(nextTab);
@@ -898,7 +911,12 @@ export function KanshanApp() {
     }
   }
 
-  function resetDemoState() {
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // ignore errors, clear local state anyway
+    }
     window.localStorage.removeItem(STORAGE_KEY);
     window.location.reload();
   }
@@ -1064,13 +1082,6 @@ export function KanshanApp() {
             {data.seeds.reduce((sum, seed) => sum + seed.questions.length, 0)} 个疑问已沉淀。
           </p>
         </div>
-        <div className="sidebar-card">
-          <div className="eyebrow">本地持久化</div>
-          <p>所有演示操作会写入 localStorage。需要重置时可清空演示状态。</p>
-          <button className="btn ghost compact" onClick={resetDemoState} type="button">
-            重置演示状态
-          </button>
-        </div>
       </aside>
 
       <main className="main">
@@ -1079,13 +1090,18 @@ export function KanshanApp() {
             <h1 className="hero-title">{activeHero[0]}</h1>
             {activeHero[1] ? <p className="hero-desc">{activeHero[1]}</p> : null}
           </div>
-          <button className="user-pill" onClick={() => goTab("profile")} type="button">
-            <div className="avatar">山</div>
-            <div>
-              <div className="user-name">{data.profile.nickname}</div>
-              <div className="user-mode">主编模式 · {data.profile.accountStatus}</div>
-            </div>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="user-pill" onClick={() => goTab("profile")} type="button">
+              <div className="avatar">山</div>
+              <div>
+                <div className="user-name">{data.profile.nickname}</div>
+                <div className="user-mode">{data.profile.accountStatus}</div>
+              </div>
+            </button>
+            <button className="btn ghost compact" onClick={handleLogout} type="button" title="退出登录">
+              <LogOut size={16} />
+            </button>
+          </div>
         </header>
 
         {activeTab === "onboarding" ? <OnboardingSection profile={data.profile} onSave={saveProfile} goProfile={() => goTab("profile")} /> : null}
@@ -1165,7 +1181,7 @@ export function KanshanApp() {
           />
         ) : null}
         {activeTab === "profile" ? (
-          <ProfileSection profile={data.profile} categories={data.categories} onSave={saveProfile} onNotify={showToast} />
+          <ProfileSection profile={data.profile} categories={data.categories} onSave={saveProfile} onNotify={showToast} currentUser={currentUser} zhihuBinding={zhihuBinding} onZhihuBindingChange={setZhihuBinding} />
         ) : null}
       </main>
 
@@ -2318,20 +2334,35 @@ function ProfileSection({
   categories,
   onSave,
   onNotify,
+  currentUser,
+  zhihuBinding,
+  onZhihuBindingChange,
 }: {
   profile: ProfileData;
   categories: InputCategory[];
   onSave: (profile: ProfileData) => void;
   onNotify: (message: string) => void;
+  currentUser?: CurrentUser | null;
+  zhihuBinding?: ZhihuBindingViewModel | null;
+  onZhihuBindingChange?: (binding: ZhihuBindingViewModel) => void;
 }) {
   const [draft, setDraft] = useState(profile);
   const [activePanel, setActivePanel] = useState<ProfilePanelId>("overview");
-  const [accountDraft, setAccountDraft] = useState({
-    email: "demo@example.com",
-    username: "kanshan_user",
-    password: "password-placeholder",
-  });
   const [selectedProvider, setSelectedProvider] = useState("platform-free");
+
+  // Listen for Zhihu binding success from popup window
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === "zhihu-login-ticket" && event.origin === window.location.origin) {
+        getZhihuBinding(currentUser?.userId).then((updated) => {
+          if (onZhihuBindingChange) onZhihuBindingChange(updated);
+          onNotify("知乎账号关联成功");
+        }).catch(() => {});
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [currentUser?.userId, onZhihuBindingChange, onNotify]);
   const [providerCount, setProviderCount] = useState(3);
   const [styleScores, setStyleScores] = useState<Record<string, number>>({
     logic: 3,
@@ -2341,7 +2372,7 @@ function ProfileSection({
   });
 
   const interestCategories = categories.filter((category) => category.kind === "interest");
-  const zhihuBound = draft.accountStatus.includes("已关联");
+  const zhihuBound = zhihuBinding?.bindingStatus === "bound";
 
   function toggleInterest(interest: string) {
     const interests = draft.interests.includes(interest)
@@ -2521,23 +2552,26 @@ function ProfileSection({
               <div className="panel-header">
                 <div>
                   <h2 className="panel-title">账号信息</h2>
-                  <p className="panel-subtitle">用于登录、通知和安全审计。当前为前端 mock 状态。</p>
+                  <p className="panel-subtitle">来自数据库的真实账号信息。邮箱和用户名不可修改。</p>
                 </div>
-                <button className="btn primary" onClick={() => mockAction("账号信息已保存到 mock 状态")} type="button">
+                <button className="btn primary" onClick={() => saveDraft("账号信息已保存")} type="button">
                   保存
                 </button>
               </div>
               <div className="panel-body form-grid">
-                <EditableField label="邮箱" value={accountDraft.email} onChange={(email) => setAccountDraft({ ...accountDraft, email })} />
-                <EditableField label="用户名" value={accountDraft.username} onChange={(username) => setAccountDraft({ ...accountDraft, username })} />
-                <EditableField label="密码" value={accountDraft.password} onChange={(password) => setAccountDraft({ ...accountDraft, password })} />
-                <div className="action-row">
-                  <button className="btn ghost" onClick={() => mockAction("修改密码入口已触发 mock")} type="button">
-                    修改密码
-                  </button>
-                  <button className="btn danger" onClick={() => mockAction("退出登录后端接口待接入")} type="button">
-                    退出登录
-                  </button>
+                <div className="field">
+                  <label>邮箱</label>
+                  <input className="input" value={currentUser?.email || "未绑定"} readOnly />
+                </div>
+                <div className="field">
+                  <label>用户名</label>
+                  <input className="input" value={currentUser?.username || "未设置"} readOnly />
+                </div>
+                <EditableField label="昵称" value={draft.nickname} onChange={(nickname) => setDraft({ ...draft, nickname })} />
+                <EditableField label="身份 / 创作背景" value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />
+                <div className="field">
+                  <label>注册时间</label>
+                  <input className="input" value={currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleString("zh-CN") : "未知"} readOnly />
                 </div>
               </div>
             </div>
@@ -2545,41 +2579,73 @@ function ProfileSection({
             <div className="panel">
               <div className="panel-header">
                 <div>
-                  <h2 className="panel-title">知乎授权与数据来源</h2>
-                  <p className="panel-subtitle">授权状态、数据范围和重新绑定入口。</p>
+                  <h2 className="panel-title">知乎关联状态</h2>
+                  <p className="panel-subtitle">关联知乎后可增强关注流、兴趣图谱和创作偏好。</p>
                 </div>
               </div>
               <div className="panel-body form-grid">
                 <div className="card no-hover">
                   <div className="tag-row">
-                    <span className={`tag ${zhihuBound ? "green" : "orange"}`}>{zhihuBound ? "已关联" : "未关联"}</span>
-                    <span className="tag blue">可跳过</span>
+                    <span className={`tag ${zhihuBound ? "green" : "orange"}`}>
+                      {zhihuBound ? "已关联" : "未关联"}
+                    </span>
                   </div>
-                  <h3>知乎账号</h3>
-                  <p className="field-text">关联后可增强关注流、兴趣图谱和创作偏好；OAuth 未开放时先使用本地临时画像。</p>
-                  <div className="action-row">
-                    <button className="btn primary" onClick={() => mockAction("模拟重新发起知乎 OAuth")} type="button">
-                      重新关联知乎
-                    </button>
-                    <button className="btn ghost" onClick={() => mockAction("数据使用说明：仅用于生成可见、可编辑的 Memory")} type="button">
-                      查看数据使用说明
-                    </button>
-                  </div>
-                </div>
-                <div className="card no-hover">
-                  <h3>将使用的数据</h3>
-                  <div className="tag-row">
-                    {["用户基本信息", "关注列表", "粉丝列表", "关注流", "圈子互动", "公开创作样本"].map((scope, index) => (
-                      <button
-                        className={`chip small ${index < 4 ? "selected" : ""}`}
-                        key={scope}
-                        onClick={() => mockAction(`${scope} 数据范围已切换 mock`)}
-                        type="button"
-                      >
-                        {scope}
-                      </button>
-                    ))}
-                  </div>
+                  {zhihuBound ? (
+                    <>
+                      <h3>知乎账号已关联</h3>
+                      <p className="field-text">
+                        知乎 UID：{zhihuBinding?.zhihuUid || "未知"}
+                        {zhihuBinding?.boundAt ? ` · 关联时间：${new Date(zhihuBinding.boundAt).toLocaleString("zh-CN")}` : ""}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3>尚未关联知乎账号</h3>
+                      <p className="field-text">关联后系统将使用知乎数据增强你的创作画像和内容推荐。</p>
+                      <div className="action-row">
+                        <button
+                          className="btn primary"
+                          onClick={async () => {
+                            try {
+                              const { url } = await getZhihuAuthorizeUrl();
+                              if (url.includes("MOCK") || url.includes("client_id=MOCK")) {
+                                onNotify("知乎 OAuth 尚未配置，无法关联");
+                                return;
+                              }
+                              const sessionId = localStorage.getItem("kanshan:session:v1");
+                              let authUrl = url;
+                              if (sessionId) {
+                                try {
+                                  const parsed = JSON.parse(sessionId);
+                                  authUrl = `${url}&state=${encodeURIComponent(parsed.sessionId || "")}`;
+                                } catch { /* ignore */ }
+                              }
+                              window.open(authUrl, "_blank", "width=640,height=760");
+                              // Poll binding status
+                              const pollInterval = setInterval(async () => {
+                                try {
+                                  const updated = await getZhihuBinding(currentUser?.userId);
+                                  if (updated.bindingStatus === "bound") {
+                                    clearInterval(pollInterval);
+                                    if (onZhihuBindingChange) onZhihuBindingChange(updated);
+                                    onNotify("知乎账号关联成功");
+                                  }
+                                } catch { /* ignore */ }
+                              }, 2000);
+                              // Stop polling after 2 minutes
+                              setTimeout(() => clearInterval(pollInterval), 120000);
+                            } catch (err) {
+                              console.error("Failed to get Zhihu authorize URL:", err);
+                              onNotify("获取知乎授权链接失败");
+                            }
+                          }}
+                          type="button"
+                        >
+                          关联知乎账号
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

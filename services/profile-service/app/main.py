@@ -16,7 +16,7 @@ from kanshan_shared import configure_logging, get_logger, load_config
 from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException, Query
+    from fastapi import FastAPI, HTTPException, Query, Request
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError("Install service dependencies with `pip install -r requirements.txt`.") from exc
 
@@ -47,7 +47,7 @@ else:
 
 profile_service = ProfileService(repository)
 memory_service = MemoryService(repository)
-auth_service = AuthService(auth_repository)
+auth_service = AuthService(auth_repository, zhihu_adapter_url=_config.service_urls.zhihu)
 
 # Start background scheduler
 from app.scheduler import ProfileScheduler
@@ -128,6 +128,7 @@ def get_me(session_id: str | None = None) -> dict[str, Any]:
 
 @app.get("/auth/zhihu/authorize")
 def get_zhihu_authorize() -> dict[str, Any]:
+    logger.info("知乎授权入口")
     return auth_service.get_zhihu_authorize_url()
 
 
@@ -146,55 +147,99 @@ def create_zhihu_binding(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/auth/zhihu/binding")
-def get_zhihu_binding(user_id: str) -> dict[str, Any]:
+def get_zhihu_binding(request: Request, user_id: str | None = None) -> dict[str, Any]:
+    if not user_id:
+        user_id = _resolve_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=400, detail={"code": "USER_ID_MISSING", "message": "user_id is required"})
     return auth_service.get_zhihu_binding(user_id)
 
 
 @app.delete("/auth/zhihu/binding")
-def delete_zhihu_binding(user_id: str) -> dict[str, Any]:
+def delete_zhihu_binding(request: Request, user_id: str | None = None) -> dict[str, Any]:
+    if not user_id:
+        user_id = _resolve_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=400, detail={"code": "USER_ID_MISSING", "message": "user_id is required"})
     return auth_service.delete_zhihu_binding(user_id)
 
 
-@app.get("/auth/zhihu/callback")
-def zhihu_callback(code: str | None = None, error: str | None = None, session_id: str | None = None) -> dict[str, Any]:
-    """Handle OAuth callback from zhihu-adapter."""
-    if error:
-        raise HTTPException(status_code=400, detail={"code": "OAUTH_DENIED", "message": error})
-    if not code:
-        raise HTTPException(status_code=400, detail={"code": "OAUTH_CODE_MISSING", "message": "code is required"})
-
+@app.post("/auth/zhihu/exchange-ticket")
+def exchange_zhihu_ticket(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        # 1. Get current user from session
-        if not session_id:
-            raise HTTPException(status_code=401, detail={"code": "SESSION_MISSING", "message": "session_id is required"})
-
-        me_result = auth_service.me(session_id)
-        if not me_result.get("authenticated"):
-            raise HTTPException(status_code=401, detail={"code": "NOT_AUTHENTICATED", "message": "User not authenticated"})
-
-        user_id = me_result["user"]["userId"]
-
-        # 2. Exchange code for token via zhihu-adapter
-        token_result = auth_service.exchange_zhihu_code(code)
-
-        # 3. Get user info from Zhihu
-        user_info = auth_service.get_zhihu_user_info(token_result.get("access_token", ""))
-
-        # 4. Save binding to database
-        result = auth_service.create_zhihu_binding(
-            user_id=user_id,
-            zhihu_uid=str(user_info.get("uid", "")),
-            access_token=token_result.get("access_token", ""),
-            expires_in=token_result.get("expires_in", 0),
-        )
-
-        logger.info("zhihu_oauth_completed", extra={"userId": user_id})
-        return result
-    except HTTPException:
-        raise
+        ticket = str(payload.get("ticket", "") or "")
+        return auth_service.exchange_login_ticket(ticket)
     except Exception as error:
         handle_error(error)
         raise
+
+
+@app.get("/auth/zhihu/callback")
+def zhihu_callback(
+    request: Request,
+    code: str | None = None,
+    error: str | None = None,
+    session_id: str | None = None,
+    state: str | None = None,
+) -> dict[str, Any]:
+    """Handle OAuth callback from zhihu-adapter and issue short-lived login ticket."""
+    request_id_value = request.headers.get("x-request-id") or ""
+
+    logger.info(
+        "知乎回调已收到",
+        extra={
+            "请求ID": request_id_value,
+            "有授权码": bool(code),
+            "有错误参数": bool(error),
+            "有query_session": bool(session_id),
+            "有header_session": bool(request.headers.get("x-session-id")),
+            "有state": bool(state),
+        },
+    )
+
+    if error:
+        logger.warning("知乎回调被拒绝", extra={"请求ID": request_id_value, "错误": error})
+        raise HTTPException(status_code=400, detail={"code": "OAUTH_DENIED", "message": error})
+    if not code:
+        logger.warning("知乎回调缺少授权码", extra={"请求ID": request_id_value})
+        raise HTTPException(status_code=400, detail={"code": "OAUTH_CODE_MISSING", "message": "code is required"})
+
+    try:
+        token_result = auth_service.exchange_zhihu_code(code)
+        user_info = auth_service.get_zhihu_user_info(token_result.get("access_token", ""))
+
+        zhihu_uid = str(user_info.get("uid", ""))
+        if not zhihu_uid:
+            logger.warning("知乎回调缺少知乎UID", extra={"请求ID": request_id_value})
+            raise HTTPException(status_code=502, detail={"code": "ZHIHU_UID_MISSING", "message": "Zhihu user uid missing"})
+
+        existing_user = auth_service._repo.get_user_by_zhihu_uid(zhihu_uid)
+        local_user = auth_service.ensure_user_by_zhihu_profile(user_info)
+        binding = auth_service.create_zhihu_binding(
+            user_id=local_user.user_id,
+            zhihu_uid=zhihu_uid,
+            access_token=token_result.get("access_token", ""),
+            expires_in=token_result.get("expires_in", 0),
+        )
+        setup_state_hint = "llm_pending" if not existing_user else None
+        if setup_state_hint == "llm_pending":
+            auth_service.set_user_setup_state(local_user.user_id, "llm_pending")
+        ticket = auth_service.create_login_ticket_for_user(local_user.user_id, setup_state_hint=setup_state_hint)
+
+        logger.info("知乎授权完成并签发ticket", extra={"请求ID": request_id_value, "用户ID": local_user.user_id})
+        return {
+            "binding": binding,
+            "ticket": ticket.ticket,
+            "ticketExpiresAt": ticket.expires_at,
+            "user": local_user.to_dict(),
+        }
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("知乎回调处理失败", extra={"请求ID": request_id_value, "错误类型": type(error).__name__})
+        handle_error(error)
+        raise
+
 
 
 @app.get("/health")
@@ -225,7 +270,9 @@ def onboarding(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         user_id = _resolve_user_id(request)
         if not user_id:
             raise ValueError("session required")
-        return profile_service.save_onboarding(payload, user_id=user_id)
+        result = profile_service.save_onboarding(payload, user_id=user_id)
+        auth_service.set_user_setup_state(user_id, "ready")
+        return result
     except Exception as error:
         handle_error(error)
         raise
@@ -387,9 +434,12 @@ def get_llm_config() -> dict[str, Any]:
 
 
 @app.put("/profiles/me/llm-config")
-def update_llm_config(payload: dict[str, Any]) -> dict[str, Any]:
+def update_llm_config(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     try:
+        user_id = _resolve_user_id(request)
         result = profile_service.update_llm_config(payload)
+        if user_id:
+            auth_service.set_user_setup_state(user_id, "preferences_pending")
         logger.info("llm_config_update")
         return result
     except Exception as error:

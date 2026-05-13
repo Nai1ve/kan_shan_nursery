@@ -16,6 +16,7 @@ import type {
   RegisterRequest,
   UserSetupState,
   UserSetupStateData,
+  ZhihuExchangeTicketResponse,
   ZhihuBindingViewModel,
 } from "@/lib/types";
 
@@ -361,6 +362,10 @@ export async function unbindZhihu(userId?: string): Promise<{ success: boolean }
   return request<{ success: boolean }>(`/api/v1/auth/zhihu/binding${suffix}`, "DELETE");
 }
 
+export async function exchangeZhihuTicket(ticket: string): Promise<ZhihuExchangeTicketResponse> {
+  return request<ZhihuExchangeTicketResponse>("/api/v1/auth/zhihu/exchange-ticket", "POST", { ticket });
+}
+
 export async function getUserSetupState(): Promise<UserSetupStateData> {
   const me = await getMe();
   const zhihuBinding = me.user ? await getZhihuBinding(me.user.userId) : undefined;
@@ -377,6 +382,10 @@ export async function saveOnboarding(data: OnboardingPayload): Promise<Onboardin
 
 export async function handleZhihuCallback(code: string): Promise<ZhihuBindingViewModel> {
   return request<ZhihuBindingViewModel>(`/api/v1/auth/zhihu/callback?code=${encodeURIComponent(code)}`, "GET");
+}
+
+export function setSession(sessionId: string): void {
+  saveSession(sessionId);
 }
 
 export function getSession(): string | null {

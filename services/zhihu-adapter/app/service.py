@@ -281,22 +281,39 @@ class ZhihuAdapterService:
 
     # ---- OAuth endpoints ----------------------------------------------------------
 
-    def authorize_url(self) -> dict[str, Any]:
-        return {"url": self.clients.oauth.authorize_url(), "redirectUri": self.settings.zhihu.oauth.redirect_uri}
+    def authorize_url(self, state: str | None = None) -> dict[str, Any]:
+        return {"url": self.clients.oauth.authorize_url(state=state), "redirectUri": self.settings.zhihu.oauth.redirect_uri}
 
     def exchange_oauth_code(self, code: str) -> dict[str, Any]:
         if not code:
             raise ZhihuInvalidRequest("code is required")
+        logger.info(
+            "zhihu_oauth_exchange_started",
+            extra={"providerMode": self.settings.provider_mode, "codeHash": stable_hash(code)},
+        )
         token = self.clients.oauth.exchange_code_for_token(code)
         logger.info(
-            "zhihu_oauth_exchanged",
-            extra={"tokenType": token.get("token_type"), "expiresIn": token.get("expires_in")},
+            "zhihu_oauth_exchange_succeeded",
+            extra={
+                "providerMode": self.settings.provider_mode,
+                "responseKeys": sorted(list(token.keys())) if isinstance(token, dict) else [],
+                "tokenType": token.get("token_type") if isinstance(token, dict) else None,
+                "expiresIn": token.get("expires_in") if isinstance(token, dict) else None,
+            },
         )
         return token
 
     def user_info(self, access_token: str | None = None) -> dict[str, Any]:
+        logger.info(
+            "zhihu_user_info_started",
+            extra={
+                "providerMode": self.settings.provider_mode,
+                "hasAccessToken": bool(access_token),
+                "accessTokenHash": stable_hash(access_token) if access_token else None,
+            },
+        )
         key = f"zhihu:user:{self.settings.demo_user_id}:{stable_hash(access_token or 'configured')}"
-        return self._cached(
+        result = self._cached(
             "user_info",
             key,
             lambda: mappers.map_oauth_user(
@@ -314,6 +331,18 @@ class ZhihuAdapterService:
                 }
             ),
         )
+        items = result.get("items", []) if isinstance(result, dict) else []
+        first_keys = sorted(list(items[0].keys())) if isinstance(items, list) and items and isinstance(items[0], dict) else []
+        logger.info(
+            "zhihu_user_info_succeeded",
+            extra={
+                "providerMode": self.settings.provider_mode,
+                "cacheHit": bool(result.get("cache", {}).get("hit")) if isinstance(result, dict) else False,
+                "itemsCount": len(items) if isinstance(items, list) else 0,
+                "firstItemKeys": first_keys,
+            },
+        )
+        return result
 
     def following_feed(self, access_token: str | None = None) -> dict[str, Any]:
         key = f"zhihu:user_moments:{self.settings.demo_user_id}:{stable_hash(access_token or 'configured')}"

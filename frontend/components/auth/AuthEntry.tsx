@@ -251,7 +251,7 @@ export function AuthEntry({ onComplete, onShowDemo }: AuthEntryProps) {
     <main className="auth-entry-shell">
       <div className="auth-entry-topbar">
         <div className="auth-brand">
-          <div className="login-logo auth-logo">苗</div>
+          <img src="/images/oauth/miao-320.png" alt="苗" className="login-logo auth-logo" />
           <div className="auth-title-block">
             <h1>{stepTitle}</h1>
             <p>{stepDesc}</p>

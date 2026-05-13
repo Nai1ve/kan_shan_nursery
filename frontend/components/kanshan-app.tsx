@@ -861,14 +861,14 @@ export function KanshanApp() {
         ? {
             type,
             title: 'Agent 补充事实证据',
-            content: `围绕”${seed.sourceTitle}”，Agent 建议补充一条可验证事实：先引用原始来源中的具体场景，再说明它如何支撑”${seed.coreClaim}”。`,
+            content: `围绕"${seed.sourceTitle}"，Agent 建议补充一条可验证事实：先引用原始来源中的具体场景，再说明它如何支撑"${seed.coreClaim}"。`,
             sourceLabel: '继续浇水 / Agent 补证据',
             adopted: true,
           }
         : {
             type,
             title: 'Agent 找到反方质疑',
-            content: `针对”${seed.coreClaim}”，反方可能会质疑：${seed.counterArguments[0] ?? '当前材料是否足够支持这个判断？'} 建议在文章中明确适用边界，并补充一个不成立的场景。`,
+            content: `针对"${seed.coreClaim}"，反方可能会质疑：${seed.counterArguments[0] ?? '当前材料是否足够支持这个判断？'} 建议在文章中明确适用边界，并补充一个不成立的场景。`,
             sourceLabel: '继续浇水 / Agent 找反方',
             adopted: true,
           };
@@ -1026,7 +1026,7 @@ export function KanshanApp() {
       statusTone: "blue",
       performanceSummary: "刚发布，系统已进入 2-3 周反馈观察期。当前先记录首批评论和收藏趋势。",
       commentInsights: ["等待第一批评论进入。", "建议重点关注反方是否质疑证据不足。", "收藏率会影响下一轮选题判断。"],
-      memoryAction: `把“${seed.interestName}：发布后需要观察反方质疑”写入 Memory 候选。`,
+      memoryAction: `把"${seed.interestName}：发布后需要观察反方质疑"写入 Memory 候选。`,
       metrics: [
         { label: "阅读完成率", value: 18 },
         { label: "收藏率", value: 7 },
@@ -1308,7 +1308,7 @@ export function KanshanApp() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">苗</div>
+          <img src="/images/oauth/miao-240.png" alt="苗" className="brand-mark" />
           <div>
             <div className="brand-title">看山小苗圃</div>
             <div className="brand-subtitle">知乎读写一体创作 Agent</div>
@@ -1336,6 +1336,10 @@ export function KanshanApp() {
             {data.seeds.reduce((sum, seed) => sum + seed.questions.length, 0)} 个疑问已沉淀。
           </p>
         </div>
+
+        <div style={{ textAlign: "center", padding: "12px 0 8px", marginTop: "auto" }}>
+          <img src="/images/sidebar-mascot.png" alt="看山小苗" style={{ width: "140px", height: "auto" }} />
+        </div>
       </aside>
 
       <main className="main">
@@ -1346,7 +1350,7 @@ export function KanshanApp() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="user-pill" onClick={() => goTab("profile")} type="button">
-              <div className="avatar">山</div>
+              <img src="/images/roundtable/agent-human.png" alt="用户" className="avatar" style={{ objectFit: "cover" }} />
               <div>
                 <div className="user-name">{data.profile.nickname}</div>
                 <div className="user-mode">{data.profile.accountStatus}</div>
@@ -1501,7 +1505,7 @@ function LoginScreen({ onEnter }: { onEnter: (mode: "zhihu" | "onboarding" | "de
   return (
     <section className="login-shell">
       <div className="login-hero">
-        <div className="login-logo">苗</div>
+        <img src="/images/oauth/miao-320.png" alt="苗" className="login-logo" />
         <h1>看到好内容，形成好观点，写出好文章。</h1>
         <p>
           看山小苗圃是一个面向知乎生态的读写一体创作 Agent。它先帮你筛选值得看的内容，再把你的阅读反应沉淀成观点种子，最后在合适的热点时机发芽成文。
@@ -1847,7 +1851,7 @@ function ContentCard({
             <span className="tag green">可沉淀种子</span>
           </div>
           <p>
-            这张卡片当前可写性为 {card.relevanceScore} 分，争议度为 {card.controversyScore} 分。建议先记录立场，再通过“有疑问”把不确定性转成可浇水材料。
+            这张卡片当前可写性为 {card.relevanceScore} 分，争议度为 {card.controversyScore} 分。建议先记录立场，再通过"有疑问"把不确定性转成可浇水材料。
           </p>
         </div>
       ) : null}
@@ -2070,21 +2074,27 @@ function SproutSection({
         </div>
         {!started && !loading ? (
           <div className="panel-body">
-            <article className="card structured-card no-hover">
-              <div className="tag-row">
-                <span className="tag green">小刘看山</span>
-                <span className="tag orange">用户主动触发</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "32px", flexWrap: "wrap" }}>
+              <WateringAnimation />
+              <div style={{ flex: 1, minWidth: "260px" }}>
+                <article className="card structured-card no-hover">
+                  <div className="tag-row">
+                    <span className="tag green">小刘看山</span>
+                    <span className="tag orange">用户主动触发</span>
+                  </div>
+                  <h3>今天要不要给你的种子浇浇水？</h3>
+                  <p style={{ color: "var(--muted)", margin: "6px 0 14px", fontSize: "14px" }}>点击下方按钮，为观点种子注入新的活力。浇水会激活种子与今日热点的关联机会。</p>
+                  <div className="action-row">
+                    <button className="btn primary" onClick={onStart} type="button">
+                      开始今日发芽
+                    </button>
+                    <button className="btn ghost" onClick={openSeeds} type="button">
+                      先看看种子库
+                    </button>
+                  </div>
+                </article>
               </div>
-              <h3>今天要不要给你的种子浇浇水？</h3>
-              <div className="action-row">
-                <button className="btn primary" onClick={onStart} type="button">
-                  开始今日发芽
-                </button>
-                <button className="btn ghost" onClick={openSeeds} type="button">
-                  先看看种子库
-                </button>
-              </div>
-            </article>
+            </div>
           </div>
         ) : loading ? (
           <div className="sprout-loading" style={{ display: "block" }}>
@@ -2473,39 +2483,14 @@ function WritingStageContent({
     return (
       <>
         <h2 className="stage-title">圆桌审稿会</h2>
-        <p className="stage-desc">逻辑压测和人味检查合并为圆桌会议，由不同 Agent 从不同视角评判讨论。</p>
-        <div className="roundtable">
-          <AgentReview avatar="逻" title="逻辑审稿 Agent" text="需要把“能力同质化”和“工作流壁垒”之间的推导补充得更明确。" />
-          <AgentReview avatar="人" title="人味编辑 Agent" text="文章仍需要一个你的真实项目经验，否则会像行业分析而不像你的判断。" tone="orange" />
-          <AgentReview avatar="反" title="反方读者 Agent" text="未来长上下文模型能吸收整个代码库，为什么上下文仍是壁垒？" tone="purple" />
-          <AgentReview avatar="传" title="社区传播 Agent" text="标题可保留，但开头建议从工程场景切入。" tone="green" />
-        </div>
-        <div className="action-row">
-          {["采纳逻辑建议", "补充个人经历", "生成反方回应"].map((item) => (
-            <button
-              className={`btn ghost ${session.adoptedSuggestions.includes(item) ? "selected" : ""}`}
-              key={item}
-              onClick={() => {
-                updateSession({ adoptedSuggestions: unique([...session.adoptedSuggestions, item]), draftStatus: "reviewing" });
-                showToast(`${item}已写入审稿状态`);
-              }}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-          <button
-            className="btn primary"
-            onClick={() => {
-              updateSession({ draftStatus: "finalized" });
-              setStep(6);
-              showToast("已进入定稿草案");
-            }}
-            type="button"
-          >
-            我觉得可以，进入定稿
-          </button>
-        </div>
+        <p className="stage-desc">逻辑压测和人味检查合并为圆桌会议，由不同 Agent 从不同视角评判讨论。点击 Agent 头像可选择发言人。</p>
+        <RoundtableDiscussion
+          onComplete={() => {
+            updateSession({ draftStatus: "finalized" });
+            setStep(6);
+          }}
+          showToast={showToast}
+        />
       </>
     );
   }
@@ -2554,7 +2539,7 @@ function WritingStageContent({
           <li>请补充一个真实经历中的工程场景，避免文章过于抽象。</li>
           <li>请确认文中观点是你认可的表达，不要直接发布未检查版本。</li>
           <li>建议先发布到圈子收集评论，再发布为长文。</li>
-          <li>发布后进入“历史反馈”页面，系统会提取评论中的支持、反对和补充材料。</li>
+          <li>发布后进入"历史反馈"页面，系统会提取评论中的支持、反对和补充材料。</li>
         </ul>
         <div className="action-row">
           <button className="btn primary" onClick={publishWriting} type="button">
@@ -3276,7 +3261,7 @@ function QuestionDialog({
     await onMark(answer.seedId, answer.questionId, status);
     setMarkedStatuses((current) => ({ ...current, [answer.questionId]: status }));
     if (status === 'needs_material') {
-      setFollowUpQuestion(`请继续补充”${answer.question}”背后的事实证据、反方材料和可引用来源。`);
+      setFollowUpQuestion(`请继续补充"${answer.question}"背后的事实证据、反方材料和可引用来源。`);
     }
   }
 
@@ -3341,7 +3326,7 @@ function QuestionDialog({
               {flowResolved ? (
                 <div className="answer-flow-done">
                   <span className="tag green">流程已结束</span>
-                  <p>当前疑问已经标记解决。后续如果有新问题，可以重新从卡片点击“有疑问”开启新的追问线程。</p>
+                  <p>当前疑问已经标记解决。后续如果有新问题，可以重新从卡片点击"有疑问"开启新的追问线程。</p>
                 </div>
               ) : (
                 <div className="field">
@@ -3891,6 +3876,206 @@ function Blueprint({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function WateringAnimation() {
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const totalFrames = 4;
+
+  useEffect(() => {
+    if (!playing) return;
+    const interval = setInterval(() => {
+      setCurrentFrame((prev) => (prev + 1) % totalFrames);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [playing]);
+
+  return (
+    <div style={{ textAlign: "center", minWidth: "200px" }}>
+      <div style={{ position: "relative", width: "200px", height: "160px", margin: "0 auto", borderRadius: "var(--radius-xl)", overflow: "hidden", boxShadow: "0 8px 24px rgba(22, 119, 255, 0.12)", background: "var(--surface-strong)" }}>
+        {[1, 2, 3, 4].map((frame, i) => (
+          <img
+            key={frame}
+            src="/images/watering/frame1.jpg"
+            alt={`浇水 ${frame}`}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              position: "absolute",
+              top: 0,
+              left: 0,
+              opacity: i === currentFrame ? 1 : 0,
+              zIndex: i === currentFrame ? 2 : 1,
+              transition: "opacity 1.5s ease-in-out",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", gap: "5px", marginTop: "10px" }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ width: "6px", height: "6px", borderRadius: "50%", background: i === currentFrame ? "var(--primary)" : "var(--border)", transition: "background 0.3s" }} />
+        ))}
+      </div>
+      <button className="btn compact" style={{ marginTop: "8px" }} onClick={() => setPlaying(!playing)} type="button">
+        {playing ? "暂停" : "继续"}
+      </button>
+    </div>
+  );
+}
+
+function RoundtableDiscussion({
+  onComplete,
+  showToast,
+}: {
+  onComplete: () => void;
+  showToast: (msg: string) => void;
+}) {
+  const speakers = [
+    { id: "logic", name: "逻辑审稿 Agent", avatar: "/images/roundtable/agent-logic.png", messages: ['我仔细审阅了这篇文章的论证逻辑。主要问题在于"能力同质化"到"工作流壁垒"之间的推导不够清晰。', "建议在第三段增加一个过渡论证：先说明为什么同质化会导致价格战，再引出工作流壁垒作为差异化竞争的必要条件。"] },
+    { id: "human", name: "人味编辑 Agent", avatar: "/images/roundtable/agent-human.png", messages: ["从内容角度来说，这篇文章的技术分析很扎实，但缺少个人视角和真实案例。", '建议在开头或中间插入一个亲身经历的项目场景，比如"去年我参与的一个项目中，团队遇到了类似的问题..."'] },
+    { id: "devil", name: "反方读者 Agent", avatar: "/images/roundtable/agent-devil.png", messages: ['我要提出一个关键质疑：文章认为"上下文是核心壁垒"，但未来长上下文模型可能会改变这个假设。', "如果 AI 能够一次性理解整个代码库，那么上下文管理的技术壁垒是否还成立？"] },
+    { id: "spread", name: "社区传播 Agent", avatar: "/images/roundtable/agent-spread.png", messages: ['从传播角度来看，当前标题"AI Agent 的技术壁垒"比较平淡，建议改成更有冲击力的表达。', '开头建议从一个具体的工程场景切入，比如"上周我花了3天时间调试一个 Agent 的记忆系统..."'] },
+  ];
+
+  const [currentTurn, setCurrentTurn] = useState(-1);
+  const [messageIndex, setMessageIndex] = useState<Record<string, number>>({});
+  const [messages, setMessages] = useState<Array<{ speaker: string; avatar: string; text: string; isHost: boolean }>>([]);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [hostInput, setHostInput] = useState("");
+  const [started, setStarted] = useState(false);
+
+  function addMessage(speaker: string, avatar: string, text: string, isHost = false) {
+    setMessages((prev) => [...prev, { speaker, avatar, text, isHost }]);
+  }
+
+  function showNextMessage(speakerIdx: number) {
+    if (speakerIdx >= speakers.length) {
+      addMessage("系统", "/images/roundtable/host.png", "所有 Agent 已发言完毕，主持人可以输入回应或结束讨论。");
+      return;
+    }
+    const speaker = speakers[speakerIdx];
+    const idx = messageIndex[speaker.id] || 0;
+    if (idx < speaker.messages.length) {
+      addMessage(speaker.name, speaker.avatar, speaker.messages[idx]);
+      setSpeakingId(speaker.id);
+      setMessageIndex((prev) => ({ ...prev, [speaker.id]: idx + 1 }));
+    }
+  }
+
+  function handleStart() {
+    setStarted(true);
+    setCurrentTurn(0);
+    addMessage("系统", "/images/roundtable/host.png", "圆桌审稿会开始，请各位 Agent 依次发表意见。");
+    showNextMessage(0);
+  }
+
+  function handleNext() {
+    const speaker = speakers[currentTurn];
+    const idx = messageIndex[speaker.id] || 0;
+    if (idx < speaker.messages.length) {
+      showNextMessage(currentTurn);
+    } else {
+      const next = currentTurn + 1;
+      setCurrentTurn(next);
+      showNextMessage(next);
+    }
+  }
+
+  function handleSelectAgent(agentId: string) {
+    const idx = speakers.findIndex((s) => s.id === agentId);
+    if (idx !== -1) {
+      setCurrentTurn(idx);
+      setSpeakingId(agentId);
+      showNextMessage(idx);
+    }
+  }
+
+  function handleSendHost() {
+    if (!hostInput.trim()) return;
+    addMessage("主持人", "/images/roundtable/host.png", hostInput.trim(), true);
+    setSpeakingId("host");
+    setHostInput("");
+  }
+
+  function handleEnd() {
+    addMessage("系统", "/images/roundtable/host.png", "讨论结束，进入定稿阶段。");
+    setSpeakingId(null);
+    onComplete();
+    showToast("圆桌讨论完成，已进入定稿草案");
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 1.2fr)", gap: "20px", minHeight: "500px" }}>
+      <div style={{ background: "linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-strong) 100%)", borderRadius: "var(--radius-xl)", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "28px" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "80px", width: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => setSpeakingId("host")}>
+            <div style={{ position: "relative" }}>
+              <img src="/images/roundtable/host.png" alt="主持人" style={{ height: "100px", width: "auto", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+              {speakingId === "host" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
+            </div>
+            <span style={{ marginTop: "6px", padding: "4px 12px", background: "var(--primary)", color: "#fff", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>主持人（你）</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("spread")}>
+            <div style={{ position: "relative" }}>
+              <img src="/images/roundtable/agent-spread.png" alt="社区传播" style={{ height: "90px", width: "auto", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+              {speakingId === "spread" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
+            </div>
+            <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>社区传播</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "32px", width: "100%" }}>
+          {["logic", "human", "devil"].map((id) => {
+            const agent = speakers.find((s) => s.id === id)!;
+            const labels: Record<string, string> = { logic: "逻辑审稿", human: "人味编辑", devil: "反方读者" };
+            return (
+              <div key={id} style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent(id)}>
+                <div style={{ position: "relative" }}>
+                  <img src={agent.avatar} alt={labels[id]} style={{ height: "90px", width: "auto", filter: speakingId === id ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
+                  {speakingId === id && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
+                </div>
+                <span style={{ marginTop: "6px", padding: "4px 10px", background: "rgba(255,255,255,0.95)", borderRadius: "999px", fontSize: "11px", fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>{labels[id]}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", background: "#fff", border: "1px solid var(--line)", borderRadius: "var(--radius-xl)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
+          <strong style={{ fontSize: "16px" }}>讨论记录</strong>
+          <p style={{ color: "var(--muted)", fontSize: "13px", marginTop: "2px" }}>{started ? "点击 Agent 头像选择发言人" : "点击「开始讨论」启动圆桌审稿"}</p>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: "12px", maxHeight: "400px" }}>
+          {messages.map((msg, i) => (
+            <div key={i} style={{ display: "flex", gap: "10px", flexDirection: msg.isHost ? "row-reverse" : "row" }}>
+              <div style={{ flex: "0 0 36px", height: "36px", borderRadius: "8px", overflow: "hidden", border: msg.isHost ? "2px solid var(--primary)" : "2px solid var(--line)", background: "var(--surface-soft)" }}>
+                <img src={msg.avatar} alt={msg.speaker} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: msg.isHost ? "right" : "left" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--primary)", marginBottom: "2px" }}>{msg.speaker}</div>
+                <div style={{ background: msg.isHost ? "var(--primary-soft)" : "var(--surface-soft)", padding: "10px 14px", borderRadius: msg.isHost ? "12px 0 12px 12px" : "0 12px 12px 12px", fontSize: "13px", lineHeight: 1.6, color: "var(--text)", wordBreak: "break-word" }}>{msg.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "12px 14px", borderTop: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {!started ? (
+            <button className="btn primary" onClick={handleStart} type="button">开始讨论</button>
+          ) : (
+            <>
+              <button className="btn ghost compact" onClick={handleNext} type="button">下一位发言</button>
+              <div style={{ flex: 1, display: "flex", gap: "6px", minWidth: "180px" }}>
+                <input type="text" className="input" style={{ height: "34px", fontSize: "13px" }} value={hostInput} onChange={(e) => setHostInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSendHost()} placeholder="输入你的回应..." />
+                <button className="btn primary compact" onClick={handleSendHost} type="button">发送</button>
+              </div>
+              <button className="btn primary compact" onClick={handleEnd} type="button">完成讨论</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentReview({ avatar, title, text, tone = "blue" }: { avatar: string; title: string; text: string; tone?: "blue" | "orange" | "purple" | "green" }) {
   return (
     <div className="agent-card">
@@ -3968,10 +4153,10 @@ function normalizeCard(card: WorthReadingCard): WorthReadingCard {
     contentSummary: card.contentSummary || card.originalSources?.[0]?.rawExcerpt || card.title,
     controversies: card.controversies?.length
       ? card.controversies
-      : [`围绕“${card.title}”最需要先区分事实、判断和立场。`],
+      : [`围绕"${card.title}"最需要先区分事实、判断和立场。`],
     writingAngles: card.writingAngles?.length
       ? card.writingAngles
-      : [`我对“${card.title}”的核心判断`],
+      : [`我对"${card.title}"的核心判断`],
     originalSources: (card.originalSources ?? []).map((source) => ({
       ...source,
       meta: Array.isArray(source.meta) ? source.meta : [],
@@ -4100,12 +4285,12 @@ function buildAgentAnswer(card: WorthReadingCard, question: string, turnIndex = 
   const counter = card.controversies[0] ?? "目前缺少反方材料";
   const evidence = card.originalSources[turnIndex % card.originalSources.length];
   if (turnIndex === 0) {
-    return `针对“${question}”，Agent 基于 ${sourceNames} 的初步判断是：这个问题不能直接下结论。正方材料支持“${card.writingAngles[0]}”，但仍需回应“${counter}”。建议把它沉淀为反方回应材料，并在写作前补一个真实案例。`;
+    return `针对"${question}"，Agent 基于 ${sourceNames} 的初步判断是：这个问题不能直接下结论。正方材料支持"${card.writingAngles[0]}"，但仍需回应"${counter}"。建议把它沉淀为反方回应材料，并在写作前补一个真实案例。`;
   }
   if (turnIndex % 2 === 1) {
-    return `第 ${turnIndex + 1} 轮继续求证：我会优先从“${evidence.sourceType}”补材料。当前可引用的方向是“${evidence.rawExcerpt}”。它能帮助回答“${question}”，但仍需要把来源中的具体场景和你的个人经验连接起来，否则文章容易停留在概念判断。`;
+    return `第 ${turnIndex + 1} 轮继续求证：我会优先从"${evidence.sourceType}"补材料。当前可引用的方向是"${evidence.rawExcerpt}"。它能帮助回答"${question}"，但仍需要把来源中的具体场景和你的个人经验连接起来，否则文章容易停留在概念判断。`;
   }
-  return `第 ${turnIndex + 1} 轮继续求证：围绕“${question}”，更值得补的是反方边界。可以把“${counter}”作为文章中必须回应的问题，再用“${evidence.contribution}”说明为什么你的主张不是绝对结论，而是有适用条件的判断。`;
+  return `第 ${turnIndex + 1} 轮继续求证：围绕"${question}"，更值得补的是反方边界。可以把"${counter}"作为文章中必须回应的问题，再用"${evidence.contribution}"说明为什么你的主张不是绝对结论，而是有适用条件的判断。`;
 }
 
 function buildSproutOpportunity(seed: IdeaSeed, index: number): SproutOpportunity {
@@ -4327,9 +4512,9 @@ function draftLead(seed: IdeaSeed, session: Pick<WritingSession, "coreClaim" | "
   const perspective = memory.preferredPerspective[0] ?? seed.interestName;
   const counter = seed.counterArguments[0] ?? "这个判断是否过度概括";
   const personal = seed.wateringMaterials.find((item) => item.type === "personal_experience" && item.adopted);
-  const experienceLine = personal ? `我会把“${compactText(personal.content, 36)}”作为文章里最具体的一段经验。` : "这篇还需要补一个真实经验，否则容易停留在资料复述。";
+  const experienceLine = personal ? `我会把"${compactText(personal.content, 36)}"作为文章里最具体的一段经验。` : "这篇还需要补一个真实经验，否则容易停留在资料复述。";
 
-  return `讨论「${seed.sourceTitle}」时，我不想只停在热点本身，而是把它拉回到${perspective}这个具体场景里。我的核心判断是：${session.coreClaim} 这个判断需要同时回应“${counter}”这样的反方问题。${experienceLine}`;
+  return `讨论「${seed.sourceTitle}」时，我不想只停在热点本身，而是把它拉回到${perspective}这个具体场景里。我的核心判断是：${session.coreClaim} 这个判断需要同时回应"${counter}"这样的反方问题。${experienceLine}`;
 }
 
 function finalDraftText(seed: IdeaSeed, session: Pick<WritingSession, "coreClaim" | "tone">, memory?: MemorySummary) {
@@ -4338,7 +4523,7 @@ function finalDraftText(seed: IdeaSeed, session: Pick<WritingSession, "coreClaim
   const evidenceCount = seed.wateringMaterials.filter((item) => item.type === "evidence" && item.adopted).length;
   const personal = seed.wateringMaterials.find((item) => item.type === "personal_experience" && item.adopted);
 
-  return `很多人讨论「${seed.sourceTitle}」时，容易先站队。但我更想把问题拆回到${perspective}：${session.coreClaim} 这不是一句结论，而是一条需要证据支撑的判断。当前已有 ${evidenceCount} 条事实证据，仍要回应“${counter}”这样的反方质疑。${personal ? `我会补入自己的观察：${compactText(personal.content, 48)}` : "如果要发布，还需要补一个真实项目或阅读场景。"} 只有观点、反方和个人经验都成立，这篇文章才像作者自己的判断，而不是一篇顺滑的 AI 文。`;
+  return `很多人讨论「${seed.sourceTitle}」时，容易先站队。但我更想把问题拆回到${perspective}：${session.coreClaim} 这不是一句结论，而是一条需要证据支撑的判断。当前已有 ${evidenceCount} 条事实证据，仍要回应"${counter}"这样的反方质疑。${personal ? `我会补入自己的观察：${compactText(personal.content, 48)}` : "如果要发布，还需要补一个真实项目或阅读场景。"} 只有观点、反方和个人经验都成立，这篇文章才像作者自己的判断，而不是一篇顺滑的 AI 文。`;
 }
 
 function copyText(text: string, showToast: (message: string) => void) {

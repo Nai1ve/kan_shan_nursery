@@ -127,6 +127,13 @@ strong {
   box-shadow: 0 10px 24px rgba(22, 119, 255, 0.22);
 }
 
+img.login-logo,
+img.brand-mark {
+  object-fit: contain;
+  background: transparent;
+  box-shadow: none;
+}
+
 .login-logo {
   width: 64px;
   height: 64px;

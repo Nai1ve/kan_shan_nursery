@@ -82,3 +82,58 @@ CREATE TABLE IF NOT EXISTS profile.llm_configs (
     api_key TEXT,
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Sprout schema tables
+CREATE TABLE IF NOT EXISTS sprout.opportunities (
+    id VARCHAR PRIMARY KEY,
+    seed_id VARCHAR,
+    interest_id VARCHAR,
+    run_id VARCHAR,
+    trigger_type VARCHAR,
+    status VARCHAR,
+    score VARCHAR,
+    data TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_sprout_opportunities_run_id ON sprout.opportunities (run_id);
+
+CREATE TABLE IF NOT EXISTS sprout.runs (
+    id VARCHAR PRIMARY KEY,
+    user_id VARCHAR,
+    interest_id VARCHAR,
+    status VARCHAR,
+    data TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Content schema tables
+CREATE SCHEMA IF NOT EXISTS content;
+
+CREATE TABLE IF NOT EXISTS content.user_profile_snapshots (
+    user_id VARCHAR PRIMARY KEY,
+    snapshot JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW(),
+    source_hash VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS content.user_shown_cards (
+    user_id VARCHAR NOT NULL,
+    card_id VARCHAR NOT NULL,
+    shown_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, card_id)
+);
+
+CREATE TABLE IF NOT EXISTS profile.enrichment_jobs (
+    job_id VARCHAR PRIMARY KEY,
+    user_id VARCHAR NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'queued',
+    trigger VARCHAR NOT NULL DEFAULT 'oauth_bound',
+    include_sources TEXT,
+    temporary_profile TEXT,
+    signal_counts TEXT,
+    memory_update_request_ids TEXT,
+    error_message TEXT,
+    created_at VARCHAR NOT NULL,
+    updated_at VARCHAR NOT NULL
+);

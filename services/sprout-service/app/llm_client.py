@@ -49,53 +49,85 @@ class SproutLlmClient:
 
     def sprout_opportunities(
         self,
-        seeds: list[dict[str, Any]],
+        candidates: list[dict[str, Any]],
         memory: dict[str, Any] | None = None,
+        limit: int = 4,
     ) -> list[dict[str, Any]]:
-        """Call sprout-opportunities Agent and return normalized opportunity list."""
-        opportunities: list[dict[str, Any]] = []
-        for seed in seeds:
-            try:
-                result = self._call(
-                    "sprout-opportunities",
-                    {
-                        "taskType": "sprout-opportunities",
-                        "input": {
-                            "seed": seed,
-                            "seedMaterials": seed.get("wateringMaterials", []),
-                            "questions": seed.get("questions", []),
-                            "memory": memory or {},
-                            "triggerTopics": seed.get("triggerTopics", []),
-                            "deterministicScores": {
-                                "maturityScore": seed.get("maturityScore", 0),
-                                "adoptedMaterials": len(
-                                    [m for m in seed.get("wateringMaterials", []) if m.get("adopted")]
-                                ),
-                            },
-                        },
-                        "promptVersion": "v1",
-                        "schemaVersion": "v1",
-                    },
-                )
-                for opp in result.get("opportunities", []):
-                    opportunities.append({
-                        "id": f"sprout-{seed.get('id', 'unknown')}-{len(opportunities)}",
-                        "seedId": seed.get("id", ""),
-                        "interestId": seed.get("interestId", ""),
-                        "score": opp.get("fitScore", 70),
-                        "tags": [
-                            {"label": f"发芽指数 {opp.get('fitScore', 70)}", "tone": "blue"},
+        """Call sprout-opportunities Agent with batched candidates.
+
+        Each candidate: {seed, triggerCards, scoreSignals}
+        Returns list of normalized SproutOpportunity dicts.
+        """
+        try:
+            result = self._call(
+                "sprout-opportunities",
+                {
+                    "taskType": "sprout-opportunities",
+                    "input": {
+                        "candidates": [
+                            {
+                                "seed": c.get("seed", {}),
+                                "triggerCards": c.get("triggerCards", []),
+                                "scoreSignals": c.get("scoreSignals", {}),
+                            }
+                            for c in candidates
                         ],
-                        "activatedSeed": opp.get("triggerTopic", seed.get("coreClaim", "")),
-                        "triggerTopic": opp.get("triggerTopic", ""),
-                        "whyWorthWriting": opp.get("whyWorthWriting", ""),
-                        "suggestedTitle": opp.get("suggestedTitle", ""),
-                        "suggestedAngle": opp.get("suggestedAngle", ""),
-                        "suggestedMaterials": opp.get("suggestedMaterials", ""),
-                        "materialGaps": opp.get("materialGaps", []),
-                        "riskWarnings": opp.get("riskWarnings", []),
-                        "status": "new",
-                    })
-            except Exception as e:
-                logger.warning("sprout_opportunity_failed", extra={"seedId": seed.get("id"), "error": str(e)})
-        return opportunities
+                        "memory": memory or {},
+                        "limit": limit,
+                    },
+                    "promptVersion": "v1",
+                    "schemaVersion": "v1",
+                },
+            )
+            return result.get("opportunities", [])
+        except Exception as e:
+            logger.warning("sprout_opportunities_batch_failed", extra={"error": str(e)})
+            return []
+
+    def supplement_material(
+        self,
+        seed: dict[str, Any],
+        material_type: str = "evidence",
+        existing_materials: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Call supplement-material Agent to generate evidence or counterargument."""
+        try:
+            result = self._call(
+                "supplement-material",
+                {
+                    "taskType": "supplement-material",
+                    "input": {
+                        "seed": seed,
+                        "materialType": material_type,
+                        "existingMaterials": existing_materials or [],
+                    },
+                    "promptVersion": "v1",
+                    "schemaVersion": "v1",
+                },
+            )
+            return result.get("material", {})
+        except Exception as e:
+            logger.warning("supplement_material_failed", extra={"error": str(e)})
+            return {}
+
+    def switch_angle(
+        self,
+        opportunity: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call switch-sprout-angle Agent to generate a new writing angle."""
+        try:
+            result = self._call(
+                "switch-sprout-angle",
+                {
+                    "taskType": "switch-sprout-angle",
+                    "input": {
+                        "seed": opportunity,
+                    },
+                    "promptVersion": "v1",
+                    "schemaVersion": "v1",
+                },
+            )
+            return result
+        except Exception as e:
+            logger.warning("switch_angle_failed", extra={"error": str(e)})
+            return {}

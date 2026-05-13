@@ -50,6 +50,7 @@ export interface WorthReadingCard {
   controversyScore?: number;
   createdAt: string;
   featured?: boolean;
+  enriched?: boolean;
 }
 
 export type SeedReaction =
@@ -123,17 +124,24 @@ export interface IdeaSeed {
 
 export interface SproutOpportunity {
   id: string;
+  runId?: string;
+  userId?: string;
   seedId: string;
   interestId: string;
-  score: number;
-  tags: { label: string; tone: Tone }[];
-  activatedSeed: string;
+  triggerType?: "hot" | "today_card" | "following" | "search";
+  triggerCardIds?: string[];
   triggerTopic: string;
+  activatedSeed: string;
   whyWorthWriting: string;
   suggestedTitle: string;
   suggestedAngle: string;
   suggestedMaterials: string;
-  status?: "new" | "supplemented" | "angle_changed" | "dismissed" | "writing";
+  missingMaterials?: string[];
+  previousAngles?: { title: string; angle: string }[];
+  score: number;
+  tags: { label: string; tone: Tone }[];
+  status?: "active" | "new" | "supplemented" | "angle_changed" | "dismissed" | "writing";
+  createdAt?: string;
 }
 
 export interface MemorySummary {
@@ -250,6 +258,28 @@ export type ProfileGenerationStatus =
   | "draft_ready"
   | "applied"
   | "failed";
+
+export interface EnrichmentJob {
+  jobId: string | null;
+  status: "not_started" | "queued" | "running" | "completed" | "failed" | "fallback";
+  temporaryProfile?: ProfileData;
+  signalCounts?: Record<string, number>;
+  memoryUpdateRequestIds?: string[];
+  errorMessage?: string;
+}
+
+export interface MemoryUpdateRequest {
+  id: string;
+  userId?: string;
+  scope: "global" | "interest";
+  interestId?: string;
+  targetField: string;
+  suggestedValue: string;
+  reason: string;
+  evidenceRefs?: string[];
+  status: "pending" | "applied" | "rejected";
+  createdAt: string;
+}
 
 export type UserSetupState =
   | "zhihu_pending"

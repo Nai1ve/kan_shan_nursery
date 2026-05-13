@@ -187,6 +187,51 @@ export async function gatewayFetchSproutOpportunities(): Promise<SproutOpportuni
   return body.items ?? [];
 }
 
+export async function gatewayStartSproutRun(payload?: {
+  interestId?: string;
+  forceRefresh?: boolean;
+}): Promise<{ runId: string; opportunities: SproutOpportunity[]; cacheHit?: boolean }> {
+  return request<{ runId: string; opportunities: SproutOpportunity[]; cacheHit?: boolean }>(
+    "POST",
+    "/api/v1/sprout/start",
+    payload ?? {},
+  );
+}
+
+export async function gatewaySupplementSproutOpportunity(
+  opportunityId: string,
+  payload?: { material?: string },
+): Promise<{ opportunity: SproutOpportunity; seedMaterial: { type: WateringMaterialType; title: string; content: string; sourceLabel: string; adopted: boolean } }> {
+  return request("POST", `/api/v1/sprout/opportunities/${encodeURIComponent(opportunityId)}/supplement`, payload);
+}
+
+export async function gatewaySwitchSproutAngle(
+  opportunityId: string,
+  payload?: { title?: string; angle?: string },
+): Promise<SproutOpportunity> {
+  return request<SproutOpportunity>(
+    "POST",
+    `/api/v1/sprout/opportunities/${encodeURIComponent(opportunityId)}/switch-angle`,
+    payload,
+  );
+}
+
+export async function gatewayDismissSproutOpportunity(opportunityId: string): Promise<SproutOpportunity> {
+  return request<SproutOpportunity>(
+    "POST",
+    `/api/v1/sprout/opportunities/${encodeURIComponent(opportunityId)}/dismiss`,
+  );
+}
+
+export async function gatewayStartWritingFromOpportunity(
+  opportunityId: string,
+): Promise<{ opportunity: SproutOpportunity; writingHandoff: { seedId: string; interestId: string; coreClaim: string; suggestedTitle: string; suggestedAngle: string; suggestedMaterials: string } }> {
+  return request(
+    "POST",
+    `/api/v1/sprout/opportunities/${encodeURIComponent(opportunityId)}/start-writing`,
+  );
+}
+
 export async function gatewayFetchFeedbackArticles(): Promise<FeedbackArticle[]> {
   const body = await request<{ items: FeedbackArticle[] }>("GET", "/api/v1/feedback/articles");
   return body.items ?? [];

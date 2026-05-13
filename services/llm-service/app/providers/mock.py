@@ -32,7 +32,9 @@ def run_mock_task(task_type: str, input_data: dict[str, Any], persona: str | Non
         "answer-seed-question": _answer_seed_question,
         "supplement-material": _supplement_material,
         "sprout-opportunities": _sprout_opportunities,
+        "switch-sprout-angle": _switch_sprout_angle,
         "argument-blueprint": _argument_blueprint,
+        "generate-outline": _generate_outline,
         "draft": _draft,
         "roundtable-review": _roundtable_review,
         "feedback-summary": _feedback_summary,
@@ -150,20 +152,43 @@ def _supplement_material(input_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sprout_opportunities(input_data: dict[str, Any]) -> dict[str, Any]:
+    candidates = input_data.get("candidates") or []
+    limit = input_data.get("limit", 4)
+    # Backward compat: single seed input
+    if not candidates and input_data.get("seed"):
+        candidates = [{"seed": input_data["seed"], "triggerCards": [], "scoreSignals": {}}]
+    opportunities = []
+    for cand in candidates[:limit]:
+        seed = cand.get("seed", {})
+        trigger_cards = cand.get("triggerCards", [])
+        score_signals = cand.get("scoreSignals", {})
+        title = seed.get("title") or seed.get("coreClaim") or "主题"
+        score = score_signals.get("total") or min(96, max(60, int(seed.get("maturityScore", 60)) + 8))
+        trigger_title = trigger_cards[0].get("title", "") if trigger_cards else seed.get("sourceTitle", title)
+        opportunities.append({
+            "seedId": seed.get("id", "seed-mock"),
+            "interestId": seed.get("interestId", ""),
+            "triggerType": "hot" if trigger_cards else "today_card",
+            "triggerCardIds": [c.get("id", "") for c in trigger_cards],
+            "triggerTopic": trigger_title,
+            "activatedSeed": seed.get("coreClaim", title),
+            "whyWorthWriting": "材料已有观点、争议和写作角度，适合转入写作苗圃。",
+            "suggestedTitle": f"{title}，真正值得讨论的是什么？",
+            "suggestedAngle": "先承认复杂性，再给出自己的判断边界。",
+            "suggestedMaterials": "",
+            "missingMaterials": seed.get("requiredMaterials", []),
+            "score": score,
+        })
+    return {"opportunities": opportunities}
+
+
+def _switch_sprout_angle(input_data: dict[str, Any]) -> dict[str, Any]:
     seed = input_data.get("seed") or {}
-    title = _pick_title(input_data)
-    score = min(96, max(60, int(seed.get("maturityScore", 60)) + 8))
+    title = seed.get("title") or seed.get("activatedSeed") or "主题"
+    core_claim = seed.get("coreClaim") or seed.get("activatedSeed") or title
     return {
-        "opportunities": [
-            {
-                "seedId": seed.get("id", "seed-mock"),
-                "triggerTopic": title,
-                "whyWorthWriting": "材料已有观点、争议和写作角度，适合转入写作苗圃。",
-                "suggestedTitle": f"{title}，真正值得讨论的是什么？",
-                "suggestedAngle": "先承认复杂性，再给出自己的判断边界。",
-                "score": score,
-            }
-        ]
+        "suggestedTitle": f"换角度：从反方视角重新审视「{core_claim}」",
+        "suggestedAngle": f"不从正面论证「{core_claim}」，而是先列出反方最强的三个质疑，再逐个回应。这样文章更有张力，也更能说服犹豫中的读者。",
     }
 
 
@@ -181,6 +206,30 @@ def _argument_blueprint(input_data: dict[str, Any]) -> dict[str, Any]:
         "counterResponses": ["承认反例存在，但限定讨论场景。", "用来源证据和个人经验分层回应。"],
         "memoryInjected": input_data.get("memory", {}),
     }
+
+
+def _generate_outline(input_data: dict[str, Any]) -> dict[str, Any]:
+    blueprint = input_data.get("blueprint") or {}
+    argument_steps = blueprint.get("argumentSteps") or []
+    sections = []
+    for i, step in enumerate(argument_steps):
+        sections.append({
+            "id": step.get("id", f"sec-{i+1}"),
+            "title": step.get("title", f"第{i+1}节"),
+            "purpose": step.get("purpose", "展开论证"),
+            "keyPoints": step.get("keyPoints", []),
+            "referencedMaterialIds": [],
+            "referencedSourceIds": [],
+            "missingMaterialHints": ["建议补充相关来源材料"],
+        })
+    if not sections:
+        claim = blueprint.get("centralClaim") or "核心观点"
+        sections = [
+            {"id": "sec-intro", "title": "引言", "purpose": "提出核心问题", "keyPoints": [f"围绕\"{claim}\"展开讨论"], "referencedMaterialIds": [], "referencedSourceIds": [], "missingMaterialHints": []},
+            {"id": "sec-main", "title": "主体论证", "purpose": "展开核心观点", "keyPoints": ["提供论据支撑", "回应反方质疑"], "referencedMaterialIds": [], "referencedSourceIds": [], "missingMaterialHints": ["需要可引用的证据材料"]},
+            {"id": "sec-conclusion", "title": "结论", "purpose": "总结判断边界", "keyPoints": ["给出可被检验的结论"], "referencedMaterialIds": [], "referencedSourceIds": [], "missingMaterialHints": []},
+        ]
+    return {"sections": sections}
 
 
 def _draft(input_data: dict[str, Any]) -> dict[str, Any]:

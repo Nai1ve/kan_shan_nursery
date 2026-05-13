@@ -533,6 +533,49 @@ strong {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.today-single-card {
+  display: grid;
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.reading-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(22, 119, 255, 0.16);
+  border-radius: var(--radius-lg);
+  background: rgba(22, 119, 255, 0.05);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.reading-controls div {
+  display: grid;
+  gap: 3px;
+}
+
+.reading-controls strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.reading-controls span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(22, 119, 255, 0.04);
+  color: var(--muted);
+  padding: 18px;
+  text-align: center;
+}
+
 .two-column-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.72fr);
@@ -787,17 +830,19 @@ button.card:hover {
 
 .source-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 10px;
 }
 
 .source-card {
   display: grid;
   gap: 6px;
+  align-content: start;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--card);
   padding: 12px;
+  min-height: 116px;
 }
 
 .source-button {
@@ -850,12 +895,21 @@ button.card:hover {
 
 .source-card p {
   color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.source-open-hint {
+  color: var(--zhihu-blue);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .source-detail-panel {
   display: grid;
   gap: 12px;
-  max-height: 360px;
+  max-height: min(620px, 72vh);
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -887,6 +941,8 @@ button.card:hover {
 .source-full-content {
   display: grid;
   gap: 8px;
+  max-height: 360px;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--card);
@@ -896,6 +952,7 @@ button.card:hover {
 .source-full-content p {
   white-space: pre-line;
   color: var(--muted);
+  line-height: 1.75;
 }
 
 .source-meta {
@@ -955,6 +1012,45 @@ button.card:hover {
   background: var(--zhihu-blue);
   color: #ffffff;
   font-weight: 900;
+}
+
+.sprout-previous-angles {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.sprout-previous-angles summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.sprout-prev-angle {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sprout-prev-angle strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text);
+}
+
+.sprout-prev-angle p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.action-row .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-row .btn .spin {
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
 .wizard-layout {
@@ -2253,8 +2349,13 @@ button.card:hover {
 
   .topbar,
   .panel-header,
-  .category-header {
+  .category-header,
+  .reading-controls {
     flex-direction: column;
+  }
+
+  .reading-controls {
+    align-items: stretch;
   }
 
   .user-pill {

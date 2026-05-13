@@ -38,6 +38,10 @@ import {
   fetchProfileInterests,
   fetchSeeds,
   fetchSproutOpportunities,
+  startSproutRun,
+  supplementSproutOpportunity,
+  switchSproutAngle,
+  dismissSproutOpportunity,
   getLLMConfig,
   getLLMQuota,
   getMemoryUpdateRequests,
@@ -203,6 +207,7 @@ export function KanshanApp() {
   const [mergeSeedId, setMergeSeedId] = useState<string | null>(null);
   const [commentArticle, setCommentArticle] = useState<FeedbackArticle | null>(null);
   const [sproutLoading, setSproutLoading] = useState(false);
+  const [sproutActionLoading, setSproutActionLoading] = useState<Set<string>>(new Set());
   const [todayRefreshing, setTodayRefreshing] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [zhihuBinding, setZhihuBinding] = useState<ZhihuBindingViewModel | null>(null);
@@ -901,23 +906,26 @@ export function KanshanApp() {
     showToast("相似种子已合并，材料和疑问已归并");
   }
 
-  function startSprout(seedId?: string) {
+  async function startSprout(seedId?: string) {
     if (!data) return;
     goTab("sprout");
     setSproutLoading(true);
     showToast("正在匹配种子 × 热点 × 画像...");
-    setTimeout(() => {
-      const targetSeeds = seedId ? data.seeds.filter((seed) => seed.id === seedId) : data.seeds.filter((seed) => seed.status !== "published");
-      const generated = targetSeeds.slice(0, 4).map((seed, index) => buildSproutOpportunity(seed, index));
+    try {
+      const result = await startSproutRun({ forceRefresh: !!seedId });
       updateData((current) => ({
         ...current,
         sproutStarted: true,
-        sproutOpportunities: mergeOpportunities(generated, current.sproutOpportunities),
+        sproutOpportunities: mergeOpportunities(result.opportunities ?? [], current.sproutOpportunities),
       }));
       if (seedId) selectSeed(seedId);
+      showToast(result.cacheHit ? "已加载上次发芽结果" : "已找到发芽机会");
+    } catch (err) {
+      console.error("startSprout failed", err);
+      showToast("发芽请求失败，请稍后重试");
+    } finally {
       setSproutLoading(false);
-      showToast("已找到发芽机会");
-    }, 2000);
+    }
   }
 
   function updateOpportunity(id: string, patch: Partial<SproutOpportunity>) {
@@ -927,26 +935,50 @@ export function KanshanApp() {
     }));
   }
 
-  function supplementFromOpportunity(opportunity: SproutOpportunity) {
-    addMaterial(opportunity.seedId, {
-      type: opportunity.score >= 82 ? "evidence" : "counterargument",
-      title: "今日发芽补充资料",
-      content: opportunity.suggestedMaterials,
-      sourceLabel: "今日发芽",
-      adopted: true,
+  function setSproutActionBusy(id: string, busy: boolean) {
+    setSproutActionLoading((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
     });
-    updateOpportunity(opportunity.id, { status: "supplemented", tags: [...opportunity.tags, { label: "已补资料", tone: "green" }] });
   }
 
-  function switchOpportunityAngle(opportunity: SproutOpportunity) {
-    updateOpportunity(opportunity.id, {
-      status: "angle_changed",
-      suggestedTitle: opportunity.suggestedTitle.includes("真正")
-        ? opportunity.suggestedTitle.replace("真正", "新的")
-        : `${opportunity.suggestedTitle}：真正值得讨论的不是表层能力`,
-      suggestedAngle: `${opportunity.suggestedAngle} 同时加入反方质疑，避免写成单向判断。`,
-    });
-    showToast("已切换写作角度");
+  async function supplementFromOpportunity(opportunity: SproutOpportunity) {
+    setSproutActionBusy(opportunity.id, true);
+    try {
+      const result = await supplementSproutOpportunity(opportunity.id);
+      if (result.seedMaterial) {
+        addMaterial(opportunity.seedId, result.seedMaterial);
+      }
+      updateOpportunity(opportunity.id, {
+        ...result.opportunity,
+        tags: [...opportunity.tags, { label: "已补资料", tone: "green" as const }],
+      });
+      showToast("已补充资料到种子");
+    } catch (err) {
+      console.error("supplementOpportunity failed", err);
+      showToast("补充资料失败，请稍后重试");
+    } finally {
+      setSproutActionBusy(opportunity.id, false);
+    }
+  }
+
+  async function switchOpportunityAngle(opportunity: SproutOpportunity) {
+    setSproutActionBusy(opportunity.id, true);
+    try {
+      const updated = await switchSproutAngle(opportunity.id);
+      updateOpportunity(opportunity.id, {
+        ...updated,
+        tags: [...opportunity.tags, { label: "已换角度", tone: "purple" as const }],
+      });
+      showToast("已切换写作角度");
+    } catch (err) {
+      console.error("switchAngle failed", err);
+      showToast("切换角度失败，请稍后重试");
+    } finally {
+      setSproutActionBusy(opportunity.id, false);
+    }
   }
 
   function startWriting(seedId: string, seedOverride?: IdeaSeed) {
@@ -1385,14 +1417,21 @@ export function KanshanApp() {
             started={data.sproutStarted}
             loading={sproutLoading}
             opportunities={data.sproutOpportunities}
+            actionLoading={sproutActionLoading}
             onStart={() => startSprout()}
             openSeeds={() => goTab("seeds")}
             startWriting={startWriting}
             onSupplement={supplementFromOpportunity}
             onSwitchAngle={switchOpportunityAngle}
-            onDismiss={(id) => {
-              updateOpportunity(id, { status: "dismissed", tags: [{ label: "已暂缓", tone: "purple" }] });
-              showToast("已标记为暂时不写");
+            onDismiss={async (id) => {
+              try {
+                await dismissSproutOpportunity(id);
+                updateOpportunity(id, { status: "dismissed", tags: [{ label: "已暂缓", tone: "purple" }] });
+                showToast("已标记为暂时不写");
+              } catch (err) {
+                console.error("dismissOpportunity failed", err);
+                showToast("操作失败，请稍后重试");
+              }
             }}
           />
         ) : null}
@@ -1996,6 +2035,7 @@ function SproutSection({
   started,
   loading,
   opportunities,
+  actionLoading,
   onStart,
   openSeeds,
   startWriting,
@@ -2006,12 +2046,13 @@ function SproutSection({
   started: boolean;
   loading: boolean;
   opportunities: SproutOpportunity[];
+  actionLoading: Set<string>;
   onStart: () => void;
   openSeeds: () => void;
   startWriting: (seedId: string) => void;
-  onSupplement: (opportunity: SproutOpportunity) => void;
-  onSwitchAngle: (opportunity: SproutOpportunity) => void;
-  onDismiss: (id: string) => void;
+  onSupplement: (opportunity: SproutOpportunity) => void | Promise<void>;
+  onSwitchAngle: (opportunity: SproutOpportunity) => void | Promise<void>;
+  onDismiss: (id: string) => void | Promise<void>;
 }) {
   const visibleOpportunities = opportunities.filter((item) => item.status !== "dismissed");
 
@@ -2052,40 +2093,56 @@ function SproutSection({
           </div>
         ) : (
           <div className="panel-body grid-2">
-            {visibleOpportunities.map((opportunity) => (
-              <article className="card structured-card sprout-card" key={opportunity.id}>
-                <div className="sprout-badge">{opportunity.score}</div>
-                <div className="tag-row">
-                  {opportunity.tags.map((tag, index) => (
-                    <span className={`tag ${tag.tone}`} key={`${opportunity.id}-${tag.label || 'unknown'}-${index}`}>
-                      {tag.label}
-                    </span>
-                  ))}
-                  {opportunity.status ? <span className="tag purple">{opportunityStatus(opportunity.status)}</span> : null}
-                </div>
-                <h3>今日发芽机会</h3>
-                <InfoBlock title="被激活的种子" text={opportunity.activatedSeed} />
-                <InfoBlock title="触发热点" text={opportunity.triggerTopic} />
-                <InfoBlock title="为什么值得写" text={opportunity.whyWorthWriting} />
-                <InfoBlock title="建议标题" text={opportunity.suggestedTitle} />
-                <InfoBlock title="建议角度" text={opportunity.suggestedAngle} />
-                <InfoBlock title="建议补充" text={opportunity.suggestedMaterials} />
-                <div className="action-row">
-                  <button className="btn primary" onClick={() => startWriting(opportunity.seedId)} type="button">
-                    开始写作
-                  </button>
-                  <button className="btn ghost" onClick={() => onSupplement(opportunity)} type="button">
-                    补充资料
-                  </button>
-                  <button className="btn ghost" onClick={() => onSwitchAngle(opportunity)} type="button">
-                    换个角度
-                  </button>
-                  <button className="btn ghost" onClick={() => onDismiss(opportunity.id)} type="button">
-                    暂时不写
-                  </button>
-                </div>
-              </article>
-            ))}
+            {visibleOpportunities.map((opportunity) => {
+              const isBusy = actionLoading.has(opportunity.id);
+              return (
+                <article className="card structured-card sprout-card" key={opportunity.id}>
+                  <div className="sprout-badge">{opportunity.score}</div>
+                  <div className="tag-row">
+                    {opportunity.tags.map((tag, index) => (
+                      <span className={`tag ${tag.tone}`} key={`${opportunity.id}-${tag.label || 'unknown'}-${index}`}>
+                        {tag.label}
+                      </span>
+                    ))}
+                    {opportunity.status ? <span className="tag purple">{opportunityStatus(opportunity.status)}</span> : null}
+                  </div>
+                  <h3>今日发芽机会</h3>
+                  <InfoBlock title="被激活的种子" text={opportunity.activatedSeed} />
+                  <InfoBlock title="触发热点" text={opportunity.triggerTopic} />
+                  <InfoBlock title="为什么值得写" text={opportunity.whyWorthWriting} />
+                  <InfoBlock title="建议标题" text={opportunity.suggestedTitle} />
+                  <InfoBlock title="建议角度" text={opportunity.suggestedAngle} />
+                  <InfoBlock title="建议补充" text={opportunity.suggestedMaterials} />
+                  {opportunity.previousAngles && opportunity.previousAngles.length > 0 && (
+                    <details className="sprout-previous-angles">
+                      <summary>历史角度（{opportunity.previousAngles.length}）</summary>
+                      {opportunity.previousAngles.map((prev, i) => (
+                        <div key={i} className="sprout-prev-angle">
+                          <strong>{prev.title}</strong>
+                          <p>{prev.angle}</p>
+                        </div>
+                      ))}
+                    </details>
+                  )}
+                  <div className="action-row">
+                    <button className="btn primary" onClick={() => startWriting(opportunity.seedId)} type="button" disabled={isBusy}>
+                      开始写作
+                    </button>
+                    <button className="btn ghost" onClick={() => onSupplement(opportunity)} type="button" disabled={isBusy}>
+                      {isBusy ? <Loader2 className="spin" size={14} /> : null}
+                      {isBusy ? "补充中..." : "补充资料"}
+                    </button>
+                    <button className="btn ghost" onClick={() => onSwitchAngle(opportunity)} type="button" disabled={isBusy}>
+                      {isBusy ? <Loader2 className="spin" size={14} /> : null}
+                      {isBusy ? "生成中..." : "换个角度"}
+                    </button>
+                    <button className="btn ghost" onClick={() => onDismiss(opportunity.id)} type="button" disabled={isBusy}>
+                      暂时不写
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

@@ -29,6 +29,11 @@ import {
   gatewayRefreshCategory,
   gatewayFetchSeeds,
   gatewayFetchSproutOpportunities,
+  gatewayStartSproutRun,
+  gatewaySupplementSproutOpportunity,
+  gatewaySwitchSproutAngle,
+  gatewayDismissSproutOpportunity,
+  gatewayStartWritingFromOpportunity,
   gatewayMarkSeedQuestion,
   gatewayMergeSeeds,
   gatewayUpdateSeed,
@@ -121,6 +126,52 @@ export async function fetchSproutOpportunities(): Promise<SproutOpportunity[]> {
   return USE_GATEWAY
     ? gatewayFetchSproutOpportunities()
     : getJson<SproutOpportunity[]>("/api/mock/sprout");
+}
+
+export async function startSproutRun(payload?: {
+  interestId?: string;
+  forceRefresh?: boolean;
+}): Promise<{ runId: string; opportunities: SproutOpportunity[]; cacheHit?: boolean }> {
+  if (!USE_GATEWAY) {
+    throw new Error("startSproutRun only available in gateway mode");
+  }
+  return gatewayStartSproutRun(payload);
+}
+
+export async function supplementSproutOpportunity(
+  opportunityId: string,
+  payload?: { material?: string },
+): Promise<{ opportunity: SproutOpportunity; seedMaterial: { type: WateringMaterialType; title: string; content: string; sourceLabel: string; adopted: boolean } }> {
+  if (!USE_GATEWAY) {
+    throw new Error("supplementSproutOpportunity only available in gateway mode");
+  }
+  return gatewaySupplementSproutOpportunity(opportunityId, payload);
+}
+
+export async function switchSproutAngle(
+  opportunityId: string,
+  payload?: { title?: string; angle?: string },
+): Promise<SproutOpportunity> {
+  if (!USE_GATEWAY) {
+    throw new Error("switchSproutAngle only available in gateway mode");
+  }
+  return gatewaySwitchSproutAngle(opportunityId, payload);
+}
+
+export async function dismissSproutOpportunity(opportunityId: string): Promise<SproutOpportunity> {
+  if (!USE_GATEWAY) {
+    throw new Error("dismissSproutOpportunity only available in gateway mode");
+  }
+  return gatewayDismissSproutOpportunity(opportunityId);
+}
+
+export async function startWritingFromOpportunity(
+  opportunityId: string,
+): Promise<{ opportunity: SproutOpportunity; writingHandoff: { seedId: string; interestId: string; coreClaim: string; suggestedTitle: string; suggestedAngle: string; suggestedMaterials: string } }> {
+  if (!USE_GATEWAY) {
+    throw new Error("startWritingFromOpportunity only available in gateway mode");
+  }
+  return gatewayStartWritingFromOpportunity(opportunityId);
 }
 
 export async function fetchFeedbackArticles(): Promise<FeedbackArticle[]> {

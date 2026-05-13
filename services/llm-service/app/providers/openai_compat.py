@@ -41,10 +41,18 @@ class OpenAICompatProvider:
         """Execute a chat completion call and return structured result."""
         start_time = time.time()
 
-        # Enhance prompt to request JSON output
+        # Build input context
+        input_context = json.dumps(input_data, ensure_ascii=False, indent=2)
+
+        # Enhance prompt with input data and request JSON output
         enhanced_prompt = f"""{prompt}
 
-请以 JSON 格式输出结果。确保输出是有效的 JSON 对象。"""
+## 输入数据
+```json
+{input_context}
+```
+
+请基于上述输入数据，以 JSON 格式输出结果。确保输出是有效的 JSON 对象。"""
 
         # Build messages
         messages = []

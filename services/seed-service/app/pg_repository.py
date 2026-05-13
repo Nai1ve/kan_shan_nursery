@@ -10,7 +10,7 @@ from .models import SeedTable
 
 
 class PostgresSeedRepository:
-    def __init__(self, *, preload: bool = True) -> None:
+    def __init__(self, *, preload: bool = False) -> None:
         self._SessionFactory = get_db_session_factory()
         if preload:
             self._ensure_fixtures()

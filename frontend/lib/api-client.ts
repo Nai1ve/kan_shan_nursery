@@ -1,4 +1,5 @@
 import type {
+  EnrichmentJob,
   FeedbackArticle,
   IdeaSeed,
   InputCategory,
@@ -18,6 +19,7 @@ import {
   gatewayCreateManualSeed,
   gatewayCreateSeedFromCard,
   gatewayDeleteSeedMaterial,
+  gatewayEnrichCard,
   gatewayFetchCategories,
   gatewayFetchContent,
   gatewayFetchContentCards,
@@ -31,7 +33,11 @@ import {
   gatewayMergeSeeds,
   gatewayUpdateSeed,
   gatewayUpdateSeedMaterial,
+  dispatchGatewayNotices,
+  KANSHAN_LLM_NOTICE_EVENT,
 } from "./gateway-client";
+
+export { KANSHAN_LLM_NOTICE_EVENT };
 
 /**
  * NEXT_PUBLIC_KANSHAN_BACKEND_MODE switches every page-level fetch:
@@ -65,23 +71,37 @@ export async function fetchContent(): Promise<{
   return USE_GATEWAY ? gatewayFetchContent() : getJson("/api/mock/content");
 }
 
-export async function fetchContentCards(categoryId?: string): Promise<WorthReadingCard[]> {
+export async function fetchContentCards(
+  categoryId?: string,
+  options?: { limit?: number; excludeIds?: string[] },
+): Promise<WorthReadingCard[]> {
   if (USE_GATEWAY) {
-    return gatewayFetchContentCards(categoryId);
+    return gatewayFetchContentCards(categoryId, options);
   }
   const query = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
   return getJson<WorthReadingCard[]>(`/api/mock/content/cards${query}`);
 }
 
-export async function refreshCategory(categoryId: string): Promise<{
+export async function refreshCategory(
+  categoryId: string,
+  options?: { limit?: number; excludeIds?: string[] },
+): Promise<{
   categoryId: string;
   refreshState?: { refreshCount: number; refreshedAt: string; source?: string };
   cards: WorthReadingCard[];
 }> {
   if (USE_GATEWAY) {
-    return gatewayRefreshCategory(categoryId);
+    return gatewayRefreshCategory(categoryId, options);
   }
   return getJson(`/api/mock/content/refresh/${encodeURIComponent(categoryId)}`);
+}
+
+export async function enrichCard(cardId: string): Promise<WorthReadingCard> {
+  if (USE_GATEWAY) {
+    return gatewayEnrichCard(cardId);
+  }
+  // Mock mode: return a dummy enriched card
+  return getJson<WorthReadingCard>(`/api/mock/content/cards/${encodeURIComponent(cardId)}`);
 }
 
 export async function fetchCategories(): Promise<InputCategory[]> {
@@ -111,7 +131,7 @@ export async function fetchFeedbackArticles(): Promise<FeedbackArticle[]> {
 
 export async function createSeedFromCard(payload: {
   cardId: string;
-  reaction: Extract<SeedReaction, "agree" | "disagree">;
+  reaction: Extract<SeedReaction, "agree" | "disagree" | "question">;
   userNote?: string;
   card?: WorthReadingCard;
   seedId?: string;
@@ -217,14 +237,22 @@ export async function getLLMConfig(): Promise<Record<string, unknown>> {
   if (!USE_GATEWAY) {
     throw new Error("getLLMConfig only available in gateway mode");
   }
-  return gatewayRequest<Record<string, unknown>>("GET", "/profiles/me/llm-config");
+  return gatewayRequest<Record<string, unknown>>("GET", "/llm/config/me");
+}
+
+export async function getLLMQuota(): Promise<Record<string, { used: number; limit: number; remaining: number }>> {
+  if (!USE_GATEWAY) {
+    throw new Error("getLLMQuota only available in gateway mode");
+  }
+  const resp = await gatewayRequest<{ platform: Record<string, { used: number; limit: number; remaining: number }> }>("GET", "/llm/quota/me");
+  return resp.platform;
 }
 
 export async function updateLLMConfig(config: Record<string, unknown>): Promise<void> {
   if (!USE_GATEWAY) {
     throw new Error("updateLLMConfig only available in gateway mode");
   }
-  await gatewayRequest<void>("PUT", "/profiles/me/llm-config", config);
+  await gatewayRequest<void>("PUT", "/llm/config/me", config);
 }
 
 export async function updateGlobalMemory(memory: Record<string, unknown>): Promise<void> {
@@ -295,5 +323,24 @@ async function gatewayRequest<T>(method: string, path: string, body?: unknown): 
   }
 
   const data = await response.json();
+  dispatchGatewayNotices(data);
   return data.data || data;
+}
+
+// Enrichment job API functions
+export async function createEnrichmentJob(
+  trigger: string = "oauth_bound",
+  includeSources: string[] = ["zhihu_user", "followed", "followers", "moments"],
+): Promise<{ jobId: string; status: string; temporaryProfileReady: boolean }> {
+  if (!USE_GATEWAY) {
+    throw new Error("createEnrichmentJob only available in gateway mode");
+  }
+  return gatewayRequest("POST", "/profile/enrichment-jobs", { trigger, includeSources });
+}
+
+export async function getLatestEnrichmentJob(): Promise<EnrichmentJob> {
+  if (!USE_GATEWAY) {
+    throw new Error("getLatestEnrichmentJob only available in gateway mode");
+  }
+  return gatewayRequest("GET", "/profile/enrichment-jobs/latest");
 }

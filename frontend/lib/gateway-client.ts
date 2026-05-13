@@ -27,6 +27,7 @@ const GATEWAY_URL =
   process.env.NEXT_PUBLIC_KANSHAN_GATEWAY_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 
 const SESSION_KEY = "kanshan:session:v1";
+export const KANSHAN_LLM_NOTICE_EVENT = "kanshan:llm-notice";
 
 function getSessionId(): string | null {
   if (typeof window === "undefined") return null;
@@ -64,8 +65,25 @@ interface ErrorEnvelope {
   error: { code: string; message: string; detail?: unknown };
 }
 
+interface GatewayNotice {
+  code?: string;
+  level?: string;
+  message?: string;
+}
+
 function isErrorEnvelope(body: unknown): body is ErrorEnvelope {
   return typeof body === "object" && body !== null && "error" in body;
+}
+
+export function dispatchGatewayNotices(body: unknown): void {
+  if (typeof window === "undefined" || typeof body !== "object" || body === null) return;
+  const envelope = body as { data?: { notices?: GatewayNotice[] }; meta?: { notices?: GatewayNotice[] } };
+  const notices = envelope.data?.notices ?? envelope.meta?.notices ?? [];
+  notices
+    .filter((notice) => notice.code === "USER_LLM_PROVIDER_FAILED" && notice.message)
+    .forEach((notice) => {
+      window.dispatchEvent(new CustomEvent(KANSHAN_LLM_NOTICE_EVENT, { detail: notice }));
+    });
 }
 
 async function request<T>(method: string, path: string, payload?: unknown): Promise<T> {
@@ -95,6 +113,7 @@ async function request<T>(method: string, path: string, payload?: unknown): Prom
       isErrorEnvelope(body) ? body.request_id : undefined,
     );
   }
+  dispatchGatewayNotices(body);
   return (body as SuccessEnvelope<T>).data;
 }
 
@@ -112,8 +131,15 @@ export async function gatewayFetchContent(): Promise<{
   );
 }
 
-export async function gatewayFetchContentCards(categoryId?: string): Promise<WorthReadingCard[]> {
-  const suffix = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
+export async function gatewayFetchContentCards(
+  categoryId?: string,
+  options?: { limit?: number; excludeIds?: string[] },
+): Promise<WorthReadingCard[]> {
+  const params = new URLSearchParams();
+  if (categoryId) params.set("categoryId", categoryId);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.excludeIds?.length) params.set("excludeIds", options.excludeIds.join(","));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
   const body = await request<{ items?: WorthReadingCard[]; cards?: WorthReadingCard[] }>(
     "GET",
     `/api/v1/content/cards${suffix}`,
@@ -121,7 +147,10 @@ export async function gatewayFetchContentCards(categoryId?: string): Promise<Wor
   return body.items ?? body.cards ?? [];
 }
 
-export async function gatewayRefreshCategory(categoryId: string): Promise<{
+export async function gatewayRefreshCategory(
+  categoryId: string,
+  payload?: { limit?: number; excludeIds?: string[] },
+): Promise<{
   categoryId: string;
   refreshState?: { refreshCount: number; refreshedAt: string; source?: string };
   cards: WorthReadingCard[];
@@ -130,7 +159,14 @@ export async function gatewayRefreshCategory(categoryId: string): Promise<{
     categoryId: string;
     refreshState?: { refreshCount: number; refreshedAt: string; source?: string };
     cards: WorthReadingCard[];
-  }>("POST", `/api/v1/content/categories/${encodeURIComponent(categoryId)}/refresh`);
+  }>("POST", `/api/v1/content/categories/${encodeURIComponent(categoryId)}/refresh`, {
+    limit: payload?.limit,
+    exclude_ids: payload?.excludeIds ?? [],
+  });
+}
+
+export async function gatewayEnrichCard(cardId: string): Promise<WorthReadingCard> {
+  return request<WorthReadingCard>("POST", `/api/v1/content/cards/${encodeURIComponent(cardId)}/enrich`);
 }
 
 export async function gatewayFetchCategories(): Promise<InputCategory[]> {
@@ -158,7 +194,7 @@ export async function gatewayFetchFeedbackArticles(): Promise<FeedbackArticle[]>
 
 export async function gatewayCreateSeedFromCard(payload: {
   cardId: string;
-  reaction: Extract<SeedReaction, "agree" | "disagree">;
+  reaction: Extract<SeedReaction, "agree" | "disagree" | "question">;
   userNote?: string;
   card?: WorthReadingCard;
   seedId?: string;

@@ -23,10 +23,14 @@ import {
   X,
 } from "lucide-react";
 import type { ComponentType, Dispatch, KeyboardEvent, MouseEvent, SetStateAction } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  addSeedQuestion,
+  agentSupplementSeed,
+  applyMemoryUpdate,
   createManualSeed,
   createSeedFromCard,
+  enrichCard,
   fetchContent,
   fetchContentCards,
   fetchFeedbackArticles,
@@ -34,11 +38,18 @@ import {
   fetchProfileInterests,
   fetchSeeds,
   fetchSproutOpportunities,
+  getLLMConfig,
+  getLLMQuota,
+  getMemoryUpdateRequests,
   KANSHAN_BACKEND_MODE,
+  KANSHAN_LLM_NOTICE_EVENT,
+  markSeedQuestion,
   mergeSeedsApi,
   refreshCategory,
+  rejectMemoryUpdate,
   updateBasicProfile,
   updateInterests,
+  updateLLMConfig,
   updateSeed,
 } from "@/lib/api-client";
 import type {
@@ -49,6 +60,7 @@ import type {
   IdeaSeed,
   InputCategory,
   MemorySummary,
+  MemoryUpdateRequest,
   ProfileData,
   SeedQuestion,
   SeedReaction,
@@ -83,7 +95,7 @@ const heroMap: Record<TabId, [string, string]> = {
   sprout: ["旧想法，遇到新热点，就会发芽。", "用今日热点、关注流和用户画像激活历史观点种子。"],
   write: ["一步一步，把观点养成文章。", "从观点确认到论证蓝图，再到圆桌审稿、定稿草案和反馈回流。"],
   history: ["历史反馈，不只是数据。", "读者反馈会反哺 Memory、种子库和下一篇文章。"],
-  profile: ["用户管理，是账号、授权与 Memory 的总入口。", "你可以维护知乎关联、LLM 配置、兴趣画像和写作风格。"],
+  profile: ["用户管理", ""],
 };
 
 const writingSteps = [
@@ -119,69 +131,28 @@ const onboardingQuestions = [
   "你希望 AI 帮你写到什么程度？",
 ];
 
-type ProfilePanelId = "overview" | "account" | "llm" | "interests" | "memory" | "style";
+type ProfilePanelId = "llm" | "interests" | "memory" | "style";
 
 const profilePanels: { id: ProfilePanelId; label: string }[] = [
-  { id: "overview", label: "总览" },
-  { id: "account", label: "账号与授权" },
   { id: "llm", label: "LLM 配置" },
   { id: "interests", label: "兴趣画像" },
   { id: "memory", label: "Memory 管理" },
   { id: "style", label: "写作风格" },
 ];
 
-const profileInterestGroups = [
-  {
-    group: "生活方式",
-    desc: "用于识别日常消费、关系、居住和体验类内容偏好。",
-    items: ["家居收纳", "做饭", "旅行", "亲密关系", "育儿", "消费决策", "居住体验", "城市生活", "时尚穿搭", "数码家电"],
-  },
-  {
-    group: "数码科技",
-    desc: "用于识别工具、产品体验、工程实践和技术趋势偏好。",
-    items: ["AI 工具", "手机", "电脑", "软件效率", "编程", "互联网产品", "智能硬件", "新能源汽车", "数据安全", "开源"],
-  },
-  {
-    group: "职场教育",
-    desc: "用于识别职业成长、学习路径、表达训练和长期能力建设。",
-    items: ["职场成长", "求职面试", "副业", "自我提升", "时间管理", "公开表达", "考研", "职业转型", "大学生活", "写作训练"],
-  },
-  {
-    group: "健康医学",
-    desc: "用于识别医学科普、心理健康、运动康复和风险边界。",
-    items: ["医学科普", "心理健康", "睡眠", "营养", "减脂", "运动康复", "口腔健康", "慢病管理", "体检", "压力管理"],
-  },
-  {
-    group: "财经商业",
-    desc: "用于识别投资、消费趋势、创业和商业分析偏好。",
-    items: ["投资理财", "基金", "股票", "宏观经济", "消费趋势", "创业", "商业模式", "品牌营销", "公司研究", "保险"],
-  },
-  {
-    group: "人文社科",
-    desc: "用于识别公共议题、文化观察、历史哲学和法律教育方向。",
-    items: ["历史", "哲学", "社会学", "心理学", "法律", "教育", "国际关系", "公共议题", "文化观察", "书评"],
-  },
-  {
-    group: "文娱体育",
-    desc: "用于识别影视、游戏、体育和线上娱乐输入。",
-    items: ["电影", "电视剧", "音乐", "动漫", "游戏", "篮球", "足球", "跑步", "健身", "电竞"],
-  },
-  {
-    group: "创作表达",
-    desc: "用于识别内容平台、表达形式、设计和知识管理偏好。",
-    items: ["知乎写作", "公众号", "小红书", "短视频", "摄影", "剪辑", "设计", "产品设计", "信息可视化", "Prompt Engineering"],
-  },
-];
-
-const memoryUpdateRequests = [
-  {
-    title: "新增兴趣：家居收纳",
-    desc: "系统根据近期收藏推断你可能关注家居收纳和居住体验，是否加入兴趣画像？",
-  },
-  {
-    title: "写作风险提醒",
-    desc: "你在职场话题下容易陷入泛泛建议，建议写入提醒：需要补充具体场景和反方观点。",
-  },
+const profileInterestOptions = [
+  { id: "shuma", name: "数码科技", desc: "设备、软件、AI、消费电子" },
+  { id: "zhichang", name: "职场教育", desc: "职业成长、学习路径、技能提升" },
+  { id: "chuangzuo", name: "创作表达", desc: "写作方法、内容策略、表达技巧" },
+  { id: "shenghuo", name: "生活方式", desc: "日常生活、健康、兴趣爱好" },
+  { id: "shehui", name: "社会人文", desc: "社会观察、人文思考、文化评论" },
+  { id: "yule", name: "文娱体育", desc: "影视、音乐、游戏、运动" },
+  { id: "caijing", name: "财经商业", desc: "投资、理财、商业分析" },
+  { id: "jiankang", name: "健康医学", desc: "身心健康、医疗科普" },
+  { id: "qiche", name: "汽车出行", desc: "新能源、驾驶、出行方式" },
+  { id: "bendi", name: "本地城市", desc: "本地生活、城市观察、区域话题" },
+  { id: "lishi", name: "历史考古", desc: "历史事件、文化遗迹、考古发现" },
+  { id: "huanjing", name: "环境自然", desc: "环保、自然生态、户外探索" },
 ];
 
 const materialMeta: Record<WateringMaterialType, { title: string; desc: string; tone: Tone }> = {
@@ -192,6 +163,31 @@ const materialMeta: Record<WateringMaterialType, { title: string; desc: string; 
 };
 
 const materialTypes: WateringMaterialType[] = ["evidence", "counterargument", "personal_experience", "open_question"];
+
+const LLM_TASK_LABELS: Record<string, string> = {
+  // kebab-case (backend config 转换后)
+  "summarize-content": "内容摘要",
+  "answer-seed-question": "疑问回答",
+  "supplement-material": "补充素材",
+  "sprout-opportunities": "发芽机会",
+  "argument-blueprint": "论点蓝图",
+  "generate-outline": "大纲生成",
+  "draft": "写作草稿",
+  "roundtable-review": "圆桌审稿",
+  "feedback-summary": "反馈摘要",
+  "profile-memory-synthesis": "画像记忆合成",
+  "extract-controversies": "争议提取",
+  "generate-writing-angles": "写作角度生成",
+  // camelCase 兼容（旧 mock 数据）
+  "profileSignalSummarize": "画像信号提炼",
+  "profileMemorySynthesize": "画像记忆合成",
+  "profileRiskReview": "画像风险审查",
+  "summarizeContent": "内容摘要",
+  "answerSeedQuestion": "疑问回答",
+  "supplementMaterial": "补充素材",
+  "argumentBlueprint": "论点蓝图",
+  "roundtableReview": "圆桌审稿",
+};
 
 export function KanshanApp() {
   const [entered, setEntered] = useState(false);
@@ -207,19 +203,33 @@ export function KanshanApp() {
   const [mergeSeedId, setMergeSeedId] = useState<string | null>(null);
   const [commentArticle, setCommentArticle] = useState<FeedbackArticle | null>(null);
   const [sproutLoading, setSproutLoading] = useState(false);
+  const [todayRefreshing, setTodayRefreshing] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [zhihuBinding, setZhihuBinding] = useState<ZhihuBindingViewModel | null>(null);
+  const enrichingCardIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    function handleLlmNotice(event: Event) {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) {
+        showToast(detail.message);
+      }
+    }
+    window.addEventListener(KANSHAN_LLM_NOTICE_EVENT, handleLlmNotice);
+    return () => window.removeEventListener(KANSHAN_LLM_NOTICE_EVENT, handleLlmNotice);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadMockData() {
+      const prefetchOptionalDemoData = KANSHAN_BACKEND_MODE !== "gateway";
       const [profile, content, seeds, sproutOpportunities, feedbackArticles] = await Promise.all([
         fetchProfile(),
         fetchContent(),
         fetchSeeds(),
-        fetchSproutOpportunities(),
-        fetchFeedbackArticles(),
+        prefetchOptionalDemoData ? fetchSproutOpportunities() : Promise.resolve([] as SproutOpportunity[]),
+        prefetchOptionalDemoData ? fetchFeedbackArticles() : Promise.resolve([] as FeedbackArticle[]),
       ]);
 
       // Fetch real user info and Zhihu binding status (sequential: need userId for binding)
@@ -246,15 +256,16 @@ export function KanshanApp() {
         }
       }
 
+      const normalizedIncoming = normalizeContentPayload(content);
       const baseInterestIds = selectedInterestIds.length
         ? selectedInterestIds
-        : content.categories.filter((category) => category.kind === "interest").map((category) => category.id);
+        : normalizedIncoming.categories.filter((category) => category.kind === "interest").map((category) => category.id);
       const targetCategoryIds = [...baseInterestIds, "following", "serendipity"];
 
-      const filteredContent = filterContentByTargetCategoryIds(content, targetCategoryIds);
+      const filteredContent = filterContentByTargetCategoryIds(normalizedIncoming, targetCategoryIds);
       const normalizedContent = ensureTargetCategories(
         filteredContent,
-        content.categories,
+        normalizedIncoming.categories,
         targetCategoryIds,
       );
       const initialState: DemoState = {
@@ -284,13 +295,33 @@ export function KanshanApp() {
     }
 
     loadMockData().catch(() => {
-      showToast("Mock API 加载失败");
+      showToast("数据加载失败，请检查后端服务");
     });
 
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!data || activeTab !== "history" || KANSHAN_BACKEND_MODE !== "gateway") return;
+    if (data.feedbackArticles.length > 0) return;
+    let mounted = true;
+
+    fetchFeedbackArticles()
+      .then((feedbackArticles) => {
+        if (!mounted) return;
+        updateData((current) => ({ ...current, feedbackArticles }));
+      })
+      .catch((error) => {
+        console.error("Load feedback articles failed", error);
+        showToast("历史反馈加载失败，请检查反馈服务");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, data]);
 
   useEffect(() => {
     if (!data) return;
@@ -349,17 +380,19 @@ export function KanshanApp() {
           fetchContent(),
           fetchProfileInterests(),
         ]);
+        const normalizedIncoming = normalizeContentPayload(content);
         const selectedInterestIds = interestMemories.map((item) => item.interestId).filter(Boolean);
         const baseInterestIds = selectedInterestIds.length
           ? selectedInterestIds
-          : content.categories.filter((category) => category.kind === "interest").map((category) => category.id);
+          : normalizedIncoming.categories.filter((category) => category.kind === "interest").map((category) => category.id);
         const targetCategoryIds = [...baseInterestIds, "following", "serendipity"];
-        const filteredContent = filterContentByTargetCategoryIds(content, targetCategoryIds);
+        const filteredContent = filterContentByTargetCategoryIds(normalizedIncoming, targetCategoryIds);
         const normalizedContent = ensureTargetCategories(
           filteredContent,
-          content.categories,
+          normalizedIncoming.categories,
           targetCategoryIds,
-        );        nextCategories = normalizedContent.categories;
+        );
+        nextCategories = normalizedContent.categories;
         nextCards = normalizedContent.cards;
       } catch {
         showToast("内容刷新失败，使用缓存数据");
@@ -411,10 +444,21 @@ export function KanshanApp() {
     if (KANSHAN_BACKEND_MODE !== "gateway") return;
 
     try {
-      const cards = await fetchContentCards(categoryId);
+      const cards = normalizeCards(await fetchContentCards(categoryId, { limit: 2 }));
       updateData((current) => {
         const otherCards = current.cards.filter((card) => card.categoryId !== categoryId);
-        return { ...current, cards: [...otherCards, ...cards] };
+        return {
+          ...current,
+          cards: [...otherCards, ...cards],
+          categoryRefreshState: {
+            ...current.categoryRefreshState,
+            [categoryId]: {
+              refreshCount: current.categoryRefreshState[categoryId]?.refreshCount ?? 0,
+              refreshedAt: now(),
+              visibleCardIds: cards.map((card) => card.id),
+            },
+          },
+        };
       });
     } catch (err) {
       console.error("Load category cards failed", err);
@@ -497,10 +541,59 @@ export function KanshanApp() {
     showToast("已清除表态");
   }
 
-  function answerQuestion(card: WorthReadingCard, question: string) {
+  async function answerQuestion(card: WorthReadingCard, question: string) {
     if (!data) throw new Error("data not ready");
     const existing = data.seeds.find((seed) => seed.createdFromCardId === card.id);
     const seedId = existing?.id ?? createId("seed", card.id);
+
+    // Ensure seed exists locally first
+    if (!existing) {
+      const newSeed = buildSeedFromCard(card, data.categories, "question", `用户提出疑问：${question}`, seedId);
+      updateData((current) => ({
+        ...current,
+        seeds: [newSeed, ...current.seeds],
+        reactions: { ...current.reactions, [card.id]: "question" as SeedReaction },
+      }));
+    }
+    setSelectedSeedId(seedId);
+
+    // Call backend API to get real Agent answer
+    try {
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        // First ensure seed exists on backend
+        if (!existing) {
+          await createSeedFromCard({ cardId: card.id, reaction: "question", userNote: `用户提出疑问：${question}`, card, seedId });
+        }
+
+        // Call addSeedQuestion to get Agent answer from backend
+        const updatedSeed = await addSeedQuestion(seedId, { question });
+        if (updatedSeed) {
+          // Extract the latest question record from the updated seed
+          const latestQuestion = updatedSeed.questions[0]; // questions are prepended, so first is latest
+          if (latestQuestion) {
+            // Update local state with backend response
+            updateData((current) => ({
+              ...current,
+              seeds: current.seeds.map((seed) => (seed.id === seedId ? updatedSeed : seed)),
+            }));
+            persistSeed(updatedSeed);
+            showToast("疑问已记录，Agent 回答已回写到浇水材料");
+            return {
+              seedId,
+              questionId: latestQuestion.id,
+              question: latestQuestion.question,
+              agentAnswer: latestQuestion.agentAnswer,
+              citedSourceIds: latestQuestion.citedSourceIds || [],
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Agent answer failed, falling back to local answer:", err);
+      showToast("Agent 回答失败，使用本地回答");
+    }
+
+    // Fallback to local answer if backend fails or not in gateway mode
     const turnIndex = existing?.questions.length ?? 0;
     const answer = buildAgentAnswer(card, question, turnIndex);
     const answerMaterialType: WateringMaterialType = /反方|质疑|漏洞|风险|不足|边界/.test(question) ? "counterargument" : "evidence";
@@ -514,7 +607,7 @@ export function KanshanApp() {
       createdAt: now(),
     };
     const baseSeed = existing
-      ? existing
+      ? data.seeds.find((seed) => seed.id === seedId)!
       : buildSeedFromCard(card, data.categories, "question", `用户提出疑问：${question}`, seedId);
     const nextSeed = recalcSeed({
       ...baseSeed,
@@ -527,25 +620,20 @@ export function KanshanApp() {
       updatedAt: now(),
     });
     updateData((current) => {
-      const seeds = existing
-        ? current.seeds.map((seed) => (seed.id === seedId ? nextSeed : seed))
-        : [nextSeed, ...current.seeds];
-      // Preserve any existing agree/disagree reaction — questions stack on top of, not replace, the user's stance.
-      const reactions = current.reactions[card.id]
-        ? current.reactions
-        : { ...current.reactions, [card.id]: "question" as SeedReaction };
-      return { ...current, seeds, reactions };
+      const seeds = current.seeds.map((seed) => (seed.id === seedId ? nextSeed : seed));
+      return { ...current, seeds };
     });
-    setSelectedSeedId(seedId);
     persistSeed(nextSeed);
     showToast("疑问已记录，Agent 回答已回写到浇水材料");
     return { seedId, questionId, question, agentAnswer: answer, citedSourceIds: card.originalSources.map((source) => source.sourceId) };
   }
 
-  function markQuestion(seedId: string, questionId: string, status: SeedQuestion["status"]) {
+  async function markQuestion(seedId: string, questionId: string, status: SeedQuestion["status"]) {
     if (!data) return;
     const seed = data.seeds.find((item) => item.id === seedId);
     if (!seed) return;
+
+    // Update local state first (optimistic UI)
     const targetQuestion = seed.questions.find((question) => question.id === questionId);
     const nextSeed = recalcSeed({
       ...seed,
@@ -563,7 +651,26 @@ export function KanshanApp() {
       ...current,
       seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
-    persistSeed(nextSeed);
+
+    // Sync with backend
+    try {
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        const updatedSeed = await markSeedQuestion(seedId, questionId, status);
+        if (updatedSeed) {
+          updateData((current) => ({
+            ...current,
+            seeds: current.seeds.map((item) => (item.id === seedId ? updatedSeed : item)),
+          }));
+          persistSeed(updatedSeed);
+        }
+      } else {
+        persistSeed(nextSeed);
+      }
+    } catch (err) {
+      console.error("Mark question failed:", err);
+      persistSeed(nextSeed);
+    }
+
     showToast(status === "resolved" ? "疑问已标记为已解决" : "疑问已标记为仍需补资料");
   }
 
@@ -660,26 +767,48 @@ export function KanshanApp() {
     showToast("已删除材料，成熟度已更新");
   }
 
-  function resolveOpenQuestion(seedId: string, material: WateringMaterial) {
+  async function resolveOpenQuestion(seedId: string, material: WateringMaterial) {
     const seed = data?.seeds.find((item) => item.id === seedId);
     if (!seed) return;
+
+    // Call backend API to get Agent answer
+    try {
+      if (KANSHAN_BACKEND_MODE === 'gateway') {
+        const updatedSeed = await addSeedQuestion(seedId, { question: material.content });
+        if (updatedSeed) {
+          // Update local state with backend response
+          updateData((current) => ({
+            ...current,
+            seeds: current.seeds.map((item) => (item.id === seedId ? updatedSeed : item)),
+          }));
+          persistSeed(updatedSeed);
+          showToast('Agent 已回答待解决问题，并写入事实证据');
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Agent answer failed, falling back to local:', err);
+      showToast('Agent 回答失败，使用本地回答');
+    }
+
+    // Fallback to local answer if backend fails or not in gateway mode
     const answer = `基于当前来源和反方材料，Agent 的初步回答是：${material.content} 需要拆成事实判断和价值判断两层。事实层先补来源证据，价值层保留你的工程经验和边界说明。`;
     const nextSeed = recalcSeed({
       ...seed,
       questions: [
         {
-          id: createId("question", seedId),
+          id: createId('question', seedId),
           question: material.content,
           agentAnswer: answer,
           citedSourceIds: [],
-          status: "answered",
+          status: 'answered',
           createdAt: now(),
         },
         ...seed.questions,
       ],
       wateringMaterials: [
         { ...material, adopted: true },
-        buildMaterial("evidence", "Agent 回答待解决问题", answer, "继续浇水 / Agent 问答", true),
+        buildMaterial('evidence', 'Agent 回答待解决问题', answer, '继续浇水 / Agent 问答', true),
         ...seed.wateringMaterials.filter((currentMaterial) => currentMaterial.id !== material.id),
       ],
       updatedAt: now(),
@@ -689,26 +818,53 @@ export function KanshanApp() {
       seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
     persistSeed(nextSeed);
-    showToast("Agent 已回答待解决问题，并写入事实证据");
+    showToast('Agent 已回答待解决问题，并写入事实证据');
   }
 
-  function supplementMaterialWithAgent(seedId: string, type: Extract<WateringMaterialType, "evidence" | "counterargument">) {
+  async function supplementMaterialWithAgent(seedId: string, type: Extract<WateringMaterialType, 'evidence' | 'counterargument'>) {
     const seed = data?.seeds.find((item) => item.id === seedId);
     if (!seed) return;
+
+    // Call backend API to get Agent-generated material
+    try {
+      if (KANSHAN_BACKEND_MODE === 'gateway') {
+        const updatedSeed = await agentSupplementSeed(seedId, { type });
+        if (updatedSeed) {
+          // Find the new material added by the Agent
+          const existingMaterialIds = new Set(seed.wateringMaterials.map((m) => m.id));
+          const newMaterials = updatedSeed.wateringMaterials.filter((m) => !existingMaterialIds.has(m.id));
+          if (newMaterials.length > 0) {
+            // Update local state with backend response
+            updateData((current) => ({
+              ...current,
+              seeds: current.seeds.map((item) => (item.id === seedId ? updatedSeed : item)),
+            }));
+            persistSeed(updatedSeed);
+            showToast(type === 'evidence' ? 'Agent 已补充事实证据' : 'Agent 已找到反方质疑');
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Agent supplement failed, falling back to local:', err);
+      showToast('Agent 补充失败，使用本地回答');
+    }
+
+    // Fallback to local material if backend fails or not in gateway mode
     const material =
-      type === "evidence"
+      type === 'evidence'
         ? {
             type,
-            title: "Agent 补充事实证据",
-            content: `围绕“${seed.sourceTitle}”，Agent 建议补充一条可验证事实：先引用原始来源中的具体场景，再说明它如何支撑“${seed.coreClaim}”。这条材料应在正式接 API 后替换成真实回答或原文片段。`,
-            sourceLabel: "继续浇水 / Agent 补证据",
+            title: 'Agent 补充事实证据',
+            content: `围绕”${seed.sourceTitle}”，Agent 建议补充一条可验证事实：先引用原始来源中的具体场景，再说明它如何支撑”${seed.coreClaim}”。`,
+            sourceLabel: '继续浇水 / Agent 补证据',
             adopted: true,
           }
         : {
             type,
-            title: "Agent 找到反方质疑",
-            content: `针对“${seed.coreClaim}”，反方可能会质疑：${seed.counterArguments[0] ?? "当前材料是否足够支持这个判断？"} 建议在文章中明确适用边界，并补充一个不成立的场景。`,
-            sourceLabel: "继续浇水 / Agent 找反方",
+            title: 'Agent 找到反方质疑',
+            content: `针对”${seed.coreClaim}”，反方可能会质疑：${seed.counterArguments[0] ?? '当前材料是否足够支持这个判断？'} 建议在文章中明确适用边界，并补充一个不成立的场景。`,
+            sourceLabel: '继续浇水 / Agent 找反方',
             adopted: true,
           };
     addMaterial(seedId, material);
@@ -921,45 +1077,111 @@ export function KanshanApp() {
     window.location.reload();
   }
 
-  const selectedCards = useMemo(() => {
+  const selectedQueue = useMemo(() => {
     if (!data) return [];
     return cardsForCategory(data.cards, selectedCategory, data.categoryRefreshState[selectedCategory]);
   }, [data, selectedCategory]);
 
+  const selectedCards = useMemo(() => selectedQueue.slice(0, 1), [selectedQueue]);
+  const bufferedCount = Math.max(0, selectedQueue.length - selectedCards.length);
   const selectedCategoryRefresh = data?.categoryRefreshState[selectedCategory];
+
+  const enrichCardInBackground = useCallback((cardId: string) => {
+    if (enrichingCardIdsRef.current.has(cardId)) return;
+    enrichingCardIdsRef.current.add(cardId);
+    void enrichCard(cardId)
+      .then((card) => {
+        const normalized = normalizeCard(card);
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                cards: current.cards.map((item) => (item.id === cardId ? { ...item, ...normalized, enriched: true } : item)),
+              }
+            : current,
+        );
+      })
+      .catch((error) => {
+        console.warn("background enrich failed", error);
+      })
+      .finally(() => {
+        enrichingCardIdsRef.current.delete(cardId);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!data || activeTab !== "today" || KANSHAN_BACKEND_MODE !== "gateway") return;
+    for (const card of selectedQueue.slice(0, 2)) {
+      if (!card.enriched && card.categoryId !== "following") enrichCardInBackground(card.id);
+    }
+  }, [activeTab, data, enrichCardInBackground, selectedQueue]);
 
   async function refreshSelectedCategory() {
     if (!data) return;
+    const queue = cardsForCategory(data.cards, selectedCategory, data.categoryRefreshState[selectedCategory]);
+    const restQueue = queue.slice(1);
+    const currentCategoryCards = data.cards.filter((card) => card.categoryId === selectedCategory);
+    const excludeIds = Array.from(new Set(currentCategoryCards.map((card) => card.id)));
+    const nextCount = (data.categoryRefreshState[selectedCategory]?.refreshCount ?? 0) + 1;
+    const refreshedAt = now();
+
+    if (restQueue.length) {
+      updateData((state) => ({
+        ...state,
+        categoryRefreshState: {
+          ...state.categoryRefreshState,
+          [selectedCategory]: {
+            refreshCount: nextCount,
+            refreshedAt,
+            visibleCardIds: restQueue.map((card) => card.id),
+          },
+        },
+        expandedSourceIds: {},
+        expandedCardIds: [],
+      }));
+      showToast("已换一条，后台继续预取真实内容");
+    }
 
     if (KANSHAN_BACKEND_MODE === "gateway") {
+      if (restQueue.length >= 2 || todayRefreshing) return;
+      setTodayRefreshing(true);
       try {
-        const refreshed = await refreshCategory(selectedCategory);
+        const refreshed = await refreshCategory(selectedCategory, { limit: 2, excludeIds });
+        const incomingCards = normalizeCards(refreshed.cards);
         updateData((state) => {
           const otherCards = state.cards.filter((card) => card.categoryId !== selectedCategory);
+          const existingCategoryCards = state.cards.filter((card) => card.categoryId === selectedCategory);
+          const byId = new Map(existingCategoryCards.map((card) => [card.id, card]));
+          for (const card of incomingCards) byId.set(card.id, card);
+          const previousVisibleIds = state.categoryRefreshState[selectedCategory]?.visibleCardIds ?? restQueue.map((card) => card.id);
+          const incomingIds = incomingCards.map((card) => card.id).filter((id) => !previousVisibleIds.includes(id));
           return {
             ...state,
-            cards: [...otherCards, ...refreshed.cards],
+            cards: [...otherCards, ...Array.from(byId.values())],
             categoryRefreshState: {
               ...state.categoryRefreshState,
               [selectedCategory]: refreshed.refreshState
                 ? {
-                    refreshCount: refreshed.refreshState.refreshCount,
+                    refreshCount: nextCount,
                     refreshedAt: refreshed.refreshState.refreshedAt,
-                    visibleCardIds: refreshed.cards.map((card) => card.id),
+                    visibleCardIds: [...previousVisibleIds, ...incomingIds],
                   }
                 : {
-                    refreshCount: 1,
-                    refreshedAt: now(),
-                    visibleCardIds: refreshed.cards.map((card) => card.id),
+                    refreshCount: nextCount,
+                    refreshedAt,
+                    visibleCardIds: [...previousVisibleIds, ...incomingIds],
                   },
             },
             expandedSourceIds: {},
+            expandedCardIds: [],
           };
         });
-        showToast(`已刷新${sectionTitle(data.categories, selectedCategory)}内容`);
+        showToast(restQueue.length ? "新内容已预取" : `已补充${sectionTitle(data.categories, selectedCategory)}真实输入`);
       } catch (err) {
         console.error("Refresh category failed", err);
-        showToast("刷新失败，请稍后重试");
+        if (!restQueue.length) showToast("补充真实输入失败，请稍后重试");
+      } finally {
+        setTodayRefreshing(false);
       }
       return;
     }
@@ -967,17 +1189,17 @@ export function KanshanApp() {
     const currentCards = data.cards.filter((card) => card.categoryId === selectedCategory);
     if (!currentCards.length) return;
     const current = data.categoryRefreshState[selectedCategory];
-    const nextCount = (current?.refreshCount ?? 0) + 1;
-    const refreshedAt = now();
+    const mockNextCount = (current?.refreshCount ?? 0) + 1;
+    const mockRefreshedAt = now();
     const newCards: WorthReadingCard[] = currentCards.slice(0, 2).map((card, idx) => ({
       ...card,
-      id: `${card.id}-r${nextCount}-${idx}`,
-      relevanceScore: Math.min(99, (card.relevanceScore ?? 80) + nextCount),
+      id: `${card.id}-r${mockNextCount}-${idx}`,
+      relevanceScore: Math.min(99, (card.relevanceScore ?? 80) + mockNextCount),
       tags: [
         ...card.tags.filter((tag) => tag.label && !tag.label.startsWith("刷新")),
-        { label: `刷新 ${nextCount}`, tone: "green" as Tone },
+        { label: `刷新 ${mockNextCount}`, tone: "green" as Tone },
       ],
-      createdAt: refreshedAt,
+      createdAt: mockRefreshedAt,
     }));
     const newIds = newCards.map((card) => card.id);
     const prevIds = current?.visibleCardIds?.length
@@ -989,8 +1211,8 @@ export function KanshanApp() {
       categoryRefreshState: {
         ...state.categoryRefreshState,
         [selectedCategory]: {
-          refreshCount: nextCount,
-          refreshedAt,
+          refreshCount: mockNextCount,
+          refreshedAt: mockRefreshedAt,
           visibleCardIds: [...newIds, ...prevIds],
         },
       },
@@ -1039,7 +1261,7 @@ export function KanshanApp() {
     return (
       <main className="loading-screen">
         <Loader2 className="spin" size={28} />
-        <span>正在加载看山小苗圃 mock 数据...</span>
+        <span>正在加载看山小苗圃真实内容...</span>
       </main>
     );
   }
@@ -1109,6 +1331,8 @@ export function KanshanApp() {
           <TodaySection
             categories={data.categories}
             cards={selectedCards}
+            bufferedCount={bufferedCount}
+            refreshing={todayRefreshing}
             reactions={data.reactions}
             expandedCardIds={data.expandedCardIds}
             expandedSourceIds={data.expandedSourceIds}
@@ -1117,7 +1341,21 @@ export function KanshanApp() {
             setSelectedCategory={selectCategory}
             onRefresh={refreshSelectedCategory}
             onToggleSource={toggleSource}
-            onToggleSummary={(cardId) => {
+            onToggleSummary={async (cardId) => {
+              // Check if card needs enrichment
+              const card = data?.cards.find((c) => c.id === cardId);
+              if (card && !card.enriched && !card.contentSummary) {
+                try {
+                  const enriched = await enrichCard(cardId);
+                  const normalized = normalizeCard(enriched);
+                  updateData((current) => ({
+                    ...current,
+                    cards: current.cards.map((c) => (c.id === cardId ? { ...c, ...normalized, enriched: true } : c)),
+                  }));
+                } catch (e) {
+                  console.warn("enrich failed", e);
+                }
+              }
               updateData((current) => ({
                 ...current,
                 expandedCardIds: current.expandedCardIds.includes(cardId)
@@ -1339,6 +1577,8 @@ function OnboardingSection({ profile, onSave, goProfile }: { profile: ProfileDat
 function TodaySection({
   categories,
   cards,
+  bufferedCount,
+  refreshing,
   reactions,
   expandedCardIds,
   expandedSourceIds,
@@ -1355,6 +1595,8 @@ function TodaySection({
 }: {
   categories: InputCategory[];
   cards: WorthReadingCard[];
+  bufferedCount: number;
+  refreshing: boolean;
   reactions: Record<string, SeedReaction>;
   expandedCardIds: string[];
   expandedSourceIds: Record<string, string>;
@@ -1377,9 +1619,9 @@ function TodaySection({
             <h2 className="panel-title">今日看什么</h2>
             <p className="panel-subtitle">选择兴趣小类、关注流或偶遇输入，只展示当前分类下的内容。</p>
           </div>
-          <button className="btn primary" onClick={onRefresh} type="button">
-            <RefreshCw size={14} />
-            刷新输入
+          <button className="btn primary" disabled={refreshing} onClick={onRefresh} type="button">
+            {refreshing ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
+            {cards.length ? "补充真实输入" : "加载内容"}
           </button>
         </div>
         <div className="panel-body">
@@ -1410,9 +1652,27 @@ function TodaySection({
                     刚刚刷新 · 第 {refreshState.refreshCount} 次 · {formatTime(refreshState.refreshedAt)}
                   </span>
                 ) : null}
+                <span className="tag blue">后台预取 {bufferedCount} 条</span>
               </div>
             </div>
-            <div className="grid-2">
+            <div className="reading-controls">
+              <div>
+                <strong>单卡浏览</strong>
+                <span>一次只看一张，避免信息流压力；换一条时优先使用已预取内容。</span>
+              </div>
+              <button className="btn primary" disabled={refreshing} onClick={onRefresh} type="button">
+                {refreshing ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
+                换一条
+              </button>
+            </div>
+            {cards.length ? null : (
+              <div className="empty-state">
+                {selectedCategory === "following"
+                  ? "关注流需要完成知乎 OAuth 授权后才能获取真实动态。"
+                  : "当前分类暂未获取到真实内容，请稍后刷新。"}
+              </div>
+            )}
+            <div className="today-single-card">
               {cards.map((card, index) => (
                 <ContentCard
                   card={card}
@@ -1521,8 +1781,8 @@ function ContentCard({
                   ))}
                 </div>
                 <strong>{source.title}</strong>
-                <p>来源要点：{source.rawExcerpt}</p>
-                <p>贡献：{source.contribution}</p>
+                <p>要点：{compactSourceDigest(source)}</p>
+                <span className="source-open-hint">点击展开完整来源</span>
               </button>
             ) : (
               <button
@@ -2347,8 +2607,15 @@ function ProfileSection({
   onZhihuBindingChange?: (binding: ZhihuBindingViewModel) => void;
 }) {
   const [draft, setDraft] = useState(profile);
-  const [activePanel, setActivePanel] = useState<ProfilePanelId>("overview");
-  const [selectedProvider, setSelectedProvider] = useState("platform-free");
+  const [activePanel, setActivePanel] = useState<ProfilePanelId>("llm");
+  const [llmChoice, setLlmChoice] = useState<"platform_free" | "user_provider">("platform_free");
+  const [llmDisplayName, setLlmDisplayName] = useState("");
+  const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  const [llmModel, setLlmModel] = useState("");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmQuota, setLlmQuota] = useState<Record<string, { used: number; limit: number; remaining: number }> | null>(null);
+  const [memoryUpdateRequests, setMemoryUpdateRequests] = useState<MemoryUpdateRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
 
   // Listen for Zhihu binding success from popup window
   useEffect(() => {
@@ -2363,7 +2630,6 @@ function ProfileSection({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [currentUser?.userId, onZhihuBindingChange, onNotify]);
-  const [providerCount, setProviderCount] = useState(3);
   const [styleScores, setStyleScores] = useState<Record<string, number>>({
     logic: 3,
     stance: 4,
@@ -2373,6 +2639,62 @@ function ProfileSection({
 
   const interestCategories = categories.filter((category) => category.kind === "interest");
   const zhihuBound = zhihuBinding?.bindingStatus === "bound";
+
+  // Load memory update requests from API
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadMemoryUpdateRequests() {
+      if (KANSHAN_BACKEND_MODE !== "gateway") return;
+
+      setLoadingRequests(true);
+      try {
+        const requests = await getMemoryUpdateRequests();
+        if (mounted) {
+          setMemoryUpdateRequests(requests as unknown as MemoryUpdateRequest[]);
+        }
+      } catch (error) {
+        console.error("Failed to load memory update requests:", error);
+      } finally {
+        if (mounted) {
+          setLoadingRequests(false);
+        }
+      }
+    }
+
+    loadMemoryUpdateRequests();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activePanel]);
+
+  // Fetch LLM quota when LLM panel is active
+  useEffect(() => {
+    if (activePanel !== "llm") return;
+    let mounted = true;
+    async function loadLlmPanel() {
+      try {
+        const [config, quota] = await Promise.all([getLLMConfig(), getLLMQuota()]);
+        if (!mounted) return;
+        setLlmQuota(quota);
+        if (config.activeProvider === "user_provider") {
+          setLlmChoice("user_provider");
+          setLlmDisplayName(String(config.displayName || ""));
+          setLlmBaseUrl(String(config.baseUrl || ""));
+          setLlmModel(String(config.model || ""));
+        } else {
+          setLlmChoice("platform_free");
+        }
+      } catch (err) {
+        console.error("Failed to load LLM config:", err);
+      }
+    }
+    loadLlmPanel();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function toggleInterest(interest: string) {
     const interests = draft.interests.includes(interest)
@@ -2420,26 +2742,56 @@ function ProfileSection({
     onNotify(message);
   }
 
-  function applyMemoryRequest(title: string) {
-    if (title.includes("家居收纳") && !draft.interests.includes("家居收纳")) {
-      setDraft({ ...draft, interests: [...draft.interests, "家居收纳"] });
-      onNotify("已把家居收纳加入兴趣画像草稿，保存后生效");
-      return;
+  async function saveLlmConfig() {
+    try {
+      if (llmChoice === "user_provider") {
+        if (!llmBaseUrl.trim() || !llmModel.trim() || !llmApiKey.trim()) {
+          onNotify("请填写 Base URL、模型和 API Key 后再保存");
+          return;
+        }
+        await updateLLMConfig({
+          activeProvider: "user_provider",
+          status: "user_configured",
+          provider: "openai_compat",
+          displayName: llmDisplayName || "自有 LLM",
+          baseUrl: llmBaseUrl,
+          model: llmModel,
+          apiKey: llmApiKey,
+        });
+        setLlmApiKey("");
+        onNotify("LLM 配置已保存，涉及个人写作的任务会优先使用你的模型");
+        return;
+      }
+      await updateLLMConfig({ activeProvider: "platform_free", status: "platform_free" });
+      onNotify("已切换为平台免费额度");
+    } catch (error) {
+      console.error("Failed to save LLM config:", error);
+      onNotify("LLM 配置保存失败，请检查后端服务");
     }
-    setDraft({
-      ...draft,
-      globalMemory: {
-        ...draft.globalMemory,
-        riskReminder: `${draft.globalMemory.riskReminder}\n新增提醒：职场话题需要补充具体场景和反方观点。`,
-      },
-    });
-    onNotify("已把写作风险提醒加入 Memory 草稿，保存后生效");
   }
 
-  function addMockProvider() {
-    setProviderCount((current) => current + 1);
-    setSelectedProvider(`custom-${providerCount + 1}`);
-    onNotify("已添加一个 mock 自有模型配置");
+  async function applyMemoryRequest(requestId: string) {
+    try {
+      await applyMemoryUpdate(requestId);
+      // Remove the applied request from the list
+      setMemoryUpdateRequests((prev) => prev.filter((r) => r.id !== requestId));
+      onNotify("Memory 更新请求已确认");
+    } catch (error) {
+      console.error("Failed to apply memory update request:", error);
+      onNotify("确认失败，请重试");
+    }
+  }
+
+  async function rejectMemoryRequest(requestId: string) {
+    try {
+      await rejectMemoryUpdate(requestId);
+      // Remove the rejected request from the list
+      setMemoryUpdateRequests((prev) => prev.filter((r) => r.id !== requestId));
+      onNotify("Memory 更新请求已拒绝");
+    } catch (error) {
+      console.error("Failed to reject memory update request:", error);
+      onNotify("拒绝失败，请重试");
+    }
   }
 
   function setScore(key: string, value: number) {
@@ -2462,279 +2814,101 @@ function ProfileSection({
         ))}
       </div>
 
-      {activePanel === "overview" ? (
-        <section className="profile-panel-section active">
-          <div className="grid-4 profile-status-grid">
-            <div className="card no-hover">
-              <div className="eyebrow">画像状态</div>
-              <h3>{draft.accountStatus.includes("临时") ? "临时画像" : "正式画像"}</h3>
-              <p className="field-text">可用，等待 OAuth 与历史内容增强。</p>
-            </div>
-            <div className="card no-hover">
-              <div className="eyebrow">知乎账号</div>
-              <h3>{zhihuBound ? "已关联" : "未关联"}</h3>
-              <p className="field-text">当前{zhihuBound ? "可使用关注流增强画像" : "使用本地临时画像"}。</p>
-            </div>
-            <div className="card no-hover">
-              <div className="eyebrow">LLM</div>
-              <h3>{providerCount} 个模型</h3>
-              <p className="field-text">平台免费额度 + 自有模型 mock 配置。</p>
-            </div>
-            <div className="card no-hover">
-              <div className="eyebrow">兴趣领域</div>
-              <h3>{draft.interests.length} 个</h3>
-              <p className="field-text">用于今日推荐、发芽和写作 Memory 注入。</p>
-            </div>
-          </div>
-
-          <div className="profile-layout">
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">基础资料</h2>
-                  <p className="panel-subtitle">账号信息与用户自我描述。</p>
-                </div>
-                <button className="btn primary" onClick={() => saveDraft("基础资料已保存")} type="button">
-                  保存
-                </button>
-              </div>
-              <div className="panel-body form-grid">
-                <EditableField label="昵称" value={draft.nickname} onChange={(nickname) => setDraft({ ...draft, nickname })} />
-                <EditableField label="身份 / 创作背景" value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />
-                <div className="field">
-                  <label>一句话自我描述</label>
-                  <textarea
-                    className="textarea"
-                    value={draft.globalMemory.longTermBackground}
-                    onChange={(event) =>
-                      setDraft({ ...draft, globalMemory: { ...draft.globalMemory, longTermBackground: event.target.value } })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">增强画像待确认</h2>
-                  <p className="panel-subtitle">后台生成的 Memory 更新必须经用户确认后写入长期画像。</p>
-                </div>
-              </div>
-              <div className="panel-body form-grid">
-                <div className="memory-card">
-                  <strong>待确认更新</strong>
-                  <p className="field-text">
-                    系统推测你在「职场成长」下更关注真实经验和可执行建议，在「数码科技」下更关注产品体验和购买决策。
-                  </p>
-                  <div className="action-row">
-                    <button className="btn primary" onClick={() => mockAction("已应用增强画像 mock")} type="button">
-                      确认写入
-                    </button>
-                    <button className="btn ghost" onClick={() => setActivePanel("memory")} type="button">
-                      逐条编辑
-                    </button>
-                    <button className="btn danger" onClick={() => mockAction("已拒绝本次增强画像 mock")} type="button">
-                      拒绝
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {activePanel === "account" ? (
-        <section className="profile-panel-section active">
-          <div className="grid-2">
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">账号信息</h2>
-                  <p className="panel-subtitle">来自数据库的真实账号信息。邮箱和用户名不可修改。</p>
-                </div>
-                <button className="btn primary" onClick={() => saveDraft("账号信息已保存")} type="button">
-                  保存
-                </button>
-              </div>
-              <div className="panel-body form-grid">
-                <div className="field">
-                  <label>邮箱</label>
-                  <input className="input" value={currentUser?.email || "未绑定"} readOnly />
-                </div>
-                <div className="field">
-                  <label>用户名</label>
-                  <input className="input" value={currentUser?.username || "未设置"} readOnly />
-                </div>
-                <EditableField label="昵称" value={draft.nickname} onChange={(nickname) => setDraft({ ...draft, nickname })} />
-                <EditableField label="身份 / 创作背景" value={draft.role} onChange={(role) => setDraft({ ...draft, role })} />
-                <div className="field">
-                  <label>注册时间</label>
-                  <input className="input" value={currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleString("zh-CN") : "未知"} readOnly />
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">知乎关联状态</h2>
-                  <p className="panel-subtitle">关联知乎后可增强关注流、兴趣图谱和创作偏好。</p>
-                </div>
-              </div>
-              <div className="panel-body form-grid">
-                <div className="card no-hover">
-                  <div className="tag-row">
-                    <span className={`tag ${zhihuBound ? "green" : "orange"}`}>
-                      {zhihuBound ? "已关联" : "未关联"}
-                    </span>
-                  </div>
-                  {zhihuBound ? (
-                    <>
-                      <h3>知乎账号已关联</h3>
-                      <p className="field-text">
-                        知乎 UID：{zhihuBinding?.zhihuUid || "未知"}
-                        {zhihuBinding?.boundAt ? ` · 关联时间：${new Date(zhihuBinding.boundAt).toLocaleString("zh-CN")}` : ""}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h3>尚未关联知乎账号</h3>
-                      <p className="field-text">关联后系统将使用知乎数据增强你的创作画像和内容推荐。</p>
-                      <div className="action-row">
-                        <button
-                          className="btn primary"
-                          onClick={async () => {
-                            try {
-                              const { url } = await getZhihuAuthorizeUrl();
-                              if (url.includes("MOCK") || url.includes("client_id=MOCK")) {
-                                onNotify("知乎 OAuth 尚未配置，无法关联");
-                                return;
-                              }
-                              const sessionId = localStorage.getItem("kanshan:session:v1");
-                              let authUrl = url;
-                              if (sessionId) {
-                                try {
-                                  const parsed = JSON.parse(sessionId);
-                                  authUrl = `${url}&state=${encodeURIComponent(parsed.sessionId || "")}`;
-                                } catch { /* ignore */ }
-                              }
-                              window.open(authUrl, "_blank", "width=640,height=760");
-                              // Poll binding status
-                              const pollInterval = setInterval(async () => {
-                                try {
-                                  const updated = await getZhihuBinding(currentUser?.userId);
-                                  if (updated.bindingStatus === "bound") {
-                                    clearInterval(pollInterval);
-                                    if (onZhihuBindingChange) onZhihuBindingChange(updated);
-                                    onNotify("知乎账号关联成功");
-                                  }
-                                } catch { /* ignore */ }
-                              }, 2000);
-                              // Stop polling after 2 minutes
-                              setTimeout(() => clearInterval(pollInterval), 120000);
-                            } catch (err) {
-                              console.error("Failed to get Zhihu authorize URL:", err);
-                              onNotify("获取知乎授权链接失败");
-                            }
-                          }}
-                          type="button"
-                        >
-                          关联知乎账号
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
       {activePanel === "llm" ? (
         <section className="profile-panel-section active">
           <div className="panel">
             <div className="panel-header">
               <div>
-                <h2 className="panel-title">多 LLM 配置</h2>
-                <p className="panel-subtitle">平台只能提供免费接口且必须限流；用户可以配置自己的 OpenAI-compatible 模型。</p>
+                <h2 className="panel-title">LLM 配置</h2>
+                <p className="panel-subtitle">系统使用一个 LLM 处理画像生成、摘要、问答和写作任务。</p>
               </div>
-              <button className="btn primary" onClick={addMockProvider} type="button">
-                添加模型
-              </button>
             </div>
-            <div className="panel-body grid-3">
-              {[
-                ["platform-free", "平台免费模型", "平台免费", "适合画像生成、摘要和轻量问答，受每日额度限制。"],
-                ["custom-a", "自有模型 A", "自有模型", "可用于更严谨的分析视角。"],
-                ["custom-b", "自有模型 B", "自有模型", "可用于更偏表达、读者感受和传播判断的视角。"],
-              ].map(([id, title, tag, desc]) => (
-                <button
-                  className={`card llm-provider-card ${selectedProvider === id ? "selected" : ""}`}
-                  key={id}
-                  onClick={() => setSelectedProvider(id)}
-                  type="button"
-                >
-                  <div className="tag-row">
-                    <span className={id === "platform-free" ? "tag blue" : "tag purple"}>{tag}</span>
-                    {id === "platform-free" ? <span className="tag green">默认</span> : null}
-                  </div>
-                  <h3>{title}</h3>
-                  <p className="field-text">{desc}</p>
+            <div className="panel-body">
+              <div className="llm-choice-grid">
+                <button className={`llm-choice ${llmChoice === "platform_free" ? "selected" : ""}`} onClick={() => setLlmChoice("platform_free")} type="button">
+                  <strong>平台免费额度</strong>
+                  <span>零配置，适合试用。受每日额度限制。</span>
                 </button>
-              ))}
-            </div>
-          </div>
+                <button className={`llm-choice ${llmChoice === "user_provider" ? "selected" : ""}`} onClick={() => setLlmChoice("user_provider")} type="button">
+                  <strong>配置自己的 LLM</strong>
+                  <span>API Key 只提交给后端，前端不保存明文。</span>
+                </button>
+              </div>
 
-          <div className="grid-2 profile-spaced">
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">新增 / 编辑模型</h2>
-                  <p className="panel-subtitle">API Key 只提交到服务端加密保存，前端不读明文。</p>
+              {llmChoice === "platform_free" ? (
+                <div className="profile-spaced">
+                  <div className="panel">
+                    <div className="panel-header">
+                      <div>
+                        <h2 className="panel-title">每日额度使用情况</h2>
+                        <p className="panel-subtitle">每日零点重置。命中缓存的任务不消耗额度。</p>
+                      </div>
+                    </div>
+                    <div className="panel-body form-grid">
+                      {llmQuota ? (
+                        <div className="quota-board">
+                          {Object.entries(llmQuota).map(([taskType, { used, limit, remaining }]) => (
+                            <div className="quota-row" key={taskType}>
+                              <span>{LLM_TASK_LABELS[taskType] || taskType}</span>
+                              <strong>{used}/{limit}</strong>
+                              <div className="quota-bar"><i style={{ width: `${limit > 0 ? (used / limit) * 100 : 0}%` }} /></div>
+                              <span className="field-text">{remaining} 次剩余</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="card no-hover">
+                          <p className="field-text">加载额度数据中...</p>
+                        </div>
+                      )}
+                      <div className="action-row">
+                        <button className="btn primary" onClick={saveLlmConfig} type="button">
+                          使用平台免费额度
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="panel-body form-grid">
-                <EditableField label="显示名称" value="DeepSeek V3 / GPT-4.1 / Qwen Plus" onChange={() => undefined} />
-                <EditableField label="Base URL" value="https://api.example.com/v1" onChange={() => undefined} />
-                <EditableField label="Model" value="model-name" onChange={() => undefined} />
-                <div className="field">
-                  <label>API Key</label>
-                  <input className="input" type="password" placeholder="只提交一次，服务端加密保存" />
-                </div>
-                <div className="action-row">
-                  <button className="btn primary" onClick={() => mockAction("正在测试连接 mock")} type="button">
-                    测试连接
-                  </button>
-                  <button className="btn ghost" onClick={() => mockAction("LLM 配置已保存 mock")} type="button">
-                    保存配置
-                  </button>
-                  <button className="btn danger" onClick={() => mockAction("LLM 配置已删除 mock")} type="button">
-                    删除配置
-                  </button>
-                </div>
-              </div>
-            </div>
+              ) : null}
 
-            <div className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2 className="panel-title">多视角使用方式</h2>
-                  <p className="panel-subtitle">用户只需要知道系统会综合多个视角，不需要关心内部角色拆分。</p>
+              {llmChoice === "user_provider" ? (
+                <div className="profile-spaced">
+                  <div className="panel">
+                    <div className="panel-header">
+                      <div>
+                        <h2 className="panel-title">自有模型配置</h2>
+                        <p className="panel-subtitle">API Key 只提交到服务端加密保存，前端不读明文。</p>
+                      </div>
+                    </div>
+                    <div className="panel-body form-grid">
+                      <div className="field">
+                        <label>显示名称</label>
+                        <input className="input" value={llmDisplayName} onChange={(e) => setLlmDisplayName(e.target.value)} placeholder="例如 DeepSeek V3 / GPT-4.1" />
+                      </div>
+                      <div className="field">
+                        <label>模型</label>
+                        <input className="input" value={llmModel} onChange={(e) => setLlmModel(e.target.value)} placeholder="例如 gpt-4o-mini" />
+                      </div>
+                      <div className="field">
+                        <label>Base URL</label>
+                        <input className="input" value={llmBaseUrl} onChange={(e) => setLlmBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+                      </div>
+                      <div className="field">
+                        <label>API Key</label>
+                        <input className="input" type="password" value={llmApiKey} onChange={(e) => setLlmApiKey(e.target.value)} placeholder="只提交一次，服务端加密保存" />
+                      </div>
+                      <div className="action-row">
+                        <button className="btn primary" onClick={() => onNotify("正在测试连接（mock）")} type="button">
+                          测试连接
+                        </button>
+                        <button className="btn ghost" onClick={saveLlmConfig} type="button">
+                          保存配置
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="panel-body form-grid">
-                <ListBlock
-                  title="可用于"
-                  items={["画像生成时提炼兴趣信号", "观点生成时提供更稳健判断", "写作审稿时提供不同角度反馈", "高成本任务前由用户主动触发"]}
-                />
-                <InfoBlock
-                  title="默认策略"
-                  text="优先使用平台免费模型处理轻量任务；当用户配置自有模型后，需要多视角讨论时再组合使用。"
-                />
-              </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -2752,34 +2926,21 @@ function ProfileSection({
                 保存兴趣
               </button>
             </div>
-            <div className="panel-body form-grid">
-              <div className="field-block">
-                <div className="field-title">已选择的兴趣类别（来自注册时的选择）</div>
-                <div className="tag-row">
-                  {interestCategories.map((category) => (
-                    <button
-                      className={`chip ${draft.interests.includes(category.name) ? "selected" : ""}`}
-                      key={category.id}
-                      onClick={() => toggleInterest(category.name)}
-                      type="button"
-                    >
-                      {category.name}
-                    </button>
-                  ))}
+            <div className="panel-body">
+              <div className="preference-section-head">
+                <div>
+                  <strong>选择长期兴趣 Memory 主分类</strong>
+                  <span>关注流和偶遇输入是内容来源，不放入长期兴趣主分类。</span>
                 </div>
+                <em>{draft.interests.length} 个已选</em>
               </div>
-              <div className="grid-2">
-                {profileInterestGroups.map((group) => (
-                  <div className="interest-group" key={group.group}>
-                    <h4>{group.group}</h4>
-                    <p>{group.desc}</p>
-                    <div className="tag-row">
-                      {group.items.map((item) => (
-                        <button className={`chip small ${draft.interests.includes(item) ? "selected" : ""}`} key={item} onClick={() => toggleInterest(item)} type="button">
-                          {item}
-                        </button>
-                      ))}
-                    </div>
+              <div className="interest-grid onboarding-interest-grid">
+                {profileInterestOptions.map((interest) => (
+                  <div className={`interest-card-wrap ${draft.interests.includes(interest.name) ? "selected" : ""}`} key={interest.id}>
+                    <button className="interest-card" onClick={() => toggleInterest(interest.name)} type="button">
+                      <span className="interest-name">{interest.name}</span>
+                      <span className="interest-desc">{interest.desc}</span>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -2852,26 +3013,42 @@ function ProfileSection({
                 </div>
               </div>
               <div className="panel-body form-grid">
-                {memoryUpdateRequests.map((request) => (
-                  <div className="card no-hover" key={request.title}>
-                    <div className="tag-row">
-                      <span className="tag orange">待确认</span>
-                    </div>
-                    <h3>{request.title}</h3>
-                    <p className="field-text">{request.desc}</p>
-                    <div className="action-row">
-                      <button className="btn primary" onClick={() => applyMemoryRequest(request.title)} type="button">
-                        确认
-                      </button>
-                      <button className="btn ghost" onClick={() => mockAction("已进入编辑 Memory 更新请求 mock")} type="button">
-                        编辑
-                      </button>
-                      <button className="btn danger" onClick={() => mockAction("已拒绝 Memory 更新请求 mock")} type="button">
-                        拒绝
-                      </button>
-                    </div>
+                {loadingRequests ? (
+                  <div className="card no-hover">
+                    <div className="field-text">加载中...</div>
                   </div>
-                ))}
+                ) : memoryUpdateRequests.length === 0 ? (
+                  <div className="card no-hover">
+                    <div className="field-text">暂无待确认的 Memory 更新请求</div>
+                  </div>
+                ) : (
+                  memoryUpdateRequests.map((request) => (
+                    <div className="card no-hover" key={request.id}>
+                      <div className="tag-row">
+                        <span className={`tag ${request.scope === "global" ? "blue" : "green"}`}>
+                          {request.scope === "global" ? "全局" : "兴趣"}
+                        </span>
+                        <span className="tag orange">待确认</span>
+                      </div>
+                      <h3>{request.targetField}</h3>
+                      <p className="field-text">{request.reason}</p>
+                      <div className="field-text" style={{ fontSize: "0.85em", marginTop: "4px" }}>
+                        建议值: {typeof request.suggestedValue === "string" ? request.suggestedValue.substring(0, 100) : JSON.stringify(request.suggestedValue).substring(0, 100)}...
+                      </div>
+                      <div className="action-row">
+                        <button className="btn primary" onClick={() => applyMemoryRequest(request.id)} type="button">
+                          确认
+                        </button>
+                        <button className="btn ghost" onClick={() => mockAction("已进入编辑 Memory 更新请求")} type="button">
+                          编辑
+                        </button>
+                        <button className="btn danger" onClick={() => rejectMemoryRequest(request.id)} type="button">
+                          拒绝
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -2977,7 +3154,7 @@ function InlineSourcePanel({ source }: { source?: ContentSource }) {
           <span className="tag blue">{source.sourceType}</span>
           <h4>{source.title}</h4>
         </div>
-        <span className="tag green">API 原文 mock</span>
+        <span className="tag green">真实来源</span>
       </div>
       <div className="source-detail-grid">
         <InfoBlock title="作者 / 来源" text={source.author ?? "未知"} />
@@ -3003,8 +3180,8 @@ function QuestionDialog({
 }: {
   card: WorthReadingCard;
   onClose: () => void;
-  onAnswer: (question: string) => { seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] };
-  onMark: (seedId: string, questionId: string, status: SeedQuestion["status"]) => void;
+  onAnswer: (question: string) => Promise<{ seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] }>;
+  onMark: (seedId: string, questionId: string, status: SeedQuestion["status"]) => Promise<void>;
 }) {
   const [question, setQuestion] = useState(`这个判断的反方证据是什么？`);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
@@ -3012,31 +3189,37 @@ function QuestionDialog({
     { seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] }[]
   >([]);
   const [markedStatuses, setMarkedStatuses] = useState<Record<string, SeedQuestion["status"]>>({});
+  const [isLoading, setIsLoading] = useState(false);
   const latestAnswer = answerThread[answerThread.length - 1];
   const latestStatus = latestAnswer ? markedStatuses[latestAnswer.questionId] : "";
   const flowResolved = latestStatus === "resolved";
 
-  function submitQuestion() {
+  async function submitQuestion() {
     const nextQuestion = latestAnswer ? followUpQuestion.trim() : question.trim();
-    if (!nextQuestion || flowResolved) return;
-    const nextAnswer = onAnswer(nextQuestion);
-    setAnswerThread((current) => [...current, nextAnswer]);
-    setMarkedStatuses((current) => {
-      const next = { ...current };
-      delete next[nextAnswer.questionId];
-      return next;
-    });
-    setFollowUpQuestion("");
+    if (!nextQuestion || flowResolved || isLoading) return;
+    setIsLoading(true);
+    try {
+      const nextAnswer = await onAnswer(nextQuestion);
+      setAnswerThread((current) => [...current, nextAnswer]);
+      setMarkedStatuses((current) => {
+        const next = { ...current };
+        delete next[nextAnswer.questionId];
+        return next;
+      });
+      setFollowUpQuestion("");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  function markAnswer(
+  async function markAnswer(
     answer: { seedId: string; questionId: string; question: string; agentAnswer: string; citedSourceIds: string[] },
-    status: SeedQuestion["status"],
+    status: SeedQuestion['status'],
   ) {
-    onMark(answer.seedId, answer.questionId, status);
+    await onMark(answer.seedId, answer.questionId, status);
     setMarkedStatuses((current) => ({ ...current, [answer.questionId]: status }));
-    if (status === "needs_material") {
-      setFollowUpQuestion(`请继续补充“${answer.question}”背后的事实证据、反方材料和可引用来源。`);
+    if (status === 'needs_material') {
+      setFollowUpQuestion(`请继续补充”${answer.question}”背后的事实证据、反方材料和可引用来源。`);
     }
   }
 
@@ -3121,12 +3304,12 @@ function QuestionDialog({
               className="btn primary"
               onClick={submitQuestion}
               type="button"
-              disabled={flowResolved || (latestAnswer ? !followUpQuestion.trim() : !question.trim())}
+              disabled={isLoading || flowResolved || (latestAnswer ? !followUpQuestion.trim() : !question.trim())}
             >
-              <MessageCircleQuestion size={14} />
-              {latestAnswer ? "继续追问并记录" : "让 Agent 回答并记录"}
+              {isLoading ? <Loader2 size={14} className="spin" /> : <MessageCircleQuestion size={14} />}
+              {isLoading ? "Agent 思考中..." : latestAnswer ? "继续追问并记录" : "让 Agent 回答并记录"}
             </button>
-            <button className="btn ghost" onClick={onClose} type="button">
+            <button className="btn ghost" onClick={onClose} type="button" disabled={isLoading}>
               完成
             </button>
           </div>
@@ -3230,8 +3413,8 @@ function WateringModal({
   onToggle: (material: WateringMaterial) => void;
   onEdit: (material: WateringMaterial, patch: Partial<WateringMaterial>) => void;
   onDelete: (materialId: string) => void;
-  onResolve: (seedId: string, material: WateringMaterial) => void;
-  onAgentSupplement: (type: Extract<WateringMaterialType, "evidence" | "counterargument">) => void;
+  onResolve: (seedId: string, material: WateringMaterial) => Promise<void>;
+  onAgentSupplement: (type: Extract<WateringMaterialType, "evidence" | "counterargument">) => Promise<void>;
 }) {
   const [drafts, setDrafts] = useState<Record<WateringMaterialType, string>>({
     evidence: "",
@@ -3239,6 +3422,8 @@ function WateringModal({
     personal_experience: "",
     open_question: "",
   });
+  const [agentLoading, setAgentLoading] = useState<Extract<WateringMaterialType, "evidence" | "counterargument"> | null>(null);
+  const [resolveLoading, setResolveLoading] = useState<string | null>(null);
 
   return (
     <div className="overlay">
@@ -3290,8 +3475,28 @@ function WateringModal({
                     添加
                   </button>
                   {type === "evidence" || type === "counterargument" ? (
-                    <button className="btn ghost compact" onClick={() => onAgentSupplement(type)} type="button">
-                      {type === "evidence" ? "Agent 补证据" : "Agent 找反方"}
+                    <button
+                      className="btn ghost compact"
+                      onClick={async () => {
+                        setAgentLoading(type);
+                        try {
+                          await onAgentSupplement(type);
+                        } finally {
+                          setAgentLoading(null);
+                        }
+                      }}
+                      type="button"
+                      disabled={agentLoading !== null}
+                    >
+                      {agentLoading === type ? (
+                        <>
+                          <Loader2 size={14} className="spin" /> Agent 思考中...
+                        </>
+                      ) : type === "evidence" ? (
+                        "Agent 补证据"
+                      ) : (
+                        "Agent 找反方"
+                      )}
                     </button>
                   ) : null}
                   <div className="material-list">
@@ -3327,10 +3532,11 @@ function MaterialItem({
   onToggle: () => void;
   onEdit: (patch: Partial<WateringMaterial>) => void;
   onDelete: () => void;
-  onResolve?: () => void;
+  onResolve?: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(material.content);
+  const [resolveLoading, setResolveLoading] = useState(false);
 
   return (
     <article className="material-item">
@@ -3359,8 +3565,26 @@ function MaterialItem({
           {editing ? "保存编辑" : "编辑"}
         </button>
         {onResolve ? (
-          <button className="btn ghost compact" onClick={onResolve} type="button">
-            问 Agent
+          <button
+            className="btn ghost compact"
+            onClick={async () => {
+              setResolveLoading(true);
+              try {
+                await onResolve();
+              } finally {
+                setResolveLoading(false);
+              }
+            }}
+            type="button"
+            disabled={resolveLoading}
+          >
+            {resolveLoading ? (
+              <>
+                <Loader2 size={14} className="spin" /> Agent 思考中...
+              </>
+            ) : (
+              '问 Agent'
+            )}
           </button>
         ) : null}
         <button className="btn ghost compact danger" onClick={onDelete} type="button">
@@ -3666,6 +3890,49 @@ function ensureTargetCategories(
   return { categories: targetCategories, cards: filteredContent.cards };
 }
 
+function normalizeContentPayload(
+  content: { categories: InputCategory[]; cards: WorthReadingCard[] },
+): { categories: InputCategory[]; cards: WorthReadingCard[] } {
+  return {
+    categories: content.categories,
+    cards: normalizeCards(content.cards),
+  };
+}
+
+function normalizeCards(cards: WorthReadingCard[]): WorthReadingCard[] {
+  return cards.map(normalizeCard);
+}
+
+function normalizeCard(card: WorthReadingCard): WorthReadingCard {
+  return {
+    ...card,
+    tags: (card.tags ?? []).map(normalizeTag),
+    recommendationReason: card.recommendationReason || "来自知乎真实内容，适合继续阅读和沉淀观点。",
+    contentSummary: card.contentSummary || card.originalSources?.[0]?.rawExcerpt || card.title,
+    controversies: card.controversies?.length
+      ? card.controversies
+      : [`围绕“${card.title}”最需要先区分事实、判断和立场。`],
+    writingAngles: card.writingAngles?.length
+      ? card.writingAngles
+      : [`我对“${card.title}”的核心判断`],
+    originalSources: (card.originalSources ?? []).map((source) => ({
+      ...source,
+      meta: Array.isArray(source.meta) ? source.meta : [],
+      rawExcerpt: source.rawExcerpt || source.fullContent || source.title,
+      fullContent: source.fullContent || source.rawExcerpt || source.title,
+      contribution: source.contribution || "提供真实来源内容",
+    })),
+  };
+}
+
+function normalizeTag(tag: { label: string; tone: Tone } | string): { label: string; tone: Tone } {
+  if (typeof tag === "string") return { label: tag, tone: "blue" };
+  return {
+    label: tag.label || "真实来源",
+    tone: tag.tone || "blue",
+  };
+}
+
 function filterContentByTargetCategoryIds(
   content: { categories: InputCategory[]; cards: WorthReadingCard[] },
   targetCategoryIds: string[],
@@ -3879,6 +4146,7 @@ function reactionLabel(reaction: SeedReaction) {
 
 function opportunityStatus(status: NonNullable<SproutOpportunity["status"]>) {
   const labels: Record<NonNullable<SproutOpportunity["status"]>, string> = {
+    active: "可发芽",
     new: "新机会",
     supplemented: "已补资料",
     angle_changed: "已换角度",
@@ -3904,6 +4172,11 @@ function sectionDescription(category: string) {
   if (category === "following") return "来自你关注的人和圈子动态，优先筛选观点密度高、讨论价值高的内容。";
   if (category === "serendipity") return "保留少量远端关联信息，避免推荐只在同温层内自我强化。";
   return "基于你的兴趣画像、阅读反应、热榜、搜索和关注流信号筛选。";
+}
+
+function compactSourceDigest(source: ContentSource) {
+  const text = source.rawExcerpt || source.contribution || source.fullContent || source.title;
+  return text.length > 88 ? `${text.slice(0, 88)}...` : text;
 }
 
 function cardsForCategory(cards: WorthReadingCard[], categoryId: string, refreshState?: DemoState["categoryRefreshState"][string]) {

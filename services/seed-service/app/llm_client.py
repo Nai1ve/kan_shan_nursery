@@ -53,12 +53,23 @@ class SeedLlmClient:
         question: str,
         materials: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        # Map seed fields to LLM service expected format
+        seed_for_llm = {
+            "seedId": seed.get("id", ""),
+            "title": seed.get("title", ""),
+            "contentSummary": seed.get("sourceSummary", seed.get("contentSummary", "")),
+            "userReaction": seed.get("userReaction", ""),
+            "userNote": seed.get("userNote", ""),
+            "coreClaim": seed.get("coreClaim", ""),
+            "source": seed.get("source", ""),
+            "sourceTitle": seed.get("sourceTitle", ""),
+        }
         result = self._call(
             "answer-seed-question",
             {
                 "taskType": "answer-seed-question",
                 "input": {
-                    "seed": seed,
+                    "seed": seed_for_llm,
                     "question": question,
                     "materials": materials or [],
                     "sources": seed.get("originalSources", []),

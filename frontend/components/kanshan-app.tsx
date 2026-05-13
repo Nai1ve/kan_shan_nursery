@@ -24,11 +24,21 @@ import {
 import type { ComponentType, Dispatch, KeyboardEvent, MouseEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createManualSeed,
+  createSeedFromCard,
   fetchContent,
+  fetchContentCards,
   fetchFeedbackArticles,
   fetchProfile,
+  fetchProfileInterests,
   fetchSeeds,
   fetchSproutOpportunities,
+  KANSHAN_BACKEND_MODE,
+  mergeSeedsApi,
+  refreshCategory,
+  updateBasicProfile,
+  updateInterests,
+  updateSeed,
 } from "@/lib/api-client";
 import type {
   ContentSource,
@@ -208,14 +218,35 @@ export function KanshanApp() {
 
       if (!mounted) return;
 
+      let selectedInterestIds: string[] = [];
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        try {
+          const interestMemories = await fetchProfileInterests();
+          selectedInterestIds = interestMemories.map((item) => item.interestId).filter(Boolean);
+        } catch {
+          selectedInterestIds = [];
+        }
+      }
+
+      const baseInterestIds = selectedInterestIds.length
+        ? selectedInterestIds
+        : content.categories.filter((category) => category.kind === "interest").map((category) => category.id);
+      const targetCategoryIds = [...baseInterestIds, "following", "serendipity"];
+
+      const filteredContent = filterContentByTargetCategoryIds(content, targetCategoryIds);
+      const normalizedContent = ensureTargetCategories(
+        filteredContent,
+        content.categories,
+        targetCategoryIds,
+      );
       const initialState: DemoState = {
         hasEntered: false,
         activeTab: "today",
-        selectedCategoryId: "shuma",
+        selectedCategoryId: normalizedContent.categories.find((c) => c.kind === "interest")?.id ?? "shuma",
         selectedSeedId: "seed-ai-coding-moat",
         profile,
-        categories: content.categories,
-        cards: content.cards,
+        categories: normalizedContent.categories,
+        cards: normalizedContent.cards,
         seeds,
         sproutOpportunities,
         feedbackArticles,
@@ -258,6 +289,22 @@ export function KanshanApp() {
     setData((current) => (current ? updater(current) : current));
   }
 
+  function persistSeed(seed: IdeaSeed) {
+    if (KANSHAN_BACKEND_MODE !== "gateway") return;
+    void (async () => {
+      try {
+        await updateSeed(seed.id, seed);
+      } catch (err) {
+        try {
+          await createManualSeed(seed);
+        } catch (createErr) {
+          console.error("Persist seed failed", err, createErr);
+          showToast("数据已记录，但同步到服务端失败");
+        }
+      }
+    })();
+  }
+
   function enterApp(mode: "zhihu" | "onboarding" | "demo") {
     if (mode === "zhihu") {
       const adapterUrl = process.env.NEXT_PUBLIC_ZHIHU_ADAPTER_URL || "http://127.0.0.1:8070";
@@ -275,15 +322,61 @@ export function KanshanApp() {
     showToast(mode === "onboarding" ? "进入首次画像采集" : "进入演示模式");
   }
 
-  function completeAuthEntry(profile?: ProfileData) {
+  async function completeAuthEntry(profile?: ProfileData) {
     setEntered(true);
     setActiveTab("today");
-    updateData((current) => ({
-      ...current,
-      hasEntered: true,
-      activeTab: "today",
-      profile: profile ?? current.profile,
-    }));
+
+    // Re-fetch content on login/onboarding so categories/cards
+    // reflect the user's actual interests from the backend.
+    let nextCategories = data?.categories;
+    let nextCards = data?.cards;
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      try {
+        const [content, interestMemories] = await Promise.all([
+          fetchContent(),
+          fetchProfileInterests(),
+        ]);
+        const selectedInterestIds = interestMemories.map((item) => item.interestId).filter(Boolean);
+        const baseInterestIds = selectedInterestIds.length
+          ? selectedInterestIds
+          : content.categories.filter((category) => category.kind === "interest").map((category) => category.id);
+        const targetCategoryIds = [...baseInterestIds, "following", "serendipity"];
+        const filteredContent = filterContentByTargetCategoryIds(content, targetCategoryIds);
+        const normalizedContent = ensureTargetCategories(
+          filteredContent,
+          content.categories,
+          targetCategoryIds,
+        );        nextCategories = normalizedContent.categories;
+        nextCards = normalizedContent.cards;
+      } catch {
+        showToast("内容刷新失败，使用缓存数据");
+      }
+    }
+
+    const fallbackCategory =
+      nextCategories?.find((c) => c.kind === "interest")?.id ?? "shuma";
+
+    updateData((current) => {
+      const effectiveCategories = nextCategories ?? current.categories;
+      const effectiveCards = nextCards ?? current.cards;
+      // Validate selectedCategoryId against the new categories
+      const validCategoryIds = new Set(effectiveCategories.map((c) => c.id));
+      const nextSelectedCategory = validCategoryIds.has(current.selectedCategoryId)
+        ? current.selectedCategoryId
+        : fallbackCategory;
+      if (nextSelectedCategory !== current.selectedCategoryId) {
+        setSelectedCategory(nextSelectedCategory);
+      }
+      return {
+        ...current,
+        hasEntered: true,
+        activeTab: "today",
+        profile: profile ?? current.profile,
+        categories: effectiveCategories,
+        cards: effectiveCards,
+        selectedCategoryId: nextSelectedCategory,
+      };
+    });
     showToast(profile ? "临时画像已生成，进入工作台" : "欢迎回来，进入工作台");
   }
 
@@ -293,9 +386,27 @@ export function KanshanApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function selectCategory(categoryId: string) {
+  async function selectCategory(categoryId: string) {
+    if (!data?.categories.some((category) => category.id === categoryId)) {
+      showToast("该分类不在当前可见范围");
+      return;
+    }
+
     setSelectedCategory(categoryId);
     updateData((current) => ({ ...current, selectedCategoryId: categoryId }));
+
+    if (KANSHAN_BACKEND_MODE !== "gateway") return;
+
+    try {
+      const cards = await fetchContentCards(categoryId);
+      updateData((current) => {
+        const otherCards = current.cards.filter((card) => card.categoryId !== categoryId);
+        return { ...current, cards: [...otherCards, ...cards] };
+      });
+    } catch (err) {
+      console.error("Load category cards failed", err);
+      showToast("分类内容加载失败，暂时显示缓存");
+    }
   }
 
   function selectSeed(seedId: string) {
@@ -334,15 +445,50 @@ export function KanshanApp() {
     return seedId;
   }
 
-  function recordReaction(card: WorthReadingCard, reaction: Extract<SeedReaction, "agree" | "disagree">) {
-    ensureSeedFromCard(card, reaction, reaction === "agree" ? "我认同这个方向，后续可以继续补证据。" : "我反对当前结论，需要整理反方理由。");
+  function recordReaction(
+    card: WorthReadingCard,
+    reaction: Extract<SeedReaction, "agree" | "disagree">,
+    note: string,
+  ) {
+    const finalNote =
+      note.trim() ||
+      (reaction === "agree"
+        ? "我认同这个方向，后续可以继续补证据。"
+        : "我反对当前结论，需要整理反方理由。");
+    const seedId = ensureSeedFromCard(card, reaction, finalNote);
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      void createSeedFromCard({ cardId: card.id, reaction, userNote: finalNote, card, seedId }).catch((err) => {
+        console.error("Persist seed failed", err);
+        showToast("种子已记录，但同步到服务端失败，请检查后端");
+      });
+    }
     showToast(reaction === "agree" ? "已记录认同，并沉淀到种子库" : "已记录反对，并加入反方材料");
   }
 
+  function clearCardReaction(cardId: string) {
+    if (!data) return;
+    const seed = data.seeds.find((item) => item.createdFromCardId === cardId);
+    let nextSeed: IdeaSeed | null = null;
+    if (seed) {
+      nextSeed = recalcSeed({ ...seed, userReaction: "supplement", updatedAt: now() });
+    }
+    updateData((current) => {
+      const newReactions = { ...current.reactions };
+      delete newReactions[cardId];
+      const seeds = nextSeed
+        ? current.seeds.map((item) => (item.id === nextSeed!.id ? nextSeed! : item))
+        : current.seeds;
+      return { ...current, seeds, reactions: newReactions };
+    });
+    if (nextSeed) persistSeed(nextSeed);
+    showToast("已清除表态");
+  }
+
   function answerQuestion(card: WorthReadingCard, question: string) {
-    const seedId = ensureSeedFromCard(card, "question", `我的疑问：${question}`);
-    const currentSeed = data?.seeds.find((seed) => seed.id === seedId);
-    const turnIndex = currentSeed?.questions.length ?? 0;
+    if (!data) throw new Error("data not ready");
+    const existing = data.seeds.find((seed) => seed.createdFromCardId === card.id);
+    const seedId = existing?.id ?? createId("seed", card.id);
+    const turnIndex = existing?.questions.length ?? 0;
     const answer = buildAgentAnswer(card, question, turnIndex);
     const answerMaterialType: WateringMaterialType = /反方|质疑|漏洞|风险|不足|边界/.test(question) ? "counterargument" : "evidence";
     const questionId = createId("question", card.id);
@@ -354,53 +500,58 @@ export function KanshanApp() {
       status: "answered",
       createdAt: now(),
     };
-    updateData((current) => ({
-      ...current,
-      seeds: current.seeds.map((seed) => {
-        if (seed.id !== seedId) return seed;
-        return recalcSeed({
-          ...seed,
-          questions: [questionRecord, ...seed.questions],
-          wateringMaterials: [
-            buildMaterial("open_question", "用户疑问", question, "有疑问按钮", false),
-            buildMaterial(answerMaterialType, turnIndex ? "Agent 继续追问回答" : "Agent 初步回答", answer, "Agent 问答", true),
-            ...seed.wateringMaterials,
-          ],
-          updatedAt: now(),
-        });
-      }),
-    }));
+    const baseSeed = existing
+      ? existing
+      : buildSeedFromCard(card, data.categories, "question", `用户提出疑问：${question}`, seedId);
+    const nextSeed = recalcSeed({
+      ...baseSeed,
+      questions: [questionRecord, ...baseSeed.questions],
+      wateringMaterials: [
+        buildMaterial("open_question", "用户疑问", question, "有疑问按钮", false),
+        buildMaterial(answerMaterialType, turnIndex ? "Agent 继续追问回答" : "Agent 初步回答", answer, "Agent 问答", true),
+        ...baseSeed.wateringMaterials,
+      ],
+      updatedAt: now(),
+    });
+    updateData((current) => {
+      const seeds = existing
+        ? current.seeds.map((seed) => (seed.id === seedId ? nextSeed : seed))
+        : [nextSeed, ...current.seeds];
+      // Preserve any existing agree/disagree reaction — questions stack on top of, not replace, the user's stance.
+      const reactions = current.reactions[card.id]
+        ? current.reactions
+        : { ...current.reactions, [card.id]: "question" as SeedReaction };
+      return { ...current, seeds, reactions };
+    });
+    setSelectedSeedId(seedId);
+    persistSeed(nextSeed);
     showToast("疑问已记录，Agent 回答已回写到浇水材料");
     return { seedId, questionId, question, agentAnswer: answer, citedSourceIds: card.originalSources.map((source) => source.sourceId) };
   }
 
   function markQuestion(seedId: string, questionId: string, status: SeedQuestion["status"]) {
+    if (!data) return;
+    const seed = data.seeds.find((item) => item.id === seedId);
+    if (!seed) return;
+    const targetQuestion = seed.questions.find((question) => question.id === questionId);
+    const nextSeed = recalcSeed({
+      ...seed,
+      questions: seed.questions.map((question) => (question.id === questionId ? { ...question, status } : question)),
+      wateringMaterials: targetQuestion
+        ? seed.wateringMaterials.map((material) =>
+            material.type === "open_question" && material.content === targetQuestion.question
+              ? { ...material, adopted: status === "resolved" }
+              : material,
+          )
+        : seed.wateringMaterials,
+      updatedAt: now(),
+    });
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((seed) => {
-        if (seed.id !== seedId) return seed;
-        const targetQuestion = seed.questions.find((question) => question.id === questionId);
-        return recalcSeed({
-          ...seed,
-          questions: seed.questions.map((question) => (question.id === questionId ? { ...question, status } : question)),
-          wateringMaterials: targetQuestion
-            ? seed.wateringMaterials.map((material) =>
-                material.type === "open_question" && material.content === targetQuestion.question
-                  ? { ...material, adopted: status === "resolved" }
-                  : material,
-              )
-            : seed.wateringMaterials,
-          updatedAt: now(),
-        });
-      }),
+      seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
+    persistSeed(nextSeed);
     showToast(status === "resolved" ? "疑问已标记为已解决" : "疑问已标记为仍需补资料");
-  }
-
-  function addSeedFromCard(card: WorthReadingCard) {
-    const seedId = ensureSeedFromCard(card, "supplement", "我想把这条内容先沉淀成可继续培养的观点种子。");
-    selectSeed(seedId);
-    showToast("已加入种子库");
   }
 
   function writeFromCard(card: WorthReadingCard) {
@@ -441,53 +592,58 @@ export function KanshanApp() {
     updateData((current) => ({ ...current, seeds: [newSeed, ...current.seeds] }));
     selectSeed(newSeed.id);
     setNewSeedOpen(false);
+    persistSeed(newSeed);
     showToast("新种子已创建，进入待浇水状态");
   }
 
   function addMaterial(seedId: string, material: Omit<WateringMaterial, "id" | "createdAt">) {
+    if (!data) return;
+    const seed = data.seeds.find((item) => item.id === seedId);
+    if (!seed) return;
+    const newMaterial: WateringMaterial = { ...material, id: createId("material", material.type), createdAt: now() };
+    const nextSeed = recalcSeed({
+      ...seed,
+      wateringMaterials: [newMaterial, ...seed.wateringMaterials],
+      updatedAt: now(),
+    });
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((seed) =>
-        seed.id === seedId
-          ? recalcSeed({
-              ...seed,
-              wateringMaterials: [{ ...material, id: createId("material", material.type), createdAt: now() }, ...seed.wateringMaterials],
-              updatedAt: now(),
-            })
-          : seed,
-      ),
+      seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
+    persistSeed(nextSeed);
     showToast("材料已补充，成熟度已更新");
   }
 
   function updateMaterial(seedId: string, materialId: string, patch: Partial<WateringMaterial>) {
+    if (!data) return;
+    const seed = data.seeds.find((item) => item.id === seedId);
+    if (!seed) return;
+    const nextSeed = recalcSeed({
+      ...seed,
+      wateringMaterials: seed.wateringMaterials.map((item) => (item.id === materialId ? { ...item, ...patch } : item)),
+      updatedAt: now(),
+    });
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((seed) =>
-        seed.id === seedId
-          ? recalcSeed({
-              ...seed,
-              wateringMaterials: seed.wateringMaterials.map((item) => (item.id === materialId ? { ...item, ...patch } : item)),
-              updatedAt: now(),
-            })
-          : seed,
-      ),
+      seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
+    persistSeed(nextSeed);
   }
 
   function deleteMaterial(seedId: string, materialId: string) {
+    if (!data) return;
+    const seed = data.seeds.find((item) => item.id === seedId);
+    if (!seed) return;
+    const nextSeed = recalcSeed({
+      ...seed,
+      wateringMaterials: seed.wateringMaterials.filter((item) => item.id !== materialId),
+      updatedAt: now(),
+    });
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((seed) =>
-        seed.id === seedId
-          ? recalcSeed({
-              ...seed,
-              wateringMaterials: seed.wateringMaterials.filter((item) => item.id !== materialId),
-              updatedAt: now(),
-            })
-          : seed,
-      ),
+      seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
+    persistSeed(nextSeed);
     showToast("已删除材料，成熟度已更新");
   }
 
@@ -495,33 +651,31 @@ export function KanshanApp() {
     const seed = data?.seeds.find((item) => item.id === seedId);
     if (!seed) return;
     const answer = `基于当前来源和反方材料，Agent 的初步回答是：${material.content} 需要拆成事实判断和价值判断两层。事实层先补来源证据，价值层保留你的工程经验和边界说明。`;
+    const nextSeed = recalcSeed({
+      ...seed,
+      questions: [
+        {
+          id: createId("question", seedId),
+          question: material.content,
+          agentAnswer: answer,
+          citedSourceIds: [],
+          status: "answered",
+          createdAt: now(),
+        },
+        ...seed.questions,
+      ],
+      wateringMaterials: [
+        { ...material, adopted: true },
+        buildMaterial("evidence", "Agent 回答待解决问题", answer, "继续浇水 / Agent 问答", true),
+        ...seed.wateringMaterials.filter((currentMaterial) => currentMaterial.id !== material.id),
+      ],
+      updatedAt: now(),
+    });
     updateData((current) => ({
       ...current,
-      seeds: current.seeds.map((item) =>
-        item.id === seedId
-          ? recalcSeed({
-              ...item,
-              questions: [
-                {
-                  id: createId("question", seedId),
-                  question: material.content,
-                  agentAnswer: answer,
-                  citedSourceIds: [],
-                  status: "answered",
-                  createdAt: now(),
-                },
-                ...item.questions,
-              ],
-              wateringMaterials: [
-                { ...material, adopted: true },
-                buildMaterial("evidence", "Agent 回答待解决问题", answer, "继续浇水 / Agent 问答", true),
-                ...item.wateringMaterials.filter((currentMaterial) => currentMaterial.id !== material.id),
-              ],
-              updatedAt: now(),
-            })
-          : item,
-      ),
+      seeds: current.seeds.map((item) => (item.id === seedId ? nextSeed : item)),
     }));
+    persistSeed(nextSeed);
     showToast("Agent 已回答待解决问题，并写入事实证据");
   }
 
@@ -548,11 +702,12 @@ export function KanshanApp() {
   }
 
   function mergeSeeds(targetId: string, sourceId: string) {
-    updateData((current) => {
-      const target = current.seeds.find((seed) => seed.id === targetId);
-      const source = current.seeds.find((seed) => seed.id === sourceId);
-      if (!target || !source) return current;
-      const [merged] = ensureUniqueMaterialIds([recalcSeed({
+    if (!data) return;
+    const target = data.seeds.find((seed) => seed.id === targetId);
+    const source = data.seeds.find((seed) => seed.id === sourceId);
+    if (!target || !source) return;
+    const [merged] = ensureUniqueMaterialIds([
+      recalcSeed({
         ...target,
         possibleAngles: unique([...target.possibleAngles, ...source.possibleAngles]),
         counterArguments: unique([...target.counterArguments, ...source.counterArguments]),
@@ -561,10 +716,19 @@ export function KanshanApp() {
         questions: [...target.questions, ...source.questions],
         userNote: `${target.userNote}\n合并补充：${source.userNote}`,
         updatedAt: now(),
-      })]);
-      return { ...current, seeds: current.seeds.filter((seed) => seed.id !== sourceId).map((seed) => (seed.id === targetId ? merged : seed)) };
-    });
+      }),
+    ]);
+    updateData((current) => ({
+      ...current,
+      seeds: current.seeds.filter((seed) => seed.id !== sourceId).map((seed) => (seed.id === targetId ? merged : seed)),
+    }));
     setMergeSeedId(null);
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      void mergeSeedsApi(targetId, sourceId).catch((err) => {
+        console.error("Persist merge failed", err);
+        showToast("合并已记录，但同步到服务端失败");
+      });
+    }
     showToast("相似种子已合并，材料和疑问已归并");
   }
 
@@ -718,9 +882,20 @@ export function KanshanApp() {
     showToast("已从历史反馈生成二次文章种子");
   }
 
-  function saveProfile(profile: ProfileData) {
-    updateData((current) => ({ ...current, profile }));
-    showToast("个人画像已保存，并写入本地 Memory");
+  async function saveProfile(profile: ProfileData) {
+    try {
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        const updated = await updateBasicProfile(profile);
+        updateData((current) => ({ ...current, profile: updated }));
+        showToast("个人画像已保存并同步到服务器");
+      } else {
+        updateData((current) => ({ ...current, profile }));
+        showToast("个人画像已保存（本地 mock）");
+      }
+    } catch (err) {
+      console.error("Save profile failed:", err);
+      showToast("保存失败，请检查网络连接");
+    }
   }
 
   function resetDemoState() {
@@ -735,27 +910,75 @@ export function KanshanApp() {
 
   const selectedCategoryRefresh = data?.categoryRefreshState[selectedCategory];
 
-  function refreshSelectedCategory() {
+  async function refreshSelectedCategory() {
     if (!data) return;
+
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      try {
+        const refreshed = await refreshCategory(selectedCategory);
+        updateData((state) => {
+          const otherCards = state.cards.filter((card) => card.categoryId !== selectedCategory);
+          return {
+            ...state,
+            cards: [...otherCards, ...refreshed.cards],
+            categoryRefreshState: {
+              ...state.categoryRefreshState,
+              [selectedCategory]: refreshed.refreshState
+                ? {
+                    refreshCount: refreshed.refreshState.refreshCount,
+                    refreshedAt: refreshed.refreshState.refreshedAt,
+                    visibleCardIds: refreshed.cards.map((card) => card.id),
+                  }
+                : {
+                    refreshCount: 1,
+                    refreshedAt: now(),
+                    visibleCardIds: refreshed.cards.map((card) => card.id),
+                  },
+            },
+            expandedSourceIds: {},
+          };
+        });
+        showToast(`已刷新${sectionTitle(data.categories, selectedCategory)}内容`);
+      } catch (err) {
+        console.error("Refresh category failed", err);
+        showToast("刷新失败，请稍后重试");
+      }
+      return;
+    }
+
     const currentCards = data.cards.filter((card) => card.categoryId === selectedCategory);
     if (!currentCards.length) return;
     const current = data.categoryRefreshState[selectedCategory];
     const nextCount = (current?.refreshCount ?? 0) + 1;
-    const baseIds = current?.visibleCardIds?.length ? current.visibleCardIds : currentCards.map((card) => card.id);
-    const rotated = rotateIds(baseIds, 1);
+    const refreshedAt = now();
+    const newCards: WorthReadingCard[] = currentCards.slice(0, 2).map((card, idx) => ({
+      ...card,
+      id: `${card.id}-r${nextCount}-${idx}`,
+      relevanceScore: Math.min(99, (card.relevanceScore ?? 80) + nextCount),
+      tags: [
+        ...card.tags.filter((tag) => tag.label && !tag.label.startsWith("刷新")),
+        { label: `刷新 ${nextCount}`, tone: "green" as Tone },
+      ],
+      createdAt: refreshedAt,
+    }));
+    const newIds = newCards.map((card) => card.id);
+    const prevIds = current?.visibleCardIds?.length
+      ? current.visibleCardIds
+      : currentCards.map((card) => card.id);
     updateData((state) => ({
       ...state,
+      cards: [...newCards, ...state.cards],
       categoryRefreshState: {
         ...state.categoryRefreshState,
         [selectedCategory]: {
           refreshCount: nextCount,
-          refreshedAt: now(),
-          visibleCardIds: rotated,
+          refreshedAt,
+          visibleCardIds: [...newIds, ...prevIds],
         },
       },
       expandedSourceIds: {},
     }));
-    showToast(`已刷新${sectionTitle(data.categories, selectedCategory)}，本地状态已保留`);
+    showToast(`已为${sectionTitle(data.categories, selectedCategory)}追加新内容，旧卡片保留可比对`);
   }
 
   function toggleSource(cardId: string, sourceId: string) {
@@ -887,16 +1110,8 @@ export function KanshanApp() {
               }));
             }}
             onReact={recordReaction}
-            onClearReaction={(cardId) => {
-              updateData((current) => {
-                const newReactions = { ...current.reactions };
-                delete newReactions[cardId];
-                return { ...current, reactions: newReactions };
-              });
-              showToast("已清除表态");
-            }}
+            onClearReaction={clearCardReaction}
             onQuestion={setQuestionCard}
-            onAddSeed={addSeedFromCard}
             onWrite={writeFromCard}
           />
         ) : null}
@@ -1120,7 +1335,6 @@ function TodaySection({
   onReact,
   onClearReaction,
   onQuestion,
-  onAddSeed,
   onWrite,
 }: {
   categories: InputCategory[];
@@ -1134,10 +1348,9 @@ function TodaySection({
   onRefresh: () => void;
   onToggleSource: (cardId: string, sourceId: string) => void;
   onToggleSummary: (cardId: string) => void;
-  onReact: (card: WorthReadingCard, reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
+  onReact: (card: WorthReadingCard, reaction: Extract<SeedReaction, "agree" | "disagree">, note: string) => void;
   onClearReaction: (cardId: string) => void;
   onQuestion: (card: WorthReadingCard) => void;
-  onAddSeed: (card: WorthReadingCard) => void;
   onWrite: (card: WorthReadingCard) => void;
 }) {
   return (
@@ -1194,10 +1407,9 @@ function TodaySection({
                   expandedSourceId={expandedSourceIds[card.id] || ""}
                   onToggleSource={(sourceId) => onToggleSource(card.id, sourceId)}
                   onToggleSummary={() => onToggleSummary(card.id)}
-                  onReact={(reaction) => onReact(card, reaction)}
+                  onReact={(reaction, note) => onReact(card, reaction, note)}
                   onClearReaction={() => onClearReaction(card.id)}
                   onQuestion={() => onQuestion(card)}
-                  onAddSeed={() => onAddSeed(card)}
                   onWrite={() => onWrite(card)}
                 />
               ))}
@@ -1220,7 +1432,6 @@ function ContentCard({
   onReact,
   onClearReaction,
   onQuestion,
-  onAddSeed,
   onWrite,
 }: {
   card: WorthReadingCard;
@@ -1230,13 +1441,13 @@ function ContentCard({
   expandedSourceId: string;
   onToggleSource: (sourceId: string) => void;
   onToggleSummary: () => void;
-  onReact: (reaction: Extract<SeedReaction, "agree" | "disagree">) => void;
+  onReact: (reaction: Extract<SeedReaction, "agree" | "disagree">, note: string) => void;
   onClearReaction: () => void;
   onQuestion: () => void;
-  onAddSeed: () => void;
   onWrite: () => void;
 }) {
   const cardExpanded = featured || expanded;
+  const [pendingReaction, setPendingReaction] = useState<Extract<SeedReaction, "agree" | "disagree"> | null>(null);
   const [reactionNote, setReactionNote] = useState("");
   const hasReaction = reaction === "agree" || reaction === "disagree";
 
@@ -1327,27 +1538,24 @@ function ContentCard({
       ) : null}
       <ListBlock ordered title="主要争议" items={card.controversies} />
       <ListBlock title="可写角度" items={card.writingAngles} />
-      {!hasReaction ? (
+      {!hasReaction && !pendingReaction ? (
         <div className="action-row">
-          <button className="btn ghost" onClick={() => onReact("agree")} type="button">
+          <button className="btn ghost" onClick={() => setPendingReaction("agree")} type="button">
             认同
           </button>
-          <button className="btn ghost" onClick={() => onReact("disagree")} type="button">
+          <button className="btn ghost" onClick={() => setPendingReaction("disagree")} type="button">
             反对
           </button>
           <button className="btn ghost" onClick={onQuestion} type="button">
             疑问
           </button>
         </div>
-      ) : (
+      ) : pendingReaction ? (
         <div className="reaction-result">
           <div className="reaction-header">
-            <span className={`tag ${reaction === "agree" ? "green" : "orange"}`}>
-              已记录：{reactionLabel(reaction)}
+            <span className={`tag ${pendingReaction === "agree" ? "green" : "orange"}`}>
+              准备提交：{reactionLabel(pendingReaction)}
             </span>
-            <button className="btn ghost compact" onClick={() => { setReactionNote(""); onClearReaction(); }} type="button" style={{ fontSize: 12, padding: "4px 10px" }}>
-              清除表态
-            </button>
           </div>
           <textarea
             className="textarea"
@@ -1357,13 +1565,55 @@ function ContentCard({
             style={{ minHeight: 60, marginTop: 8, marginBottom: 8 }}
           />
           <div className="action-row">
+            <button
+              className="btn primary"
+              onClick={() => {
+                onReact(pendingReaction, reactionNote);
+                setPendingReaction(null);
+                setReactionNote("");
+              }}
+              type="button"
+            >
+              提交并加入种子库
+            </button>
+            <button
+              className="btn ghost"
+              onClick={() => {
+                setPendingReaction(null);
+                setReactionNote("");
+              }}
+              type="button"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="reaction-result">
+          <div className="reaction-header">
+            <span className={`tag ${reaction === "agree" ? "green" : "orange"}`}>
+              已记录：{reactionLabel(reaction as SeedReaction)} · 已存入种子库
+            </span>
+            <button
+              className="btn ghost compact"
+              onClick={() => {
+                setReactionNote("");
+                onClearReaction();
+              }}
+              type="button"
+              style={{ fontSize: 12, padding: "4px 10px" }}
+            >
+              清除表态
+            </button>
+          </div>
+          <div className="action-row">
             <button className={`btn ghost ${expanded ? "selected" : ""}`} onClick={onToggleSummary} type="button">
               总结一下
             </button>
-            <button className="btn primary" onClick={onAddSeed} type="button">
-              加入种子库
+            <button className="btn ghost" onClick={onQuestion} type="button">
+              有疑问
             </button>
-            <button className="btn ghost" onClick={onWrite} type="button">
+            <button className="btn primary" onClick={onWrite} type="button">
               基于它写一篇
             </button>
           </div>
@@ -2100,9 +2350,39 @@ function ProfileSection({
     setDraft({ ...draft, interests });
   }
 
-  function saveDraft(message = "用户管理信息已保存，并写入本地 Memory") {
-    onSave(draft);
-    onNotify(message);
+  async function saveDraft(message = "用户管理信息已保存") {
+    try {
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        const selectedInterestIds = interestCategories
+          .filter((category) => draft.interests.includes(category.name))
+          .map((category) => category.id);
+
+        const updatedProfile = await updateInterests(
+          selectedInterestIds.map((interestId) => ({
+            interestId,
+            selected: true,
+            selfRatedLevel: "intermediate",
+            intent: "both",
+          })),
+        );
+
+        await updateBasicProfile({
+          nickname: draft.nickname,
+          role: draft.role,
+          avoidances: draft.avoidances,
+        });
+
+        setDraft(updatedProfile);
+        onSave(updatedProfile);
+        onNotify(message + "（已同步到服务器）");
+      } else {
+        onSave(draft);
+        onNotify(message + "（本地 mock）");
+      }
+    } catch (err) {
+      console.error("Save draft failed:", err);
+      onNotify("保存失败，请检查网络连接");
+    }
   }
 
   function mockAction(message: string) {
@@ -2407,6 +2687,21 @@ function ProfileSection({
               </button>
             </div>
             <div className="panel-body form-grid">
+              <div className="field-block">
+                <div className="field-title">已选择的兴趣类别（来自注册时的选择）</div>
+                <div className="tag-row">
+                  {interestCategories.map((category) => (
+                    <button
+                      className={`chip ${draft.interests.includes(category.name) ? "selected" : ""}`}
+                      key={category.id}
+                      onClick={() => toggleInterest(category.name)}
+                      type="button"
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid-2">
                 {profileInterestGroups.map((group) => (
                   <div className="interest-group" key={group.group}>
@@ -2421,16 +2716,6 @@ function ProfileSection({
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="field-block">
-                <div className="field-title">当前业务兴趣小类</div>
-                <div className="tag-row">
-                  {interestCategories.map((category) => (
-                    <button className={`chip ${draft.interests.includes(category.name) ? "selected" : ""}`} key={category.id} onClick={() => toggleInterest(category.name)} type="button">
-                      {category.name}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           </div>
@@ -3289,25 +3574,80 @@ function MemoryCard({ title, text, onChange }: { title: string; text: string; on
   );
 }
 
+function deriveReactionsFromSeeds(seeds: IdeaSeed[]): Record<string, SeedReaction> {
+  const reactions: Record<string, SeedReaction> = {};
+  for (const seed of seeds) {
+    if (seed.createdFromCardId && seed.userReaction) {
+      reactions[seed.createdFromCardId] = seed.userReaction;
+    }
+  }
+  return reactions;
+}
+
+function ensureTargetCategories(
+  filteredContent: { categories: InputCategory[]; cards: WorthReadingCard[] },
+  allCategories: InputCategory[],
+  targetCategoryIds: string[],
+): { categories: InputCategory[]; cards: WorthReadingCard[] } {
+  const targetSet = new Set(targetCategoryIds.filter(Boolean));
+  if (!targetSet.size) return filteredContent;
+
+  const byId = new Map(allCategories.map((category) => [category.id, category]));
+  const targetCategories = targetCategoryIds
+    .map((id) => byId.get(id))
+    .filter((category): category is InputCategory => Boolean(category));
+
+  return { categories: targetCategories, cards: filteredContent.cards };
+}
+
+function filterContentByTargetCategoryIds(
+  content: { categories: InputCategory[]; cards: WorthReadingCard[] },
+  targetCategoryIds: string[],
+): { categories: InputCategory[]; cards: WorthReadingCard[] } {
+  const targetSet = new Set(targetCategoryIds.filter(Boolean));
+  if (!targetSet.size) return content;
+
+  const categories = content.categories.filter((category) => targetSet.has(category.id));
+  const allowedCategoryIds = new Set(categories.map((category) => category.id));
+  const cards = content.cards.filter((card) => allowedCategoryIds.has(card.categoryId));
+
+  return { categories, cards };
+}
+
 function readStoredState(initialState: DemoState): DemoState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialState;
     const stored = JSON.parse(raw) as Partial<DemoState>;
+    // In gateway mode the backend is the source of truth for seeds and the
+    // derived reactions map; keep only UI-level preferences from localStorage.
+    const seeds = KANSHAN_BACKEND_MODE === "gateway"
+      ? ensureUniqueMaterialIds(initialState.seeds)
+      : ensureUniqueMaterialIds(stored.seeds?.length ? stored.seeds : initialState.seeds);
+    const reactions = KANSHAN_BACKEND_MODE === "gateway"
+      ? deriveReactionsFromSeeds(seeds)
+      : (stored.reactions ?? {});
+    // Validate selectedCategoryId: must exist in current categories
+    const validCategoryIds = new Set(initialState.categories.map((c) => c.id));
+    const restoredCategoryId = stored.selectedCategoryId ?? initialState.selectedCategoryId;
+    const selectedCategoryId = validCategoryIds.has(restoredCategoryId)
+      ? restoredCategoryId
+      : (initialState.categories.find((c) => c.kind === "interest")?.id ?? initialState.selectedCategoryId);
+
     return {
       ...initialState,
       ...stored,
       hasEntered: stored.hasEntered ?? false,
       activeTab: stored.activeTab ?? initialState.activeTab,
-      selectedCategoryId: stored.selectedCategoryId ?? initialState.selectedCategoryId,
+      selectedCategoryId,
       selectedSeedId: stored.selectedSeedId ?? initialState.selectedSeedId,
       profile: stored.profile ?? initialState.profile,
       categories: initialState.categories,
       cards: initialState.cards,
-      seeds: ensureUniqueMaterialIds(stored.seeds?.length ? stored.seeds : initialState.seeds),
+      seeds,
       sproutOpportunities: stored.sproutOpportunities?.length ? stored.sproutOpportunities : initialState.sproutOpportunities,
       feedbackArticles: stored.feedbackArticles?.length ? stored.feedbackArticles : initialState.feedbackArticles,
-      reactions: stored.reactions ?? {},
+      reactions,
       expandedCardIds: stored.expandedCardIds ?? [],
       expandedSourceIds: stored.expandedSourceIds ?? {},
       categoryRefreshState: stored.categoryRefreshState ?? {},
@@ -3502,31 +3842,15 @@ function sectionDescription(category: string) {
 
 function cardsForCategory(cards: WorthReadingCard[], categoryId: string, refreshState?: DemoState["categoryRefreshState"][string]) {
   const categoryCards = cards.filter((card) => card.categoryId === categoryId);
-  const ordered = refreshState?.visibleCardIds?.length
-    ? [...categoryCards].sort((a, b) => orderIndex(refreshState.visibleCardIds, a.id) - orderIndex(refreshState.visibleCardIds, b.id))
-    : categoryCards;
-
-  if (!refreshState?.refreshCount) return ordered;
-
-  return ordered.map((card, index) => ({
-    ...card,
-    relevanceScore: Math.min(99, card.relevanceScore + refreshState.refreshCount + index),
-    tags: [
-      ...card.tags.filter((tag) => tag.label && !tag.label.startsWith("刷新")),
-      { label: `刷新 ${refreshState.refreshCount}`, tone: "green" as Tone },
-    ],
-  }));
+  if (!refreshState?.visibleCardIds?.length) return categoryCards;
+  return [...categoryCards].sort(
+    (a, b) => orderIndex(refreshState.visibleCardIds, a.id) - orderIndex(refreshState.visibleCardIds, b.id),
+  );
 }
 
 function orderIndex(ids: string[], id: string) {
   const index = ids.indexOf(id);
   return index === -1 ? ids.length : index;
-}
-
-function rotateIds(ids: string[], step: number) {
-  if (ids.length <= 1) return ids;
-  const offset = step % ids.length;
-  return [...ids.slice(offset), ...ids.slice(0, offset)];
 }
 
 function formatTime(value: string) {

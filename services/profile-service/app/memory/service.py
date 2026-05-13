@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.profile.defaults import clone, create_id, now_iso
+from app.profile.defaults import clone, create_id, now_iso, interest_memory
+from kanshan_shared.categories import CATEGORY_MAP, INTEREST_CATEGORIES
 from app.profile.repository import ProfileRepository
 
 
@@ -25,31 +26,56 @@ class MemoryService:
     def __init__(self, repository: ProfileRepository) -> None:
         self.repository = repository
 
-    def get_full_memory(self) -> dict[str, Any]:
-        return self.repository.get_profile()
+    def get_full_memory(self, user_id: str | None = None) -> dict[str, Any]:
+        return self.repository.get_profile(user_id)
 
-    def get_global_memory(self) -> dict[str, Any]:
-        return self.repository.get_profile()["globalMemory"]
+    def get_global_memory(self, user_id: str | None = None) -> dict[str, Any]:
+        return self.repository.get_profile(user_id)["globalMemory"]
 
-    def update_global_memory(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def update_global_memory(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
         self._validate_fields(payload, GLOBAL_MEMORY_FIELDS, "global memory")
-        profile = self.repository.get_profile()
+        profile = self.repository.get_profile(user_id)
         profile["globalMemory"] = {**profile["globalMemory"], **payload}
-        return self.repository.save_profile(profile, "update_global_memory")["globalMemory"]
+        return self.repository.save_profile(profile, "update_global_memory", user_id=user_id)["globalMemory"]
 
-    def list_interest_memories(self) -> list[dict[str, Any]]:
-        return self.repository.get_profile()["interestMemories"]
+    def list_interest_memories(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        profile = self.repository.get_profile(user_id)
+        memories = profile["interestMemories"]
+        normalized: list[dict[str, Any]] = []
+        for memory in memories:
+            interest_id = memory.get("interestId", "")
+            cat = CATEGORY_MAP.get(interest_id)
+            if not cat or cat.kind != "interest":
+                continue
+            normalized.append(self._normalize_interest_memory({**memory, "interestId": cat.id, "interestName": cat.name}))
 
-    def get_interest_memory(self, interest_id: str) -> dict[str, Any]:
-        profile = self.repository.get_profile()
+        if normalized:
+            return normalized
+
+        name_to_cat = {cat.name: cat for cat in INTEREST_CATEGORIES}
+        fallback: list[dict[str, Any]] = []
+        for name in profile.get("interests", []):
+            cat = name_to_cat.get(name)
+            if not cat:
+                continue
+            fallback.append(interest_memory(cat))
+
+        return fallback if fallback else [interest_memory(cat) for cat in INTEREST_CATEGORIES]
+
+    def get_interest_memory(self, interest_id: str, user_id: str | None = None) -> dict[str, Any]:
+        profile = self.repository.get_profile(user_id)
         memory = next((item for item in profile["interestMemories"] if item["interestId"] == interest_id), None)
         if not memory:
             raise MemoryNotFound(interest_id)
         return memory
 
-    def update_interest_memory(self, interest_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def update_interest_memory(self, interest_id: str, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        cat = CATEGORY_MAP.get(interest_id)
+        if not cat or cat.kind != "interest":
+            raise ValueError(f"unsupported interestId: {interest_id}")
+        interest_id = cat.id
         self._validate_fields(payload, INTEREST_MEMORY_FIELDS | {"interestId"}, "interest memory")
-        profile = self.repository.get_profile()
+        profile = self.repository.get_profile(user_id)
         updated: dict[str, Any] | None = None
         memories = []
         for memory in profile["interestMemories"]:
@@ -62,12 +88,12 @@ class MemoryService:
             updated = self._normalize_interest_memory({"interestId": interest_id, **payload})
             memories.append(updated)
         profile["interestMemories"] = memories
-        self.repository.save_profile(profile, f"update_interest_memory:{interest_id}")
+        self.repository.save_profile(profile, f"update_interest_memory:{interest_id}", user_id=user_id)
         return clone(updated)
 
-    def build_injection_summary(self, interest_id: str) -> dict[str, Any]:
-        profile = self.repository.get_profile()
-        memory = self.get_interest_memory(interest_id)
+    def build_injection_summary(self, interest_id: str, user_id: str | None = None) -> dict[str, Any]:
+        profile = self.repository.get_profile(user_id)
+        memory = self.get_interest_memory(interest_id, user_id)
         global_memory = profile["globalMemory"]
         display_summary = (
             f"已匹配兴趣分类画像：{memory['interestName']}。"
@@ -84,7 +110,7 @@ class MemoryService:
             "editable": True,
         }
 
-    def create_update_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_update_request(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
         required = {"interestId", "targetField", "suggestedValue", "reason"}
         missing = required - payload.keys()
         if missing:
@@ -97,14 +123,15 @@ class MemoryService:
             "reason": payload["reason"],
             "status": "pending",
             "createdAt": now_iso(),
+            "userId": user_id,
         }
-        return self.repository.save_update_request(request)
+        return self.repository.save_update_request(request, user_id=user_id)
 
-    def list_update_requests(self, status: str | None = None) -> list[dict[str, Any]]:
-        return self.repository.list_update_requests(status)
+    def list_update_requests(self, status: str | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
+        return self.repository.list_update_requests(status, user_id)
 
-    def apply_update_request(self, request_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        request = self._get_request_or_raise(request_id)
+    def apply_update_request(self, request_id: str, payload: dict[str, Any] | None = None, user_id: str | None = None) -> dict[str, Any]:
+        request = self._get_request_or_raise(request_id, user_id)
         suggested_value = (payload or {}).get("suggestedValue", request["suggestedValue"])
         target_field = (payload or {}).get("targetField", request["targetField"])
         interest_id = request["interestId"]
@@ -112,25 +139,25 @@ class MemoryService:
             field = target_field.split(".", 1)[-1]
             if field not in GLOBAL_MEMORY_FIELDS:
                 raise ValueError(f"unsupported global memory field: {field}")
-            self.update_global_memory({field: suggested_value})
+            self.update_global_memory({field: suggested_value}, user_id=user_id)
         else:
             field = target_field.split(".", 1)[-1]
             if field not in INTEREST_MEMORY_FIELDS:
                 raise ValueError(f"unsupported interest memory field: {field}")
-            self.update_interest_memory(interest_id, {field: self._coerce_interest_value(field, suggested_value)})
+            self.update_interest_memory(interest_id, {field: self._coerce_interest_value(field, suggested_value)}, user_id=user_id)
 
         applied = {**request, "targetField": target_field, "suggestedValue": suggested_value, "status": "applied"}
-        self.repository.save_update_request(applied)
-        return {"request": applied, "profile": self.repository.get_profile()}
+        self.repository.save_update_request(applied, user_id=user_id)
+        return {"request": applied, "profile": self.repository.get_profile(user_id)}
 
-    def reject_update_request(self, request_id: str) -> dict[str, Any]:
-        request = self._get_request_or_raise(request_id)
+    def reject_update_request(self, request_id: str, user_id: str | None = None) -> dict[str, Any]:
+        request = self._get_request_or_raise(request_id, user_id)
         rejected = {**request, "status": "rejected"}
-        self.repository.save_update_request(rejected)
+        self.repository.save_update_request(rejected, user_id=user_id)
         return rejected
 
-    def _get_request_or_raise(self, request_id: str) -> dict[str, Any]:
-        request = self.repository.get_update_request(request_id)
+    def _get_request_or_raise(self, request_id: str, user_id: str | None = None) -> dict[str, Any]:
+        request = self.repository.get_update_request(request_id, user_id)
         if not request:
             raise MemoryNotFound(request_id)
         return request

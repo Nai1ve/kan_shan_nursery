@@ -19,7 +19,7 @@ import type {
   ZhihuBindingViewModel,
 } from "@/lib/types";
 
-const MODE = (process.env.NEXT_PUBLIC_KANSHAN_BACKEND_MODE || "mock").toLowerCase();
+const MODE = (process.env.NEXT_PUBLIC_KANSHAN_BACKEND_MODE || "gateway").toLowerCase();
 const USE_GATEWAY = MODE === "gateway";
 
 const GATEWAY_URL =
@@ -203,15 +203,14 @@ async function mockRequest<T>(path: string, method: string, payload?: unknown): 
   if (method === "POST" && cleanPath === "/api/v1/auth/register") {
     const body = payload as RegisterRequest;
     if (!body.nickname || !body.password) throw new Error("nickname and password are required");
+    if (!body.email) throw new Error("email is required");
     return createMockUser(body.nickname, body.password, body.email, body.username) as T;
   }
 
   if (method === "POST" && cleanPath === "/api/v1/auth/login") {
     const body = payload as LoginRequest;
     for (const { user, passwordHash } of Object.values(store.users)) {
-      const matched =
-        user.email === body.identifier || user.username === body.identifier || user.nickname === body.identifier;
-      if (matched && passwordHash === body.password) {
+      if (user.email === body.identifier && passwordHash === body.password) {
         const newSessionId = createId("session");
         store.sessions[newSessionId] = user.userId;
         writeStore(store);
@@ -323,11 +322,15 @@ async function request<T>(path: string, method: string, payload?: unknown): Prom
 }
 
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
-  return request<AuthResponse>("/api/v1/auth/register", "POST", data);
+  const response = await request<AuthResponse>("/api/v1/auth/register", "POST", data);
+  saveSession(response.session.sessionId);
+  return response;
 }
 
 export async function login(data: LoginRequest): Promise<AuthResponse> {
-  return request<AuthResponse>("/api/v1/auth/login", "POST", data);
+  const response = await request<AuthResponse>("/api/v1/auth/login", "POST", data);
+  saveSession(response.session.sessionId);
+  return response;
 }
 
 export async function logout(): Promise<{ success: boolean }> {
@@ -370,6 +373,10 @@ export async function getUserSetupState(): Promise<UserSetupStateData> {
 
 export async function saveOnboarding(data: OnboardingPayload): Promise<OnboardingResponse> {
   return request<OnboardingResponse>("/api/v1/profile/onboarding", "POST", data);
+}
+
+export async function handleZhihuCallback(code: string): Promise<ZhihuBindingViewModel> {
+  return request<ZhihuBindingViewModel>(`/api/v1/auth/zhihu/callback?code=${encodeURIComponent(code)}`, "GET");
 }
 
 export function getSession(): string | null {

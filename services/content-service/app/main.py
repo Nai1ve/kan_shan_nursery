@@ -32,9 +32,9 @@ _config = load_config()
 configure_logging("content-service", _config.logging)
 logger = get_logger("kanshan.content_service.main")
 
-_zhihu_url = os.getenv("ZHIHU_ADAPTER_URL", "http://127.0.0.1:8070")
-_profile_url = os.getenv("PROFILE_SERVICE_URL", "http://127.0.0.1:8010")
-_llm_url = os.getenv("LLM_SERVICE_URL", "http://127.0.0.1:8080")
+_zhihu_url = _config.service_urls.zhihu
+_profile_url = _config.service_urls.profile
+_llm_url = _config.service_urls.llm
 
 enricher = LlmEnricher(llm_base_url=_llm_url)
 repository = ContentRepository(enricher=enricher, profile_service_url=_profile_url)
@@ -63,16 +63,18 @@ def health() -> dict[str, str]:
 
 
 @app.get("/content")
-def bootstrap() -> dict[str, Any]:
-    result = service.bootstrap()
-    logger.info("content_bootstrap", extra={"cardCount": len(result.get("cards", []))})
+def bootstrap(interest_ids: str | None = None) -> dict[str, Any]:
+    interests = [item.strip() for item in interest_ids.split(",")] if interest_ids else None
+    result = service.bootstrap(interest_ids=interests)
+    logger.info("content_bootstrap", extra={"cardCount": len(result.get("cards", [])), "filtered": bool(interests)})
     return result
 
 
 @app.get("/content/cards")
-def list_cards(category_id: str | None = None) -> dict[str, Any]:
-    result = service.list_cards(category_id)
-    logger.info("content_card_list", extra={"categoryId": category_id, "count": len(result.get("cards", []))})
+def list_cards(category_id: str | None = None, interest_ids: str | None = None) -> dict[str, Any]:
+    interests = [item.strip() for item in interest_ids.split(",")] if interest_ids else None
+    result = service.list_cards(category_id, interest_ids=interests)
+    logger.info("content_card_list", extra={"categoryId": category_id, "count": len(result.get("items", []))})
     return result
 
 

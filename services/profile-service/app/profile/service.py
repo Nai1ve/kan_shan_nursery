@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .defaults import INTERESTS, interest_memory, now_iso
+from kanshan_shared.categories import INTEREST_CATEGORIES, CATEGORY_MAP, CategoryDef
+
+from .defaults import interest_memory, now_iso
 from .repository import ProfileRepository
 
 
@@ -12,6 +14,21 @@ PROFILE_FIELDS = {"nickname", "accountStatus", "role", "interests", "avoidances"
 class ProfileService:
     def __init__(self, repository: ProfileRepository) -> None:
         self.repository = repository
+
+    def _normalize_interest_ids(self, selected_interests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in selected_interests:
+            interest_id = item.get("interestId", "")
+            cat = CATEGORY_MAP.get(interest_id)
+            if not cat or cat.kind != "interest":
+                continue
+            normalized.append({
+                "interestId": cat.id,
+                "selected": bool(item.get("selected", True)),
+                "selfRatedLevel": item.get("selfRatedLevel", "intermediate"),
+                "intent": item.get("intent", "both"),
+            })
+        return normalized
 
     def get_profile(self) -> dict[str, Any]:
         return self.repository.get_profile()
@@ -24,7 +41,7 @@ class ProfileService:
         next_profile = {**profile, **payload}
         return self.repository.save_profile(next_profile, reason)
 
-    def save_onboarding(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def save_onboarding(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
         """Save onboarding data and construct a full profile.
 
         The frontend sends:
@@ -37,11 +54,10 @@ class ProfileService:
         We need to construct a full ProfileData from this.
         """
         nickname = payload.get("nickname", "用户")
-        selected_interests = payload.get("selectedInterests", [])
+        selected_interests = self._normalize_interest_ids(payload.get("selectedInterests", []))
         writing_style = payload.get("writingStyle", {})
 
         # Build interest list from selected interests
-        interest_map = {item[0]: item for item in INTERESTS}
         interests = []
         interest_memories = []
 
@@ -49,24 +65,19 @@ class ProfileService:
             if not si.get("selected", True):
                 continue
             interest_id = si.get("interestId", "")
-            interest_info = interest_map.get(interest_id)
-            if interest_info:
-                interests.append(interest_info[1])  # interest name
+            cat = CATEGORY_MAP.get(interest_id)
+            if cat and cat.kind == "interest":
+                interests.append(cat.name)
                 knowledge_level = si.get("selfRatedLevel", "intermediate")
                 level_map = {"beginner": "入门", "intermediate": "中级", "advanced": "进阶"}
                 interest_memories.append(interest_memory(
-                    interest_id=interest_id,
-                    interest_name=interest_info[1],
-                    knowledge_level=level_map.get(knowledge_level, "中级"),
-                    preferred_perspective=interest_info[3],  # default perspectives
-                    evidence_preference=interest_info[4],  # default evidence preference
-                    writing_reminder=interest_info[5],  # default writing reminder
+                    cat,
                 ))
 
         # If no interests selected, use defaults
         if not interests:
-            interests = [item[1] for item in INTERESTS if item[0] not in {"following", "serendipity"}]
-            interest_memories = [interest_memory(*item) for item in INTERESTS if item[0] not in {"following", "serendipity"}]
+            interests = [cat.name for cat in INTEREST_CATEGORIES]
+            interest_memories = [interest_memory(cat) for cat in INTEREST_CATEGORIES]
 
         # Build global memory from writing style
         global_memory = {
@@ -86,12 +97,96 @@ class ProfileService:
             "avoidances": "不要替我决定立场；不要生成空泛、油滑、过度平衡的 AI 味文章。",
             "globalMemory": global_memory,
             "interestMemories": interest_memories,
+            "userId": user_id,
         }
 
         # Save directly (bypass update_profile validation)
-        saved_profile = self.repository.save_profile(profile, "onboarding")
+        saved_profile = self.repository.save_profile(profile, "onboarding", user_id=user_id)
         return {
             "profile": saved_profile,
             "profileStatus": "provisional",
             "enrichmentJob": None,
         }
+
+    def update_interests(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        selected_interests = self._normalize_interest_ids(payload.get("interests", []))
+        if not selected_interests:
+            raise ValueError("at least one valid interest is required")
+
+        profile = self.repository.get_profile(user_id)
+        selected = [item for item in selected_interests if item.get("selected", True)]
+        if not selected:
+            raise ValueError("at least one selected interest is required")
+
+        selected_ids = [item["interestId"] for item in selected]
+        existing_by_id = {
+            memory.get("interestId"): memory
+            for memory in profile.get("interestMemories", [])
+            if memory.get("interestId")
+        }
+
+        next_interest_memories = []
+        next_interests = []
+        for interest_id in selected_ids:
+            cat = CATEGORY_MAP[interest_id]
+            next_interests.append(cat.name)
+            existing = existing_by_id.get(interest_id)
+            next_interest_memories.append(existing if existing else interest_memory(cat))
+
+        profile["interests"] = next_interests
+        profile["interestMemories"] = next_interest_memories
+        return self.repository.save_profile(profile, "update_interests", user_id=user_id)
+
+    def update_basic_profile(self, payload: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        """Update basic profile fields (nickname, role, avoidances)."""
+        allowed_fields = {"nickname", "role", "avoidances"}
+        unknown = set(payload.keys()) - allowed_fields
+        if unknown:
+            raise ValueError(f"unsupported fields for basic update: {sorted(unknown)}")
+        profile = self.repository.get_profile(user_id)
+        next_profile = {**profile, **payload}
+        return self.repository.save_profile(next_profile, "update_basic_profile", user_id=user_id)
+
+    def get_writing_style(self) -> dict[str, Any]:
+        """Get user's writing style configuration."""
+        # Try to get from dedicated table first (if pg_repository)
+        if hasattr(self.repository, 'get_writing_style'):
+            style = self.repository.get_writing_style("default")
+            if style:
+                return style
+        # Fall back to profile data
+        profile = self.repository.get_profile()
+        return profile.get("writingStyle", {})
+
+    def update_writing_style(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update user's writing style configuration."""
+        # Save to dedicated table if available
+        if hasattr(self.repository, 'save_writing_style'):
+            return self.repository.save_writing_style("default", payload)
+        # Fall back to profile data
+        profile = self.repository.get_profile()
+        profile["writingStyle"] = payload
+        return self.repository.save_profile(profile, "update_writing_style")
+
+    def get_llm_config(self) -> dict[str, Any]:
+        """Get user's LLM configuration."""
+        # Try to get from dedicated table first (if pg_repository)
+        if hasattr(self.repository, 'get_llm_config'):
+            config = self.repository.get_llm_config("default")
+            if config:
+                return config
+        # Return default config
+        return {
+            "provider": "openai_compat",
+            "model": "gpt-5.5",
+            "baseUrl": "",
+            "apiKey": "",
+        }
+
+    def update_llm_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update user's LLM configuration."""
+        # Save to dedicated table if available
+        if hasattr(self.repository, 'save_llm_config'):
+            return self.repository.save_llm_config("default", payload)
+        # LLM config is not stored in profile data for security
+        return payload

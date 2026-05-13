@@ -15,6 +15,7 @@ except (IndexError, OSError):
     pass
 
 from kanshan_shared import configure_logging, get_logger, load_config
+from kanshan_shared.categories import INTEREST_CATEGORIES, SPECIAL_CATEGORIES
 
 try:
     from fastapi import FastAPI, Request
@@ -76,6 +77,7 @@ def run_proxy(
     payload: dict[str, Any] | None = None,
 ) -> JSONResponse:
     request_id_value = request_id(request)
+    session_id = request.headers.get("x-session-id")
     logger.info(
         "gateway_proxy",
         extra={
@@ -88,7 +90,7 @@ def run_proxy(
     try:
         return json_response(
             request_id_value,
-            gateway.proxy(request_id_value, service_name, method, path, params, payload),
+            gateway.proxy(request_id_value, service_name, method, path, params, payload, session_id),
         )
     except GatewayError as error:
         logger.warning(
@@ -102,6 +104,109 @@ def run_proxy(
             },
         )
         return gateway_error_response(error, request_id_value)
+
+
+def _resolve_user_id(request: Request) -> str | None:
+    """Resolve user_id from the request's x-session-id header via profile-service.
+
+    Returns None if no session, invalid session, or profile-service unreachable.
+    Used by write endpoints that need user attribution before forwarding.
+    """
+    session_id = request.headers.get("x-session-id")
+    if not session_id:
+        return None
+    try:
+        request_id_value = request_id(request)
+        envelope = gateway.proxy(
+            request_id_value,
+            "profile",
+            "GET",
+            "/auth/me",
+            params={"session_id": session_id},
+        )
+        inner = envelope.get("data") or envelope
+        user = inner.get("user") if isinstance(inner, dict) else None
+        if not user:
+            return None
+        return user.get("userId") or user.get("user_id")
+    except Exception:  # noqa: BLE001 — best-effort attribution
+        return None
+
+
+def _inject_user_id(request: Request, payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Resolve user_id once and inject into the outgoing payload as ``userId``."""
+    user_id = _resolve_user_id(request)
+    next_payload = dict(payload or {})
+    if user_id and "userId" not in next_payload:
+        next_payload["userId"] = user_id
+    return next_payload
+
+
+def _extract_interest_ids(payload: Any) -> list[str]:
+    if isinstance(payload, list):
+        ids: list[str] = []
+        for item in payload:
+            if isinstance(item, dict) and item.get("interestId"):
+                ids.append(item["interestId"])
+            elif isinstance(item, str):
+                ids.append(item)
+        return ids
+    if isinstance(payload, dict):
+        if payload.get("interestId"):
+            return [payload["interestId"]]
+        for key in ("data", "items", "interestMemories", "interests"):
+            if key in payload:
+                nested = _extract_interest_ids(payload.get(key))
+                if nested:
+                    return nested
+    return []
+
+
+def _canonicalize_interest_ids(ids: list[str]) -> list[str]:
+    allowed = {cat.id for cat in INTEREST_CATEGORIES}
+    return [interest_id for interest_id in ids if interest_id in allowed]
+
+
+def _resolve_user_interests(request: Request) -> str | None:
+    """Return a comma-separated list of interest IDs for the current session, or None.
+
+    Best-effort: returns None when no session, no profile, or the call fails so
+    that content endpoints fall back to showing the full catalog.
+    """
+    user_id = _resolve_user_id(request)
+    if not user_id:
+        return None
+    try:
+        request_id_value = request_id(request)
+        session_id = request.headers.get("x-session-id")
+
+        interest_envelope = gateway.proxy(
+            request_id_value,
+            "profile",
+            "GET",
+            "/profiles/me/interests",
+            session_id=session_id,
+        )
+        ids = _canonicalize_interest_ids(_extract_interest_ids(interest_envelope))
+
+        if not ids:
+            profile_envelope = gateway.proxy(
+                request_id_value,
+                "profile",
+                "GET",
+                "/profiles/me",
+                session_id=session_id,
+            )
+            profile_ids = _canonicalize_interest_ids(_extract_interest_ids(profile_envelope))
+            if profile_ids:
+                ids = profile_ids
+
+        merged = list(dict.fromkeys([*ids, *SPECIAL_CATEGORIES]))
+        return ",".join(merged) if merged else None
+    except Exception:  # noqa: BLE001
+        fallback = [cat.id for cat in INTEREST_CATEGORIES]
+        merged = list(dict.fromkeys([*fallback, *SPECIAL_CATEGORIES]))
+        return ",".join(merged) if merged else None
 
 
 @app.get("/health")
@@ -143,7 +248,9 @@ def auth_zhihu_authorize(request: Request) -> JSONResponse:
 
 @app.get("/api/v1/auth/zhihu/callback")
 def auth_zhihu_callback(request: Request, code: str | None = None, error: str | None = None) -> JSONResponse:
-    return run_proxy(request, "profile", "GET", "/auth/zhihu/callback", params={"code": code, "error": error})
+    """Proxy OAuth callback to profile-service with session_id from header."""
+    session_id = request.headers.get("x-session-id")
+    return run_proxy(request, "profile", "GET", "/auth/zhihu/callback", params={"code": code, "error": error, "session_id": session_id})
 
 
 @app.get("/api/v1/auth/zhihu/binding")
@@ -181,6 +288,11 @@ def list_profile_interests(request: Request) -> JSONResponse:
     return run_proxy(request, "profile", "GET", "/profiles/me/interests")
 
 
+@app.put("/api/v1/profile/interests")
+def update_profile_interests(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "profile", "PUT", "/profiles/me/interests", payload=payload)
+
+
 @app.get("/api/v1/memory/injection/{interest_id}")
 def get_memory_injection(request: Request, interest_id: str) -> JSONResponse:
     return run_proxy(request, "profile", "GET", f"/memory/injection/{interest_id}")
@@ -206,14 +318,39 @@ def reject_memory_update_request(request: Request, request_id_value: str) -> JSO
     return run_proxy(request, "profile", "POST", f"/memory/update-requests/{request_id_value}/reject")
 
 
+@app.get("/api/v1/categories")
+def list_categories(request: Request) -> JSONResponse:
+    """Return the canonical category list from shared definitions."""
+    from kanshan_shared.categories import ALL_CATEGORIES
+    request_id_value = request_id(request)
+    cats = [
+        {
+            "id": cat.id,
+            "name": cat.name,
+            "kind": cat.kind,
+            "description": cat.description,
+        }
+        for cat in ALL_CATEGORIES
+    ]
+    return json_response(request_id_value, {"request_id": request_id_value, "data": cats})
+
+
 @app.get("/api/v1/content")
 def content_bootstrap(request: Request) -> JSONResponse:
-    return run_proxy(request, "content", "GET", "/content")
+    interest_ids = _resolve_user_interests(request)
+    return run_proxy(request, "content", "GET", "/content", params={"interest_ids": interest_ids})
 
 
 @app.get("/api/v1/content/cards")
 def content_cards(request: Request, categoryId: str | None = None) -> JSONResponse:
-    return run_proxy(request, "content", "GET", "/content/cards", params={"category_id": categoryId})
+    interest_ids = _resolve_user_interests(request) if not categoryId else None
+    return run_proxy(
+        request,
+        "content",
+        "GET",
+        "/content/cards",
+        params={"category_id": categoryId, "interest_ids": interest_ids},
+    )
 
 
 @app.get("/api/v1/content/cards/{card_id}")
@@ -238,16 +375,19 @@ def summarize_content_card(request: Request, card_id: str, payload: dict[str, An
 
 @app.get("/api/v1/seeds")
 def list_seeds(request: Request) -> JSONResponse:
-    return run_proxy(request, "seed", "GET", "/seeds")
+    user_id = _resolve_user_id(request)
+    return run_proxy(request, "seed", "GET", "/seeds", params={"user_id": user_id})
 
 
 @app.post("/api/v1/seeds")
 def create_seed(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    payload = _inject_user_id(request, payload)
     return run_proxy(request, "seed", "POST", "/seeds", payload=payload)
 
 
 @app.post("/api/v1/seeds/from-card")
 def create_seed_from_card(request: Request, payload: dict[str, Any]) -> JSONResponse:
+    payload = _inject_user_id(request, payload)
     return run_proxy(request, "seed", "POST", "/seeds/from-card", payload=payload)
 
 
@@ -258,6 +398,7 @@ def get_seed(request: Request, seed_id: str) -> JSONResponse:
 
 @app.patch("/api/v1/seeds/{seed_id}")
 def update_seed(request: Request, seed_id: str, payload: dict[str, Any]) -> JSONResponse:
+    payload = _inject_user_id(request, payload)
     return run_proxy(request, "seed", "PATCH", f"/seeds/{seed_id}", payload=payload)
 
 

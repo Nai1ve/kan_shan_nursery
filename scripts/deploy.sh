@@ -68,7 +68,7 @@ load_env_file() {
 
 has_placeholder() {
   local value="${1:-}"
-  [[ -z "${value}" || "${value}" == *"<"* || "${value}" == *">"* || "${value}" == "你的"* ]]
+  [[ -z "${value}" || "${value}" == *"<"* || "${value}" == *">"* || "${value}" == "你的"* || "${value}" == CHANGE_ME* || "${value}" == *CHANGE_ME* ]]
 }
 
 require_var() {

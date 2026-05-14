@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy service code
 COPY services/llm-service/app /app/app
+COPY services/llm-service/config /app/config
+COPY services/llm-service/prompts /app/prompts
 
 EXPOSE 8080
 

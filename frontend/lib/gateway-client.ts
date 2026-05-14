@@ -90,13 +90,17 @@ export function dispatchGatewayNotices(body: unknown): void {
 
 async function request<T>(method: string, path: string, payload?: unknown): Promise<T> {
   const url = `${GATEWAY_URL}${path}`;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   const sessionId = getSessionId();
   if (sessionId) headers["x-session-id"] = sessionId;
 
-  const init: RequestInit = { method, headers, cache: "no-store" };
+  const init: RequestInit = { method, cache: "no-store" };
   if (payload !== undefined) {
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(payload);
+  }
+  if (Object.keys(headers).length > 0) {
+    init.headers = headers;
   }
   const response = await fetch(url, init);
   let body: unknown = null;

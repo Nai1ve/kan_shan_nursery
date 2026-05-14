@@ -37,6 +37,18 @@ function attachOpenerState(rawUrl: string): string {
   return url.toString();
 }
 
+function isLocalDebugOrigin(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
+function shouldAutoStartOAuth(): boolean {
+  const configured = process.env.NEXT_PUBLIC_ZHIHU_OAUTH_AUTO_START;
+  if (configured === "1") return true;
+  if (configured === "0") return false;
+  return !isLocalDebugOrigin();
+}
+
 export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelProps) {
   const [bindingStatus, setBindingStatus] = useState<ZhihuBindingStatus>("not_started");
   const [loading, setLoading] = useState(false);
@@ -107,8 +119,16 @@ export function ZhihuLinkPanel({ userId, onComplete, onSkip }: ZhihuLinkPanelPro
   useEffect(() => {
     if (autoTriggered.current) return;
     autoTriggered.current = true;
-    void handleAuthorize();
+    let autoStartTimer: number | null = null;
+    if (shouldAutoStartOAuth()) {
+      autoStartTimer = window.setTimeout(() => {
+        void handleAuthorize();
+      }, 0);
+    }
     return () => {
+      if (autoStartTimer !== null) {
+        window.clearTimeout(autoStartTimer);
+      }
       if (pollTimer.current) {
         window.clearInterval(pollTimer.current);
         pollTimer.current = null;

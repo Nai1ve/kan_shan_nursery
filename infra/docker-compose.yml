@@ -323,6 +323,7 @@ services:
         NEXT_PUBLIC_KANSHAN_BACKEND_MODE: gateway
         NEXT_PUBLIC_KANSHAN_GATEWAY_URL: ${KANSHAN_GATEWAY_URL:-http://api-gateway:8000}
         NEXT_PUBLIC_ZHIHU_ADAPTER_URL: ${KANSHAN_ZHIHU_URL:-http://zhihu-adapter:8070}
+        NEXT_PUBLIC_ZHIHU_OAUTH_AUTO_START: ${NEXT_PUBLIC_ZHIHU_OAUTH_AUTO_START:-}
         KANSHAN_GATEWAY_URL: http://api-gateway:8000
     container_name: kanshan-frontend
     ports:

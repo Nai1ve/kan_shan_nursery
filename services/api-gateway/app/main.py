@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from kanshan_shared import configure_logging, get_logger, load_config
 from kanshan_shared.categories import INTEREST_CATEGORIES, SPECIAL_CATEGORIES
 
 try:
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
 except ModuleNotFoundError as exc:  # pragma: no cover
@@ -140,6 +141,37 @@ def _inject_user_id(request: Request, payload: dict[str, Any] | None) -> dict[st
     if user_id and "userId" not in next_payload:
         next_payload["userId"] = user_id
     return next_payload
+
+
+async def _optional_json_payload(request: Request) -> dict[str, Any]:
+    """Parse an optional JSON object body.
+
+    The frontend can intentionally call some POST endpoints without a body.
+    Some browsers/clients still send ``Content-Type: application/json`` for
+    those requests, so an empty body must be treated as ``{}`` instead of
+    bubbling up ``JSONDecodeError`` as a 500.
+    """
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("application/json"):
+        return {}
+    body = await request.body()
+    if not body or not body.strip():
+        return {}
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_JSON", "message": "Request body must be valid JSON."},
+        ) from error
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_JSON", "message": "Request body must be a JSON object."},
+        )
+    return payload
 
 
 def _extract_interest_ids(payload: Any) -> list[str]:
@@ -438,7 +470,7 @@ def content_card_source(request: Request, card_id: str, source_id: str) -> JSONR
 
 @app.post("/api/v1/content/categories/{category_id}/refresh")
 async def refresh_content_category(request: Request, category_id: str) -> JSONResponse:
-    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    payload = await _optional_json_payload(request)
     user_id = _resolve_user_id(request)
     if user_id and "user_id" not in payload:
         payload["user_id"] = user_id
@@ -447,7 +479,7 @@ async def refresh_content_category(request: Request, category_id: str) -> JSONRe
 
 @app.post("/api/v1/content/cards/{card_id}/summarize")
 async def summarize_content_card(request: Request, card_id: str) -> JSONResponse:
-    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    payload = await _optional_json_payload(request)
     user_id = _resolve_user_id(request)
     if user_id and "user_id" not in payload:
         payload["user_id"] = user_id
@@ -456,7 +488,7 @@ async def summarize_content_card(request: Request, card_id: str) -> JSONResponse
 
 @app.post("/api/v1/content/cards/{card_id}/enrich")
 async def enrich_content_card(request: Request, card_id: str) -> JSONResponse:
-    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    payload = await _optional_json_payload(request)
     user_id = _resolve_user_id(request)
     if user_id and "user_id" not in payload:
         payload["user_id"] = user_id

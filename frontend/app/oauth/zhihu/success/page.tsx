@@ -9,11 +9,6 @@ function createNonce(): string {
 }
 
 const OAUTH_TICKET_BRIDGE_KEY = "kanshan:oauth:zhihu:ticket:v1";
-const LOCAL_FALLBACK_ORIGIN = "http://127.0.0.1:3000";
-
-function isLocalOrigin(origin: string): boolean {
-  return origin.startsWith("http://127.0.0.1:") || origin.startsWith("http://localhost:");
-}
 
 function ZhihuOauthSuccessContent() {
   const searchParams = useSearchParams();
@@ -24,7 +19,6 @@ function ZhihuOauthSuccessContent() {
   const ticket = searchParams.get("ticket");
   const error = searchParams.get("error");
   const openerOriginParam = searchParams.get("opener_origin");
-  const localFallbackDone = searchParams.get("local_fallback") === "1";
 
   useEffect(() => {
     function setStatus(text: string) {
@@ -37,20 +31,6 @@ function ZhihuOauthSuccessContent() {
     }
     if (!ticket) {
       setStatus("授权失败: 缺少登录票据");
-      return;
-    }
-
-    const currentOrigin = window.location.origin;
-    if (!isLocalOrigin(currentOrigin) && !localFallbackDone) {
-      const next = new URL(`${LOCAL_FALLBACK_ORIGIN}/oauth/zhihu/success`);
-      next.searchParams.set("ticket", ticket);
-      next.searchParams.set("opener_origin", LOCAL_FALLBACK_ORIGIN);
-      next.searchParams.set("local_fallback", "1");
-      console.info("[oauth][success] redirecting to local fallback", {
-        from: currentOrigin,
-        to: next.toString(),
-      });
-      window.location.replace(next.toString());
       return;
     }
 
@@ -103,7 +83,7 @@ function ZhihuOauthSuccessContent() {
     localStorage.setItem(OAUTH_TICKET_BRIDGE_KEY, JSON.stringify(message));
     console.warn("[oauth][success] opener missing", { origin: window.location.origin });
     setStatus("未检测到主页面窗口。若主页面与本页同源，可返回主页继续；不同源时请重新从主页面发起授权。");
-  }, [error, localFallbackDone, openerOriginParam, ticket]);
+  }, [error, openerOriginParam, ticket]);
 
   return (
     <div style={{ padding: "48px", textAlign: "center", fontFamily: "system-ui, -apple-system, sans-serif" }}>

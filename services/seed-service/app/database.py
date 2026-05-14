@@ -31,6 +31,8 @@ def init_db():
 
     from . import models  # noqa: F401
     engine = get_db_engine()
+    with engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS seed"))
     Base.metadata.create_all(engine)
     # Backfill columns added after the initial schema was applied.
     with engine.begin() as conn:

@@ -28,6 +28,10 @@ def get_db_session_factory():
 
 def init_db():
     """Create all tables if they don't exist."""
+    from sqlalchemy import text
+
     from . import models  # noqa: F401 — ensure models are imported
     engine = get_db_engine()
+    with engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS profile"))
     Base.metadata.create_all(engine)

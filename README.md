@@ -1,145 +1,231 @@
 # 看山小苗圃
 
-看山小苗圃是一个面向知乎创作者的读写一体 AI 创作 Agent。它不是 AI 代写，而是把"看到好内容 → 沉淀好观点 → 写出好表达"做成可追溯的工作台。
+看山小苗圃是一个面向知乎创作者的读写一体 AI 创作工作台。项目目标不是让 AI 从空白页直接代写文章，而是把真实创作过程拆成一条可追溯链路：
 
 ```text
-看到好内容
+看见好内容
   ↓
-产生想法 / 提疑问
+形成真实观点
   ↓
 沉淀观点种子
   ↓
-今日发芽（热点 × 历史种子）
+在合适热点下发芽
   ↓
-写作苗圃 8 步
+进入写作苗圃逐步成文
   ↓
-圆桌审稿（4 视角并发）
-  ↓
-定稿草案
-  ↓
-历史反馈回流 Memory
+发布后用反馈修正画像和表达
+```
+
+当前项目处于黑客松 Demo 冲刺状态，核心目标是展示“高质量输入 → 观点形成 → 写作表达”的闭环，而不是完整商业化产品。
+
+---
+
+## 当前进度
+
+更新时间：2026-05-14
+
+| 模块 | 当前状态 | 说明 |
+| --- | --- | --- |
+| 登录 / 用户入口 | 基本可用 | 支持注册登录、知乎 OAuth 绑定入口、本地跳过授权调试。线上 OAuth 主流程已跑通过。 |
+| 用户画像 / Memory | 基本可用 | 支持基础画像、兴趣 Memory、LLM 配置、OAuth 后画像生成任务框架。画像更新仍需继续打磨。 |
+| 知乎能力接入 | 基本可用 | 热榜、知乎搜索、全网搜索、OAuth 关注流链路已有真实接入。圈子、评论、反馈相关能力仍偏演示/预留。 |
+| 今日看什么 | 可演示 | 已能基于真实知乎数据返回兴趣卡片，并支持卡片扩展、来源展示、刷新/下一条式浏览。内容质量和推流算法仍需继续优化。 |
+| 观点种子库 | 可演示 | 支持从卡片转种子、认同/反对/疑问、四格浇水材料、成熟度等核心交互。 |
+| 今日发芽 | 部分可用 | 已有 sprout-service、热点/种子/Memory 匹配和 LLM 任务入口。线上仍需要关注数据库结构同步和服务健康。 |
+| 写作苗圃 | 有明显 bug | 前端写作流程和后端 writing-service 状态机目前没有保持同步，部分步骤可能前端已推进但后端 session state 未一致。该模块不能作为稳定主链路，需要优先修复。 |
+| LLM 服务 | 基本可用 | 支持平台兜底、用户自配 LLM、任务路由和失败提示。通用提取走平台能力，涉及用户个人内容优先走用户配置。 |
+| 历史反馈 | 方案和部分接口存在 | 当前主要用于 Demo 展示和后续扩展，真实知乎发布后数据回流能力受开放接口限制。 |
+| 部署 | 可用但需检查 | Docker Compose 线上部署已跑通过 OAuth。旧数据库卷可能需要执行 schema 同步 SQL。 |
+
+---
+
+## 已知关键问题
+
+### 1. 写作苗圃状态机不同步
+
+这是当前最重要的已知 bug。
+
+问题表现：
+
+```text
+前端有自己的写作步骤状态
+后端 writing-service 也有 session state
+两者没有形成严格单一事实源
+```
+
+可能导致：
+
+```text
+1. 前端显示进入下一步，但后端 session 仍停留在旧状态。
+2. 重新刷新页面后写作进度丢失或回退。
+3. 圆桌审稿、定稿、模拟发布等动作的后端状态不可完全信任。
+4. 今日发芽进入写作苗圃后，seed / opportunity / writing session 的关系不稳定。
+```
+
+后续修复方向：
+
+```text
+1. 后端 writing-service 定义唯一状态机。
+2. 前端只展示后端返回的 session state，不自行推导关键步骤。
+3. 每个按钮动作都调用后端 transition API。
+4. 后端返回 nextAllowedActions，前端按它控制按钮可用性。
+5. 补充从 opportunity → writing session → feedback article 的端到端测试。
+```
+
+### 2. 数据库结构需要同步
+
+部分线上问题来自旧 PostgreSQL 卷未执行新的初始化 SQL。遇到缺字段、缺 schema 时，应先执行当前数据库同步脚本或对应 SQL，再重启服务。
+
+重点关注：
+
+```text
+profile.users.setup_state
+sprout.opportunities.run_id
+sprout.opportunities.trigger_type
+sprout.runs
+content.user_profile_snapshots
+content.user_shown_cards
+```
+
+### 3. 今日看什么仍需提升推荐质量
+
+当前已经能返回真实数据，但推荐质量仍依赖后续算法优化：
+
+```text
+1. 公共内容缓存和用户个性化排序需要继续稳定。
+2. 卡片摘要、争议点、可写角度应尽量在缓存构建时完成，减少前端等待。
+3. 关注流精选已接通，但仍需控制调用成本和失败降级。
 ```
 
 ---
 
-## 五分钟跑起来（mock 模式，不需要任何凭证）
+## 当前核心链路
+
+```text
+用户登录 / 跳过授权
+  ↓
+选择兴趣与写作偏好
+  ↓
+今日看什么：读取热榜 / 搜索 / 关注流 / 全网搜索
+  ↓
+用户对卡片表态、提问或加入种子库
+  ↓
+种子库：观点、材料、疑问、反方、成熟度
+  ↓
+今日发芽：手动触发，用热点和 Memory 激活可写种子
+  ↓
+写作苗圃：逐步生成观点、蓝图、大纲、草稿、审稿与定稿
+  ↓
+历史反馈：记录反馈并生成后续 Memory 建议
+```
+
+其中当前最稳定的 Demo 链路是：
+
+```text
+今日看什么 → 观点种子库 → 今日发芽机会展示
+```
+
+写作苗圃目前只能作为“功能方向展示”，不应作为稳定闭环的最终验收点。
+
+---
+
+## 本地开发
+
+推荐使用：
 
 ```bash
-# 1. 准备 Python 依赖（首次）
-for s in services/*/; do pip install -r "$s/requirements.txt"; done
-
-# 2. 给后端建一份本地配置（已被 .gitignore，可以随便填）
-cp services/config.example.yaml services/config.yaml
-
-# 3. 准备前端依赖（首次）
-(cd frontend && npm install)
-
-# 4. 一键起 9 个后端服务 + 前端（前端切到 gateway 模式）
 bash scripts/dev_up.sh
 ```
 
-打开 <http://127.0.0.1:3000> 选 "演示模式" 即可。
+当前本地调试口径：
 
-如果只想跑前端 mock 模式（零后端依赖）：
+```text
+前端：Next.js dev server
+后端：9 个 FastAPI 服务用 uvicorn 在本机分端口运行
+数据库 / Redis：可使用 Docker dev 服务
+```
 
-```bash
-cd frontend && npm run dev
+默认端口：
+
+| 服务 | 端口 |
+| --- | --- |
+| frontend | 3000 |
+| api-gateway | 8000 |
+| profile-service | 8010 |
+| content-service | 8020 |
+| seed-service | 8030 |
+| sprout-service | 8040 |
+| writing-service | 8050 |
+| feedback-service | 8060 |
+| zhihu-adapter | 8070 |
+| llm-service | 8080 |
+
+前端入口：
+
+```text
+http://127.0.0.1:3000
 ```
 
 ---
 
-## 路线图（v0.1 - v0.9）
+## 线上部署
 
-| 版本 | 内容 | 状态 |
-| --- | --- | --- |
-| v0.1-v0.4 | 文档、骨架、P0 mock 闭环 | ✅ 已完成 |
-| v0.5 | LLM 基座 + 多视角 Agent 框架 + 网关联调 | ✅ 已完成 |
-| v0.6 | 知乎 live 接入 + OAuth + quota + 全服务结构化日志 + 前端切到 gateway | ✅ 已完成 |
-| v0.7 | 创作输入流推流算法 + 种子浇水强化 | 🔴 待开始 |
-| v0.8 | 发芽算法 + 写作苗圃接 LLM + 圆桌 4 视角真实并发 | 🔴 待开始 |
-| v0.9 | 反馈回流 + 评测指标 + Demo 演示打磨 | 🔴 待开始 |
+推荐使用：
 
-详细版本说明：[docs/开发路线图.md](docs/开发路线图.md)
-设计与实施总纲：[docs/看山小苗圃-开发设计与实施.md](docs/看山小苗圃-开发设计与实施.md)
-v0.6 联调验证清单：[docs/v0.6-联调验证-checklist.md](docs/v0.6-联调验证-checklist.md)
-v0.4 P0 mock 验证清单：[docs/P0-mock-闭环-测试checklist.md](docs/P0-mock-闭环-测试checklist.md)
+```bash
+cd /opt/kanshan
+git pull
+bash scripts/deploy.sh
+```
+
+如果只重建部分服务：
+
+```bash
+docker compose --env-file infra/.env -f infra/docker-compose.yml up -d --build api-gateway frontend llm-service sprout-service
+```
+
+健康检查：
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8040/health
+curl -s http://127.0.0.1:8080/health
+```
 
 ---
 
 ## 仓库结构
 
 ```text
-frontend/                  Next.js 前端（同时支持 mock 与 gateway 两种后端模式）
-services/                  9 个 FastAPI 后端
-  ├── api-gateway/         8000  前端唯一入口
-  ├── profile-service/     8010  用户画像 + Memory
-  ├── content-service/     8020  今日看什么
-  ├── seed-service/        8030  观点种子 + 浇水
-  ├── sprout-service/      8040  今日发芽
-  ├── writing-service/     8050  写作苗圃 8 步
-  ├── feedback-service/    8060  历史反馈
-  ├── zhihu-adapter/       8070  知乎能力出口（mock / live）
-  └── llm-service/         8080  LLM 任务路由 + 多 persona
-  config.example.yaml      凭证 / 配置模板；复制为 config.yaml 后填
+frontend/                  Next.js 前端
+services/                  FastAPI 微服务
+  ├── api-gateway/         前端唯一入口
+  ├── profile-service/     用户、画像、Memory、OAuth 绑定
+  ├── content-service/     今日看什么
+  ├── seed-service/        观点种子库
+  ├── sprout-service/      今日发芽
+  ├── writing-service/     写作苗圃
+  ├── feedback-service/    历史反馈
+  ├── zhihu-adapter/       知乎 API 适配层
+  └── llm-service/         LLM provider 路由和 Agent 任务
 packages/
-  ├── shared-python/       kanshan_shared（config loader + structured logging）
-  └── shared-schemas/      OpenAPI / JSON Schema / examples
-infra/                     docker-compose（postgres + redis）
-docs/                      产品 / 技术 / 算法 / 开发设计文档
-scripts/                   run_all_services.sh / dev_up.sh
-output/                    运行时产物（日志 / trace）。.gitignored
+  ├── shared-python/       配置、日志、数据库等 Python 共享能力
+  └── shared-schemas/      DTO / OpenAPI / JSON Schema
+infra/                     Docker Compose、Postgres 初始化脚本
+docs/                      产品、技术、算法、部署和任务拆分文档
+scripts/                   本地启动、部署、校验脚本
 ```
-
----
-
-## 依赖
-
-- **Python 3.10+**：所有后端服务。
-- **Node.js 20+ / npm**：前端。
-- **Redis**（可选）：默认 `cache.backend=memory`，演示无需。要切到 Redis 改 `services/config.yaml`。
-- **真实知乎凭证**（可选）：默认 `provider_mode=mock`，所有功能用 fixture；切到 live 需要在 `services/config.yaml` 填三类凭证，详见 [services/zhihu-adapter/README.md](services/zhihu-adapter/README.md)。
-
----
-
-## 后端模式切换
-
-`services/config.yaml`：
-
-```yaml
-provider_mode: mock         # 演示 / 离线开发
-# provider_mode: live       # 真实知乎接入；需填 zhihu.community / oauth / data_platform
-```
-
-前端模式 `frontend/.env.local`（拷自 `frontend/.env.example`）：
-
-```text
-NEXT_PUBLIC_KANSHAN_BACKEND_MODE=mock        # 默认；走 Next.js /api/mock/*
-# NEXT_PUBLIC_KANSHAN_BACKEND_MODE=gateway   # 真实联调；走 :8000/api/v1/*
-NEXT_PUBLIC_KANSHAN_GATEWAY_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_ZHIHU_ADAPTER_URL=http://127.0.0.1:8070
-```
-
----
-
-## 测试
-
-```bash
-# 全量后端单元测试（80 ok / 0 fail）
-for svc in services/*/; do
-  python3 -m unittest discover -s "$svc/tests"
-done
-python3 -m unittest discover -s packages/shared-python/tests
-```
-
-各服务单独测试见对应 `services/<svc>/README.md`。
 
 ---
 
 ## 开发原则
 
-- 先跑通 P0 演示闭环，再接真实知乎接口。
-- 每个服务必须先支持 mock 模式。
-- 前端只调用 `api-gateway`，业务服务之间只通过 HTTP API 通信。
-- 知乎 token / 模型 key 只放 `services/config.yaml` 或环境变量（绝不进 git）。
-- 昂贵任务必须用户主动触发；Memory 更新必须用户确认。
-- 每完成一个小版本就提交一次 Git。
+```text
+1. AI 辅助表达，但不替用户决定立场。
+2. 输入质量先于输出质量。
+3. 观点种子是读写闭环的核心资产。
+4. 昂贵 LLM 任务必须用户主动触发。
+5. Memory 更新需要用户可感知、可确认、可拒绝。
+6. 前端只调用 api-gateway，不直接调用业务服务。
+7. 涉及用户个人内容优先走用户自配 LLM，通用提取走平台能力。
+```

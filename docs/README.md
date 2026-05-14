@@ -24,6 +24,7 @@
 | `docs/数据库结构定稿.md` | 当前数据库结构参考 |
 | `docs/部署指南.md` / `docs/ubuntu-2404-deployment.md` | 本地和服务器部署参考 |
 | `docs/看山小苗圃-上线部署与OAuth跑通方案.md` | 线上同源部署、知乎 OAuth redirect URI、环境变量和验收方案 |
+| `docs/看山小苗圃-实际部署清单与一键脚本.md` | Docker 容器实际读取的配置项、infra/.env 清单、一键部署脚本用法 |
 | `docs/AI-Coding任务分发模板.md` | 给其他模型分配任务时的复制模板 |
 | `docs/工程约束与提交规范.md` | Git、代码风格、提交和协作约束 |
 

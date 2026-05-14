@@ -14,7 +14,6 @@ function ZhihuOauthSuccessContent() {
   const searchParams = useSearchParams();
   const nonceRef = useRef(createNonce());
   const statusRef = useRef<HTMLParagraphElement | null>(null);
-  const countdownRef = useRef<HTMLParagraphElement | null>(null);
 
   const ticket = searchParams.get("ticket");
   const error = searchParams.get("error");
@@ -56,23 +55,16 @@ function ZhihuOauthSuccessContent() {
         };
 
         sendToOpener();
-        const messageTimer = window.setInterval(sendToOpener, 500);
-        setStatus("授权成功，正在通知主页面。你可以返回主页面或等待自动关闭。");
-        let countdown = 12;
-        if (countdownRef.current) countdownRef.current.textContent = `${countdown} 秒后返回主页`;
-        const closeTimer = window.setInterval(() => {
-          countdown -= 1;
-          if (countdownRef.current) countdownRef.current.textContent = `${Math.max(0, countdown)} 秒后返回主页`;
-          if (countdown <= 0) {
-            window.clearInterval(messageTimer);
-            window.clearInterval(closeTimer);
-            window.close();
-          }
-        }, 1000);
+        const messageTimer = window.setInterval(sendToOpener, 120);
+        setStatus("授权成功，正在返回主页面...");
+        const closeTimer = window.setTimeout(() => {
+          window.clearInterval(messageTimer);
+          window.close();
+        }, 480);
 
         return () => {
           window.clearInterval(messageTimer);
-          window.clearInterval(closeTimer);
+          window.clearTimeout(closeTimer);
         };
       } catch {
         setStatus("通知主页面失败，请手动返回主页重试");
@@ -89,7 +81,6 @@ function ZhihuOauthSuccessContent() {
     <div style={{ padding: "48px", textAlign: "center", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <h1 style={{ fontSize: "24px", marginBottom: "16px" }}>知乎授权结果</h1>
       <p ref={statusRef} style={{ fontSize: "16px", color: "#666" }}>正在通知主页面...</p>
-      <p ref={countdownRef} style={{ fontSize: "14px", color: "#999" }} />
     </div>
   );
 }

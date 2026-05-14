@@ -220,7 +220,7 @@ curl -s http://127.0.0.1:8000/health | python3 -m json.tool
 
 ## 关于作者
 
-**刘沛泽** · 全栈开发 · 专注 Agent 开发
+**三水儿** · 全栈开发 · 专注 Agent 开发
 
 期望岗位：**Agent 开发**
 

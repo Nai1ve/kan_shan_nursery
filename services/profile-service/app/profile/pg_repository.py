@@ -81,7 +81,7 @@ class PostgresProfileRepository:
         finally:
             session.close()
 
-    def get_update_request(self, request_id: str) -> dict[str, Any] | None:
+    def get_update_request(self, request_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         session = self._SessionFactory()
         try:
             row = session.get(MemoryUpdateRequestTable, request_id)
@@ -89,7 +89,7 @@ class PostgresProfileRepository:
         finally:
             session.close()
 
-    def save_update_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    def save_update_request(self, request: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
         session = self._SessionFactory()
         try:
             row = MemoryUpdateRequestTable(

@@ -9,9 +9,9 @@ sys.path.insert(0, str(SHARED_ROOT))
 sys.path.insert(0, str(ROOT))
 
 from app.auth.models import ZhihuBinding
-from app.enrichment.models import ProfileSignalBundle
+from app.enrichment.models import ProfileSignalBundle, ProfileSignalSourceItem
 from app.enrichment.runner import EnrichmentRunner
-from app.enrichment.transformer import transform_bundle_to_llm_input
+from app.enrichment.transformer import build_social_memory_requests, transform_bundle_to_llm_input
 from app.memory.service import MemoryNotFound, MemoryService
 from app.profile.repository import ProfileRepository
 from app.profile.service import ProfileService
@@ -136,6 +136,53 @@ class ProfileServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result["user"]["interests"], ["AI Coding"])
+
+    def test_enrichment_transformer_extracts_social_memory_from_follow_lists(self) -> None:
+        bundle = ProfileSignalBundle(
+            user_id="user-1",
+            generated_at="2026-05-13T00:00:00+00:00",
+            onboarding={"selectedInterestIds": ["数码科技"]},
+            signals=[
+                ProfileSignalSourceItem(
+                    evidence_id="ev-1",
+                    source_type="followed",
+                    source_id="author-1",
+                    author_name="AI Coding 作者",
+                    headline="长期关注 AI 编程、软件工程和开发者工具",
+                    confidence_hint=0.5,
+                ),
+                ProfileSignalSourceItem(
+                    evidence_id="ev-2",
+                    source_type="followers",
+                    source_id="reader-1",
+                    author_name="技术读者",
+                    headline="关注 AI 工具和消费电子",
+                    confidence_hint=0.3,
+                ),
+            ],
+        )
+
+        llm_input = transform_bundle_to_llm_input(
+            bundle=bundle,
+            existing_memory={},
+            interest_catalog=["数码科技"],
+            profile={"nickname": "测试用户", "interests": ["数码科技"]},
+        )
+        requests = build_social_memory_requests(
+            bundle=bundle,
+            user_id="user-1",
+            existing_memory={},
+            interest_catalog=["数码科技"],
+        )
+
+        summary = llm_input["interactions"]["socialSignalSummary"]
+        self.assertEqual(summary["sourceCounts"]["followed"], 1)
+        self.assertEqual(summary["sourceCounts"]["followers"], 1)
+        self.assertTrue(any(item["interestId"] == "shuma" for item in summary["categories"]))
+        self.assertTrue(any(req["interestId"] == "global" for req in requests))
+        self.assertTrue(
+            any(req["interestId"] == "shuma" and req["targetField"] == "writingReminder" for req in requests)
+        )
 
     def test_enrichment_runner_reads_access_token_from_binding_model(self) -> None:
         class AuthRepo:

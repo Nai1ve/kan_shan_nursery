@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from typing import Any
 
 from .models import ProfileSignalBundle, ProfileSignalSourceItem
+
+from kanshan_shared.categories import INTEREST_CATEGORIES, CategoryDef
 
 
 def _now_iso() -> str:
@@ -77,6 +80,114 @@ def _signal_to_interaction(signal: ProfileSignalSourceItem) -> dict[str, Any] | 
     return None
 
 
+def _signal_text(signal: ProfileSignalSourceItem) -> str:
+    return " ".join(
+        str(part)
+        for part in [
+            signal.author_name,
+            signal.headline,
+            signal.title,
+            signal.excerpt,
+            signal.action_text,
+        ]
+        if part
+    ).strip()
+
+
+def _category_keywords(cat: CategoryDef) -> set[str]:
+    words = {cat.name, cat.id, cat.description, *cat.preferred_perspective, *cat.default_queries}
+    return {word.strip().lower() for word in words if str(word).strip()}
+
+
+def _catalog_categories(interest_catalog: list[dict[str, Any]] | list[str]) -> list[CategoryDef]:
+    selected_ids = {_interest_id(item) for item in interest_catalog if _interest_id(item)}
+    selected_names = {_interest_name(item) for item in interest_catalog if _interest_name(item)}
+    if not selected_ids and not selected_names:
+        return INTEREST_CATEGORIES
+    matched = [
+        cat
+        for cat in INTEREST_CATEGORIES
+        if cat.id in selected_ids or cat.name in selected_names
+    ]
+    return matched or INTEREST_CATEGORIES
+
+
+def _social_signal_summary(
+    signals: list[ProfileSignalSourceItem],
+    interest_catalog: list[dict[str, Any]] | list[str],
+) -> dict[str, Any]:
+    """Extract weak Memory signals from followed/follower lists.
+
+    Following is a stronger preference signal than followers. Followers still
+    matter, but they mainly describe the audience that may read the user.
+    """
+    categories = _catalog_categories(interest_catalog)
+    keyword_map = {cat.id: _category_keywords(cat) for cat in categories}
+    by_category: dict[str, dict[str, Any]] = {}
+    source_counts = {"followed": 0, "followers": 0}
+    total_social = 0
+
+    for signal in signals:
+        if signal.source_type not in {"followed", "followers"}:
+            continue
+        total_social += 1
+        source_counts[signal.source_type] += 1
+        text = _signal_text(signal)
+        lowered = text.lower()
+        if not lowered:
+            continue
+
+        weight = 1.0 if signal.source_type == "followed" else 0.45
+        for cat in categories:
+            matched = [keyword for keyword in keyword_map[cat.id] if keyword and keyword in lowered]
+            if not matched:
+                continue
+            bucket = by_category.setdefault(
+                cat.id,
+                {
+                    "interestId": cat.id,
+                    "interestName": cat.name,
+                    "score": 0.0,
+                    "followed": 0,
+                    "followers": 0,
+                    "keywords": defaultdict(float),
+                    "examples": [],
+                },
+            )
+            bucket["score"] += weight * max(1, len(matched))
+            bucket[signal.source_type] += 1
+            for keyword in matched[:5]:
+                bucket["keywords"][keyword] += weight
+            if len(bucket["examples"]) < 4:
+                bucket["examples"].append(
+                    {
+                        "source": signal.source_type,
+                        "name": signal.author_name or signal.title or signal.source_id,
+                        "headline": signal.headline or signal.excerpt or "",
+                    }
+                )
+
+    categories_summary = []
+    for item in by_category.values():
+        keywords = sorted(item["keywords"].items(), key=lambda pair: pair[1], reverse=True)
+        categories_summary.append({
+            "interestId": item["interestId"],
+            "interestName": item["interestName"],
+            "score": round(item["score"], 2),
+            "followedCount": item["followed"],
+            "followersCount": item["followers"],
+            "topKeywords": [keyword for keyword, _ in keywords[:6]],
+            "examples": item["examples"],
+        })
+    categories_summary.sort(key=lambda item: item["score"], reverse=True)
+
+    return {
+        "totalSocialConnections": total_social,
+        "sourceCounts": source_counts,
+        "categories": categories_summary,
+    }
+
+
 def transform_bundle_to_llm_input(
     bundle: ProfileSignalBundle,
     existing_memory: dict[str, Any],
@@ -144,6 +255,8 @@ def transform_bundle_to_llm_input(
     })
     interest_memories = current_memory.get("interestMemories", [])
 
+    social_summary = _social_signal_summary(bundle.signals, interest_catalog)
+
     return {
         "user": {
             "nickname": nickname,
@@ -157,12 +270,109 @@ def transform_bundle_to_llm_input(
             "writingHistory": writing_history,
             "socialConnections": social_connections[:30],  # Limit to top 30
             "contentInteractions": content_interactions[:20],  # Limit to top 20
+            "socialSignalSummary": social_summary,
         },
         "currentMemory": {
             "globalMemory": global_memory,
             "interestMemories": interest_memories,
         },
     }
+
+
+def build_social_memory_requests(
+    bundle: ProfileSignalBundle,
+    user_id: str,
+    existing_memory: dict[str, Any],
+    interest_catalog: list[dict[str, Any]] | list[str],
+    max_interest_requests: int = 3,
+) -> list[dict[str, Any]]:
+    """Build pending Memory update requests from followed/follower lists.
+
+    These requests are deliberately conservative: they only surface social
+    graph evidence and still require user confirmation before changing Memory.
+    """
+    social_summary = _social_signal_summary(bundle.signals, interest_catalog)
+    categories = social_summary.get("categories", [])
+    if not categories:
+        return []
+
+    now = _now_iso()
+    requests: list[dict[str, Any]] = []
+    existing_global = existing_memory.get("globalMemory", {}) if existing_memory else {}
+
+    top_names = [item["interestName"] for item in categories[:3]]
+    source_counts = social_summary.get("sourceCounts", {})
+    global_value = (
+        "知乎关注/粉丝关系显示，用户的社交输入集中在"
+        f"{'、'.join(top_names)}等方向；推荐和写作时应优先保留这些圈层的热点、争议和读者视角。"
+    )
+    if global_value != existing_global.get("contentPreference"):
+        requests.append({
+            "id": _create_id("memreq"),
+            "userId": user_id,
+            "scope": "global",
+            "interestId": "global",
+            "targetField": "contentPreference",
+            "suggestedValue": global_value,
+            "reason": (
+                "基于知乎关注列表和粉丝列表提取的社交输入信号："
+                f"关注 {source_counts.get('followed', 0)} 人，粉丝 {source_counts.get('followers', 0)} 人。"
+            ),
+            "evidenceRefs": [example.get("name", "") for item in categories[:3] for example in item.get("examples", [])][:8],
+            "status": "pending",
+            "createdAt": now,
+        })
+
+    existing_interests = {
+        im.get("interestId"): im
+        for im in existing_memory.get("interestMemories", [])
+    } if existing_memory else {}
+
+    for item in categories[:max_interest_requests]:
+        interest_id = item["interestId"]
+        keywords = item.get("topKeywords", [])
+        examples = item.get("examples", [])
+        example_names = [example.get("name", "") for example in examples if example.get("name")]
+        reminder = (
+            f"该兴趣下的知乎社交关系集中出现 {', '.join(keywords[:4]) or item['interestName']}。"
+            "写作时可优先观察关注对象的专业视角，同时把粉丝侧问题作为读者追问处理。"
+        )
+        existing = existing_interests.get(interest_id, {})
+        if reminder and reminder != existing.get("writingReminder"):
+            requests.append({
+                "id": _create_id("memreq"),
+                "userId": user_id,
+                "scope": "interest",
+                "interestId": interest_id,
+                "targetField": "writingReminder",
+                "suggestedValue": reminder,
+                "reason": (
+                    f"知乎社交关系中有 {item.get('followedCount', 0)} 个关注对象、"
+                    f"{item.get('followersCount', 0)} 个粉丝与「{item['interestName']}」相关；"
+                    f"代表样本：{'、'.join(example_names[:3]) or '暂无名称'}。"
+                ),
+                "evidenceRefs": example_names[:6],
+                "status": "pending",
+                "createdAt": now,
+            })
+
+    return requests
+
+
+def dedupe_memory_requests(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for request in requests:
+        key = (
+            str(request.get("interestId", "")),
+            str(request.get("targetField", "")),
+            str(request.get("suggestedValue", "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(request)
+    return deduped
 
 
 def transform_llm_output_to_requests(
@@ -245,6 +455,8 @@ def build_fallback_requests(
     user_id: str,
     profile: dict[str, Any],
     interest_catalog: list[dict[str, Any]],
+    signal_bundle: ProfileSignalBundle | None = None,
+    existing_memory: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build fallback memory update requests when LLM fails.
 
@@ -278,4 +490,12 @@ def build_fallback_requests(
             "createdAt": now,
         })
 
-    return requests
+    if signal_bundle is not None:
+        requests.extend(build_social_memory_requests(
+            signal_bundle,
+            user_id=user_id,
+            existing_memory=existing_memory or {},
+            interest_catalog=interest_catalog,
+        ))
+
+    return dedupe_memory_requests(requests)

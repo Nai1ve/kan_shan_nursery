@@ -15,6 +15,8 @@ from .models import EnrichmentJob, ProfileSignalBundle, ProfileSignalSourceItem
 from .repository import EnrichmentRepository
 from .transformer import (
     build_fallback_requests,
+    build_social_memory_requests,
+    dedupe_memory_requests,
     transform_bundle_to_llm_input,
     transform_llm_output_to_requests,
 )
@@ -153,10 +155,21 @@ class EnrichmentService:
                 requests = transform_llm_output_to_requests(
                     llm_output, job.user_id, existing_memory
                 )
+                requests.extend(build_social_memory_requests(
+                    bundle,
+                    user_id=job.user_id,
+                    existing_memory=existing_memory,
+                    interest_catalog=interest_catalog,
+                ))
+                requests = dedupe_memory_requests(requests)
             else:
                 # Fallback: generate basic requests
                 requests = build_fallback_requests(
-                    job.user_id, profile, interest_catalog
+                    job.user_id,
+                    profile,
+                    interest_catalog,
+                    signal_bundle=bundle,
+                    existing_memory=existing_memory,
                 )
                 job.status = "fallback"
 

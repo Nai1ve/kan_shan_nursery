@@ -140,6 +140,46 @@ def _build_blueprint(claim: str, llm_client=None, session: dict[str, Any] | None
     }
 
 
+def _adjust_claim(
+    claim: str,
+    instruction: str,
+    tone: str,
+    llm_client=None,
+    session: dict[str, Any] | None = None,
+) -> str:
+    if llm_client and session:
+        try:
+            memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
+            seed = {
+                "title": session.get("seedTitle") or session.get("seedId") or "观点种子",
+                "coreClaim": claim,
+                "interestId": session.get("interestId", ""),
+            }
+            result = llm_client.adjust_claim(seed=seed, memory=memory, instruction=instruction, tone=tone)
+            answer = str(result.get("answer") or "").strip()
+            if answer:
+                return _clean_single_claim(answer)
+        except Exception:
+            pass
+
+    if tone == "sharp":
+        return f"{claim} 关键不在于态度更激烈，而在于把真正的问题边界说清楚。"
+    if tone == "steady":
+        return f"在限定场景下，我倾向于认为：{claim}"
+    return f"{claim}（需要在文章中明确前提、证据和反方边界）"
+
+
+def _clean_single_claim(text: str) -> str:
+    lines = [line.strip(" \t-•：:") for line in text.splitlines() if line.strip()]
+    if not lines:
+        return text.strip()
+    first = lines[0]
+    for prefix in ["核心观点", "改写后的观点", "观点", "答案"]:
+        if first.startswith(prefix):
+            first = first[len(prefix):].strip(" ：:")
+    return first.strip() or text.strip()
+
+
 def _map_llm_blueprint(result: dict[str, Any], fallback_claim: str) -> dict[str, Any]:
     core_claim = result.get("coreClaim", fallback_claim)
     outline_items = result.get("outline", [])
@@ -297,17 +337,19 @@ def _build_draft(claim: str, tone: str, llm_client=None, session: dict[str, Any]
 # ---------------------------------------------------------------------------
 
 def _init_roundtable_state(claim: str, llm_client=None, session: dict[str, Any] | None = None) -> dict[str, Any]:
-    if llm_client and session:
-        try:
-            memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
-            seed = {"coreClaim": claim, "interestId": session.get("interestId", "")}
-            draft = session.get("draft", {})
-            result = llm_client.roundtable_review(seed=seed, draft=draft, memory=memory)
-            return _reviews_to_roundtable_state(result.get("reviews", []), claim)
-        except Exception:
-            pass  # Fallback to mock
-
-    return _mock_roundtable_state(claim)
+    return {
+        "status": "active",
+        "turns": [
+            {
+                "id": _create_id("turn"),
+                "role": "system",
+                "content": "圆桌审稿会已开始。你是主持人，请先选择一位 Agent 发言，也可以先输入自己的问题。",
+                "createdAt": _now_iso(),
+            }
+        ],
+        "suggestions": [],
+        "adoptedSuggestions": [],
+    }
 
 
 def _reviews_to_roundtable_state(reviews: list[dict[str, Any]], claim: str) -> dict[str, Any]:
@@ -340,7 +382,7 @@ def _reviews_to_roundtable_state(reviews: list[dict[str, Any]], claim: str) -> d
             })
     if not turns:
         return _mock_roundtable_state(claim)
-    return {"status": "active", "turns": turns, "suggestions": suggestions}
+    return {"status": "active", "turns": turns, "suggestions": suggestions, "adoptedSuggestions": []}
 
 
 def _mock_roundtable_state(claim: str) -> dict[str, Any]:
@@ -376,7 +418,7 @@ def _mock_roundtable_state(claim: str) -> dict[str, Any]:
                 "severity": severity,
                 "adopted": False,
             })
-    return {"status": "active", "turns": turns, "suggestions": suggestions}
+    return {"status": "active", "turns": turns, "suggestions": suggestions, "adoptedSuggestions": []}
 
 
 def _build_roundtable_author_message(roundtable_state: dict[str, Any], content: str) -> dict[str, Any]:
@@ -392,22 +434,61 @@ def _build_roundtable_author_message(roundtable_state: dict[str, Any], content: 
     return state
 
 
+def _merge_unique_strings(items: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        merged.append(value)
+    return merged
+
+
+def _collect_adopted_suggestions(roundtable_state: dict[str, Any]) -> list[str]:
+    return _merge_unique_strings(
+        list(roundtable_state.get("adoptedSuggestions", []))
+        + [
+            suggestion.get("content", "")
+            for suggestion in roundtable_state.get("suggestions", [])
+            if suggestion.get("adopted")
+        ]
+    )
+
+
 def _continue_roundtable(
     roundtable_state: dict[str, Any],
     claim: str,
     llm_client=None,
     session: dict[str, Any] | None = None,
+    requested_role: str | None = None,
+    frontend_conversation: list[dict[str, Any]] | None = None,
+    host_instruction: str | None = None,
 ) -> dict[str, Any]:
     state = {**roundtable_state}
+    role = requested_role or _next_roundtable_role(state)
     if llm_client and session:
         try:
             memory = session.get("memoryOverride") or _default_memory_for_interest(session.get("interestId", ""))
             seed = {"coreClaim": claim, "interestId": session.get("interestId", "")}
             draft = session.get("draft", {})
-            result = llm_client.roundtable_review(seed=seed, draft=draft, memory=memory)
+            result = llm_client.roundtable_review(
+                seed=seed,
+                draft=draft,
+                memory=memory,
+                requested_role=role,
+                conversation_context=_roundtable_context(state, frontend_conversation),
+                host_instruction=host_instruction,
+            )
             new_reviews = result.get("reviews", [])
+            if role:
+                role_reviews = [review for review in new_reviews if review.get("role") == role or review.get("_persona") == role]
+                if role_reviews:
+                    new_reviews = role_reviews[:1]
             turns = list(state.get("turns", []))
-            suggestions = list(state.get("suggestions", []))
+            suggestions: list[dict[str, Any]] = []
+            adopted_suggestions = _collect_adopted_suggestions(state)
             for review in new_reviews:
                 role = review.get("role", "reviewer")
                 suggs = review.get("suggestions", [])
@@ -434,6 +515,7 @@ def _continue_roundtable(
                     })
             state["turns"] = turns
             state["suggestions"] = suggestions
+            state["adoptedSuggestions"] = adopted_suggestions
             return state
         except Exception:
             pass
@@ -442,26 +524,72 @@ def _continue_roundtable(
     turns = list(state.get("turns", []))
     turns.append({
         "id": _create_id("turn"),
-        "role": "logic_reviewer",
-        "content": f"收到作者的回应。针对\"{claim}\"，建议进一步明确判断的适用条件，并补充一个可验证的案例。",
+        "role": role,
+        "content": _mock_roundtable_reply(role, claim),
         "createdAt": _now_iso(),
     })
     state["turns"] = turns
+    state["suggestions"] = []
+    state["adoptedSuggestions"] = _collect_adopted_suggestions(state)
     return state
+
+
+def _next_roundtable_role(roundtable_state: dict[str, Any]) -> str:
+    roles = ["logic_reviewer", "human_editor", "opponent_reader", "community_editor"]
+    existing = [turn.get("role") for turn in roundtable_state.get("turns", [])]
+    for role in roles:
+        if role not in existing:
+            return role
+    return roles[len(existing) % len(roles)]
+
+
+def _roundtable_context(
+    roundtable_state: dict[str, Any],
+    frontend_conversation: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    context: list[dict[str, Any]] = []
+    for turn in roundtable_state.get("turns", []):
+        context.append({
+            "role": turn.get("role", "unknown"),
+            "content": turn.get("content", ""),
+            "createdAt": turn.get("createdAt"),
+        })
+    for item in frontend_conversation or []:
+        content = item.get("text") or item.get("content") or ""
+        if not content:
+            continue
+        context.append({
+            "role": item.get("role") or item.get("speaker") or ("author" if item.get("isHost") else "unknown"),
+            "content": content,
+        })
+    return context
+
+
+def _mock_roundtable_reply(role: str, claim: str) -> str:
+    replies = {
+        "logic_reviewer": f"从逻辑上看，\"{claim}\"需要补一层因果链：材料证明了什么、你的判断又从哪里推出。",
+        "human_editor": "从读者感受看，文字还需要一个真实场景。建议加入你自己的经历、时间点或具体冲突。",
+        "opponent_reader": "我会反问：这个观点是否只适用于一部分场景？如果样本不足，结论最好收窄。",
+        "community_editor": "从知乎表达看，开头需要更快抛出问题，标题也可以改成一个更具体的判断或提问。",
+    }
+    return replies.get(role, f"针对\"{claim}\"，建议补充一个可验证的案例和反方边界。")
 
 
 def _adopt_suggestion(roundtable_state: dict[str, Any], suggestion_id: str) -> dict[str, Any]:
     state = {**roundtable_state}
     suggestions = list(state.get("suggestions", []))
     found = False
+    adopted_content = ""
     for i, sug in enumerate(suggestions):
         if sug.get("id") == suggestion_id:
-            suggestions[i] = {**sug, "adopted": True}
+            adopted_content = str(sug.get("content") or "").strip()
+            suggestions.pop(i)
             found = True
             break
     if not found:
         raise ValueError(f"suggestion {suggestion_id} not found")
     state["suggestions"] = suggestions
+    state["adoptedSuggestions"] = _merge_unique_strings(list(state.get("adoptedSuggestions", [])) + [adopted_content])
     return state
 
 

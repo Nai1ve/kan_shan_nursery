@@ -288,8 +288,50 @@ export interface FeedbackArticle {
   metrics: { label: string; value: number }[];
 }
 
+export interface WritingBlueprint {
+  centralClaim: string;
+  mainThread: string;
+  argumentSteps: Array<{ id: string; title: string; purpose: string; keyPoints: string[] }>;
+  counterArguments: string[];
+  responseStrategy: string;
+  personalExperienceNeeded: string[];
+  riskNotes: string[];
+}
+
+export interface WritingDraft {
+  title: string;
+  tone: string;
+  outline: string[] | Array<{ id?: string; title: string }>;
+  body: string;
+  aiDisclosureSuggestion?: string;
+  schemaVersion?: string;
+}
+
+export interface RoundtableTurn {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface RoundtableSuggestion {
+  id: string;
+  fromRole: string;
+  content: string;
+  severity: "low" | "medium" | "high";
+  adopted: boolean;
+}
+
+export interface RoundtableState {
+  status: "not_started" | "active" | "completed";
+  turns: RoundtableTurn[];
+  suggestions: RoundtableSuggestion[];
+  adoptedSuggestions?: string[];
+}
+
 export interface WritingSession {
   sessionId: string;
+  backendSessionId?: string;
   seedId: string;
   interestId: string;
   articleType: string;
@@ -298,9 +340,21 @@ export interface WritingSession {
   tone: "balanced" | "sharp" | "steady";
   confirmed: boolean;
   adoptedSuggestions: string[];
-  draftStatus: "claim_confirming" | "blueprint_ready" | "draft_ready" | "reviewing" | "finalized" | "published";
+  draftStatus:
+    | "claim_confirming"
+    | "blueprint_ready"
+    | "blueprint_confirmed"
+    | "outline_ready"
+    | "outline_confirmed"
+    | "draft_ready"
+    | "reviewing"
+    | "finalized"
+    | "published";
   savedDraft: boolean;
   publishedArticleId?: string;
+  blueprint?: WritingBlueprint;
+  draft?: WritingDraft;
+  roundtable?: RoundtableState;
 }
 
 export interface CategoryRefreshState {

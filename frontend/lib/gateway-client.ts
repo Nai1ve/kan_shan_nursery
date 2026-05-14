@@ -17,12 +17,16 @@ import type {
   InputCategory,
   MemorySummary,
   ProfileData,
+  RoundtableState,
   SeedQuestion,
   SeedReaction,
   SproutOpportunity,
   WateringMaterial,
   WateringMaterialType,
   WorthReadingCard,
+  WritingBlueprint,
+  WritingDraft,
+  WritingSession,
 } from "./types";
 
 const GATEWAY_URL =
@@ -368,4 +372,126 @@ export async function gatewayMergeSeeds(targetSeedId: string, sourceSeedId: stri
     `/api/v1/seeds/${encodeURIComponent(targetSeedId)}/merge`,
     { sourceSeedId },
   );
+}
+
+// ── Writing Session ──────────────────────────────────────────────
+
+export async function gatewayCreateWritingSession(payload: {
+  seedId: string;
+  interestId: string;
+  articleType?: string;
+  coreClaim?: string;
+  tone?: string;
+  memoryOverride?: MemorySummary;
+}): Promise<WritingSession> {
+  return request<WritingSession>("POST", "/api/v1/writing/sessions", payload);
+}
+
+export async function gatewayGetWritingSession(sessionId: string): Promise<WritingSession> {
+  return request<WritingSession>("GET", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function gatewayUpdateWritingSession(
+  sessionId: string,
+  patch: Partial<WritingSession>,
+): Promise<WritingSession> {
+  return request<WritingSession>("PATCH", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}`, patch);
+}
+
+export async function gatewayConfirmWritingClaim(
+  sessionId: string,
+  payload?: { coreClaim?: string; articleType?: string; tone?: string },
+): Promise<WritingSession> {
+  return request<WritingSession>("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/confirm-claim`, payload);
+}
+
+export async function gatewayAdjustWritingClaim(
+  sessionId: string,
+  payload: { coreClaim?: string; instruction: string; tone?: string },
+): Promise<{ session: WritingSession; coreClaim: string }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/claim/adjust`, payload);
+}
+
+export async function gatewayGenerateBlueprint(sessionId: string): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/blueprint`);
+}
+
+export async function gatewayPatchBlueprint(
+  sessionId: string,
+  patch: Partial<WritingBlueprint>,
+): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  return request("PATCH", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/blueprint`, patch);
+}
+
+export async function gatewayRegenerateBlueprint(
+  sessionId: string,
+  payload?: { instruction?: string },
+): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/blueprint/regenerate`, payload);
+}
+
+export async function gatewayConfirmBlueprint(sessionId: string): Promise<WritingSession> {
+  return request<WritingSession>("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/blueprint/confirm`);
+}
+
+export async function gatewayGenerateOutline(sessionId: string): Promise<{ session: WritingSession; outline: { sections: Array<{ id: string; title: string; purpose: string; keyPoints: string[] }> } }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/outline`);
+}
+
+export async function gatewayConfirmOutline(sessionId: string): Promise<WritingSession> {
+  return request<WritingSession>("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/outline/confirm`);
+}
+
+export async function gatewayGenerateDraft(sessionId: string): Promise<{ session: WritingSession; draft: WritingDraft }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/draft`);
+}
+
+export async function gatewayStartRoundtable(sessionId: string): Promise<{ session: WritingSession; roundtable: RoundtableState }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/roundtable/start`);
+}
+
+export async function gatewayRoundtableAuthorMessage(
+  sessionId: string,
+  content: string,
+): Promise<{ session: WritingSession; roundtable: RoundtableState }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/roundtable/messages`, { content });
+}
+
+export async function gatewayContinueRoundtable(
+  sessionId: string,
+  payload?: { role?: string; conversation?: Array<{ speaker: string; text: string; isHost?: boolean }>; instruction?: string },
+): Promise<{ session: WritingSession; roundtable: RoundtableState }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/roundtable/continue`, payload);
+}
+
+export async function gatewayAdoptSuggestion(
+  sessionId: string,
+  suggestionId: string,
+): Promise<{ session: WritingSession; roundtable: RoundtableState }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/roundtable/suggestions/${encodeURIComponent(suggestionId)}/adopt`);
+}
+
+export async function gatewayFinalizeWriting(sessionId: string): Promise<{ session: WritingSession; finalized: { title: string; summary: string; publishingNotice: string } }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/finalize`);
+}
+
+// ── LLM Task (generic) ──────────────────────────────────────────
+
+export async function gatewayRunLlmTask(
+  taskType: string,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return request("POST", `/api/v1/llm/tasks/${encodeURIComponent(taskType)}`, {
+    taskType,
+    input,
+    promptVersion: "v1",
+    schemaVersion: "v1",
+  });
+}
+
+export async function gatewayPublishMock(
+  sessionId: string,
+  payload?: { title?: string },
+): Promise<{ session: WritingSession; publishedArticle: Record<string, unknown>; feedbackHandoff: Record<string, unknown> }> {
+  return request("POST", `/api/v1/writing/sessions/${encodeURIComponent(sessionId)}/publish/mock`, payload);
 }

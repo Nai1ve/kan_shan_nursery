@@ -6,6 +6,7 @@ import type {
   IdeaSeed,
   InputCategory,
   ProfileData,
+  RoundtableState,
   SeedQuestion,
   SeedReaction,
   SproutOpportunity,
@@ -13,6 +14,9 @@ import type {
   WateringMaterialType,
   WorthReadingCard,
   MemorySummary,
+  WritingBlueprint,
+  WritingDraft,
+  WritingSession,
 } from "./types";
 import {
   gatewayAddSeedMaterial,
@@ -43,6 +47,25 @@ import {
   gatewayMergeSeeds,
   gatewayUpdateSeed,
   gatewayUpdateSeedMaterial,
+  gatewayCreateWritingSession,
+  gatewayGetWritingSession,
+  gatewayUpdateWritingSession,
+  gatewayConfirmWritingClaim,
+  gatewayAdjustWritingClaim,
+  gatewayGenerateBlueprint,
+  gatewayConfirmBlueprint,
+  gatewayPatchBlueprint,
+  gatewayRegenerateBlueprint,
+  gatewayGenerateOutline,
+  gatewayConfirmOutline,
+  gatewayGenerateDraft,
+  gatewayStartRoundtable,
+  gatewayRoundtableAuthorMessage,
+  gatewayContinueRoundtable,
+  gatewayAdoptSuggestion,
+  gatewayFinalizeWriting,
+  gatewayPublishMock,
+  gatewayRunLlmTask,
   dispatchGatewayNotices,
   KANSHAN_LLM_NOTICE_EVENT,
 } from "./gateway-client";
@@ -420,4 +443,117 @@ export async function getLatestEnrichmentJob(): Promise<EnrichmentJob> {
     throw new Error("getLatestEnrichmentJob only available in gateway mode");
   }
   return gatewayRequest("GET", "/profile/enrichment-jobs/latest");
+}
+
+// ── Writing Session (gateway-only) ───────────────────────────────
+
+export async function createWritingSessionBackend(payload: {
+  seedId: string;
+  interestId: string;
+  articleType?: string;
+  coreClaim?: string;
+  tone?: string;
+  memoryOverride?: MemorySummary;
+}): Promise<WritingSession> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayCreateWritingSession(payload);
+}
+
+export async function confirmWritingClaimBackend(
+  sessionId: string,
+  payload?: { coreClaim?: string; articleType?: string; tone?: string },
+): Promise<WritingSession> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayConfirmWritingClaim(sessionId, payload);
+}
+
+export async function updateWritingSessionBackend(
+  sessionId: string,
+  patch: Partial<WritingSession>,
+): Promise<WritingSession> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayUpdateWritingSession(sessionId, patch);
+}
+
+export async function adjustWritingClaimBackend(
+  sessionId: string,
+  payload: { coreClaim?: string; instruction: string; tone?: string },
+): Promise<{ session: WritingSession; coreClaim: string }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayAdjustWritingClaim(sessionId, payload);
+}
+
+export async function generateBlueprintBackend(sessionId: string): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayGenerateBlueprint(sessionId);
+}
+
+export async function patchBlueprintBackend(sessionId: string, patch: Partial<WritingBlueprint>): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayPatchBlueprint(sessionId, patch);
+}
+
+export async function regenerateBlueprintBackend(sessionId: string, instruction?: string): Promise<{ session: WritingSession; blueprint: WritingBlueprint }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayRegenerateBlueprint(sessionId, instruction ? { instruction } : undefined);
+}
+
+export async function confirmBlueprintBackend(sessionId: string): Promise<WritingSession> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayConfirmBlueprint(sessionId);
+}
+
+export async function generateOutlineBackend(sessionId: string) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayGenerateOutline(sessionId);
+}
+
+export async function confirmOutlineBackend(sessionId: string): Promise<WritingSession> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayConfirmOutline(sessionId);
+}
+
+export async function generateDraftBackend(sessionId: string): Promise<{ session: WritingSession; draft: WritingDraft }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayGenerateDraft(sessionId);
+}
+
+export async function startRoundtableBackend(sessionId: string): Promise<{ session: WritingSession; roundtable: RoundtableState }> {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayStartRoundtable(sessionId);
+}
+
+export async function roundtableAuthorMessageBackend(sessionId: string, content: string) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayRoundtableAuthorMessage(sessionId, content);
+}
+
+export async function continueRoundtableBackend(
+  sessionId: string,
+  payload?: { role?: string; conversation?: Array<{ speaker: string; text: string; isHost?: boolean }>; instruction?: string },
+) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayContinueRoundtable(sessionId, payload);
+}
+
+export async function adoptSuggestionBackend(sessionId: string, suggestionId: string) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayAdoptSuggestion(sessionId, suggestionId);
+}
+
+export async function finalizeWritingBackend(sessionId: string) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayFinalizeWriting(sessionId);
+}
+
+export async function runLlmTaskBackend(taskType: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!USE_GATEWAY) throw new Error("LLM task only available in gateway mode");
+  const result = await gatewayRunLlmTask(taskType, input);
+  // Gateway returns { taskType, output: { ... } }, extract output
+  return (result.output as Record<string, unknown>) ?? result;
+}
+
+export async function publishMockBackend(sessionId: string, payload?: { title?: string }) {
+  if (!USE_GATEWAY) throw new Error("writing backend only available in gateway mode");
+  return gatewayPublishMock(sessionId, payload);
 }

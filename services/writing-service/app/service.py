@@ -75,8 +75,9 @@ class WritingService:
 
     def confirm_claim(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         session = self.get_session(session_id)
-        check_transition(session["draftStatus"], "confirm_claim")
         payload = payload or {}
+        if session["draftStatus"] == "claim_confirming":
+            check_transition(session["draftStatus"], "confirm_claim")
         next_session = {
             **session,
             "coreClaim": payload.get("coreClaim", session["coreClaim"]),
@@ -87,12 +88,53 @@ class WritingService:
         self._store_save(session_id, next_session)
         return next_session
 
+    def adjust_claim(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        session = self.get_session(session_id)
+        payload = payload or {}
+        instruction = (payload.get("instruction") or "").strip()
+        tone = payload.get("tone") or session.get("tone", "balanced")
+        if tone not in VALID_TONES:
+            raise ValueError(f"tone must be one of {sorted(VALID_TONES)}")
+        if not instruction:
+            instruction = "在不改变基本立场的前提下，让观点更清楚、更适合公开讨论。"
+
+        current_claim = payload.get("coreClaim") or session.get("coreClaim") or ""
+        adjusted_claim = session_logic._adjust_claim(
+            current_claim,
+            instruction,
+            tone,
+            llm_client=self._llm_client,
+            session={**session, "coreClaim": current_claim},
+        )
+        next_session = {
+            **session,
+            "coreClaim": adjusted_claim,
+            "tone": tone,
+            "confirmed": False,
+            "draftStatus": "claim_confirming",
+        }
+        for stale_key in ["blueprint", "outline", "draft", "roundtable"]:
+            next_session.pop(stale_key, None)
+        self._store_save(session_id, next_session)
+        return {"session": next_session, "coreClaim": adjusted_claim}
+
     # ------------------------------------------------------------------
     # Blueprint
     # ------------------------------------------------------------------
 
     def generate_blueprint(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session.get("blueprint") and session["draftStatus"] in {
+            "blueprint_ready",
+            "blueprint_confirmed",
+            "outline_ready",
+            "outline_confirmed",
+            "draft_ready",
+            "reviewing",
+            "finalized",
+            "published",
+        }:
+            return {"session": session, "blueprint": session["blueprint"]}
         check_transition(session["draftStatus"], "generate_blueprint")
         if not session.get("confirmed"):
             raise InvalidTransition("claim must be confirmed before generating blueprint")
@@ -107,20 +149,26 @@ class WritingService:
 
     def patch_blueprint(self, session_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         session = self.get_session(session_id)
-        check_transition(session["draftStatus"], "patch_blueprint")
+        editable_statuses = {"blueprint_ready", "blueprint_confirmed", "outline_ready", "outline_confirmed", "draft_ready"}
+        if session["draftStatus"] not in editable_statuses:
+            check_transition(session["draftStatus"], "patch_blueprint")
         blueprint = {**session.get("blueprint", {})}
         for key in ["centralClaim", "mainThread", "counterArguments", "responseStrategy", "personalExperienceNeeded", "riskNotes"]:
             if key in patch:
                 blueprint[key] = patch[key]
         if "argumentSteps" in patch:
             blueprint["argumentSteps"] = patch["argumentSteps"]
-        next_session = {**session, "blueprint": blueprint}
+        next_session = {**session, "blueprint": blueprint, "draftStatus": "blueprint_ready"}
+        for stale_key in ["outline", "draft", "roundtable"]:
+            next_session.pop(stale_key, None)
         self._store_save(session_id, next_session)
         return {"session": next_session, "blueprint": blueprint}
 
     def regenerate_blueprint(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         session = self.get_session(session_id)
-        check_transition(session["draftStatus"], "regenerate_blueprint")
+        editable_statuses = {"blueprint_ready", "blueprint_confirmed", "outline_ready", "outline_confirmed", "draft_ready"}
+        if session["draftStatus"] not in editable_statuses:
+            check_transition(session["draftStatus"], "regenerate_blueprint")
         payload = payload or {}
         if payload:
             session = {
@@ -138,12 +186,16 @@ class WritingService:
             llm_client=self._llm_client,
             session=session,
         )
-        next_session = {**session, "blueprint": blueprint}
+        next_session = {**session, "blueprint": blueprint, "draftStatus": "blueprint_ready"}
+        for stale_key in ["outline", "draft", "roundtable"]:
+            next_session.pop(stale_key, None)
         self._store_save(session_id, next_session)
         return {"session": next_session, "blueprint": blueprint}
 
     def confirm_blueprint(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session["draftStatus"] in {"blueprint_confirmed", "outline_ready", "outline_confirmed", "draft_ready", "reviewing", "finalized", "published"}:
+            return session
         check_transition(session["draftStatus"], "confirm_blueprint")
         next_session = {**session, "draftStatus": "blueprint_confirmed"}
         self._store_save(session_id, next_session)
@@ -155,6 +207,8 @@ class WritingService:
 
     def generate_outline(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session.get("outline") and session["draftStatus"] in {"outline_ready", "outline_confirmed", "draft_ready", "reviewing", "finalized", "published"}:
+            return {"session": session, "outline": session["outline"]}
         check_transition(session["draftStatus"], "generate_outline")
         blueprint = session.get("blueprint", {})
         outline = session_logic._build_outline(
@@ -207,6 +261,8 @@ class WritingService:
 
     def confirm_outline(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session["draftStatus"] in {"outline_confirmed", "draft_ready", "reviewing", "finalized", "published"}:
+            return session
         check_transition(session["draftStatus"], "confirm_outline")
         next_session = {**session, "draftStatus": "outline_confirmed"}
         self._store_save(session_id, next_session)
@@ -218,6 +274,18 @@ class WritingService:
 
     def generate_draft(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session.get("draft") and session["draftStatus"] in {"draft_ready", "reviewing", "finalized", "published"}:
+            return {"session": session, "draft": session["draft"]}
+        if session["draftStatus"] == "claim_confirming":
+            session = self.confirm_claim(session_id)
+        if session["draftStatus"] == "claim_confirming":
+            session = self.generate_blueprint(session_id)["session"]
+        if session["draftStatus"] == "blueprint_ready":
+            session = self.confirm_blueprint(session_id)
+        if session["draftStatus"] == "blueprint_confirmed":
+            session = self.generate_outline(session_id)["session"]
+        if session["draftStatus"] == "outline_ready":
+            session = self.confirm_outline(session_id)
         check_transition(session["draftStatus"], "generate_draft")
         draft = session_logic._build_draft(
             session.get("coreClaim") or "未确认观点",
@@ -254,15 +322,19 @@ class WritingService:
         self._store_save(session_id, next_session)
         return {"session": next_session, "roundtable": roundtable_state}
 
-    def continue_roundtable(self, session_id: str) -> dict[str, Any]:
+    def continue_roundtable(self, session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         session = self.get_session(session_id)
         check_transition(session["draftStatus"], "continue_roundtable")
+        payload = payload or {}
         roundtable_state = session.get("roundtable", {"status": "not_started", "turns": [], "suggestions": []})
         roundtable_state = session_logic._continue_roundtable(
             roundtable_state,
             session.get("coreClaim") or "未确认观点",
             llm_client=self._llm_client,
             session=session,
+            requested_role=payload.get("role") or payload.get("requestedRole"),
+            frontend_conversation=payload.get("conversation") or payload.get("conversationContext") or [],
+            host_instruction=payload.get("instruction") or payload.get("hostInstruction") or "",
         )
         next_session = {**session, "roundtable": roundtable_state}
         self._store_save(session_id, next_session)
@@ -283,6 +355,9 @@ class WritingService:
 
     def finalize(self, session_id: str) -> dict[str, Any]:
         session = self.get_session(session_id)
+        if session["draftStatus"] in {"finalized", "published"}:
+            finalized = session_logic._build_finalized(session.get("coreClaim") or "未确认观点")
+            return {"session": session, "finalized": finalized}
         check_transition(session["draftStatus"], "finalize")
         finalized = session_logic._build_finalized(session.get("coreClaim") or "未确认观点")
         next_session = {**session, "draftStatus": "finalized"}

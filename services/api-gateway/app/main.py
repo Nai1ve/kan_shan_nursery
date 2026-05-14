@@ -622,9 +622,49 @@ def confirm_writing_claim(request: Request, session_id: str, payload: dict[str, 
     return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/confirm-claim", payload=payload)
 
 
+@app.post("/api/v1/writing/sessions/{session_id}/claim/adjust")
+def adjust_writing_claim(request: Request, session_id: str, payload: dict[str, Any] | None = None) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/claim/adjust", payload=payload)
+
+
 @app.post("/api/v1/writing/sessions/{session_id}/blueprint")
 def writing_blueprint(request: Request, session_id: str) -> JSONResponse:
     return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/blueprint")
+
+
+@app.patch("/api/v1/writing/sessions/{session_id}/blueprint")
+def patch_writing_blueprint(request: Request, session_id: str, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "writing", "PATCH", f"/writing/sessions/{session_id}/blueprint", payload=payload)
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/blueprint/regenerate")
+def regenerate_writing_blueprint(request: Request, session_id: str, payload: dict[str, Any] | None = None) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/blueprint/regenerate", payload=payload)
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/blueprint/confirm")
+def confirm_writing_blueprint(request: Request, session_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/blueprint/confirm")
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/outline")
+def writing_outline(request: Request, session_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/outline")
+
+
+@app.patch("/api/v1/writing/sessions/{session_id}/outline")
+def patch_writing_outline(request: Request, session_id: str, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "writing", "PATCH", f"/writing/sessions/{session_id}/outline", payload=payload)
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/outline/sections/{section_id}/regenerate")
+def regenerate_writing_outline_section(request: Request, session_id: str, section_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/outline/sections/{section_id}/regenerate")
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/outline/confirm")
+def confirm_writing_outline(request: Request, session_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/outline/confirm")
 
 
 @app.post("/api/v1/writing/sessions/{session_id}/draft")
@@ -632,9 +672,24 @@ def writing_draft(request: Request, session_id: str) -> JSONResponse:
     return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/draft")
 
 
-@app.post("/api/v1/writing/sessions/{session_id}/roundtable")
-def writing_roundtable(request: Request, session_id: str) -> JSONResponse:
-    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/roundtable")
+@app.post("/api/v1/writing/sessions/{session_id}/roundtable/start")
+def start_writing_roundtable(request: Request, session_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/roundtable/start")
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/roundtable/messages")
+def writing_roundtable_message(request: Request, session_id: str, payload: dict[str, Any]) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/roundtable/messages", payload=payload)
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/roundtable/continue")
+def continue_writing_roundtable(request: Request, session_id: str, payload: dict[str, Any] | None = None) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/roundtable/continue", payload=payload)
+
+
+@app.post("/api/v1/writing/sessions/{session_id}/roundtable/suggestions/{suggestion_id}/adopt")
+def adopt_writing_suggestion(request: Request, session_id: str, suggestion_id: str) -> JSONResponse:
+    return run_proxy(request, "writing", "POST", f"/writing/sessions/{session_id}/roundtable/suggestions/{suggestion_id}/adopt")
 
 
 @app.post("/api/v1/writing/sessions/{session_id}/finalize")

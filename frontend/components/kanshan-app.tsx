@@ -58,6 +58,23 @@ import {
   updateInterests,
   updateLLMConfig,
   updateSeed,
+  createWritingSessionBackend,
+  confirmWritingClaimBackend,
+  updateWritingSessionBackend,
+  generateBlueprintBackend,
+  confirmBlueprintBackend,
+  patchBlueprintBackend,
+  regenerateBlueprintBackend,
+  generateOutlineBackend,
+  confirmOutlineBackend,
+  generateDraftBackend,
+  startRoundtableBackend,
+  roundtableAuthorMessageBackend,
+  continueRoundtableBackend,
+  adoptSuggestionBackend,
+  finalizeWritingBackend,
+  publishMockBackend,
+  runLlmTaskBackend,
 } from "@/lib/api-client";
 import type {
   ContentSource,
@@ -69,6 +86,8 @@ import type {
   MemorySummary,
   MemoryUpdateRequest,
   ProfileData,
+  RoundtableState,
+  RoundtableSuggestion,
   SeedQuestion,
   SeedReaction,
   SeedStatus,
@@ -78,9 +97,12 @@ import type {
   WateringMaterial,
   WateringMaterialType,
   WorthReadingCard,
+  WritingBlueprint,
+  WritingDraft,
   WritingSession,
   ZhihuBindingViewModel,
 } from "@/lib/types";
+import { gatewayGetWritingSession } from "@/lib/gateway-client";
 import { AuthEntry } from "./auth/AuthEntry";
 import { getMe, getZhihuAuthorizeUrl, getZhihuBinding, logout } from "@/lib/auth/auth-client";
 
@@ -988,17 +1010,37 @@ export function KanshanApp() {
     const seed = seedOverride ?? data?.seeds.find((item) => item.id === seedId);
     if (!seed) return;
     const session = createWritingSession(seed, data?.profile);
-    updateData((current) => ({
+    const seedUpdate = (current: DemoState) => ({
       ...current,
       writingSession: session,
       seeds: current.seeds.some((item) => item.id === seedId)
-        ? current.seeds.map((item) => (item.id === seedId ? { ...item, status: "writing", updatedAt: now() } : item))
-        : [{ ...seed, status: "writing", updatedAt: now() }, ...current.seeds],
-    }));
+        ? current.seeds.map((item) => (item.id === seedId ? { ...item, status: "writing" as SeedStatus, updatedAt: now() } : item))
+        : [{ ...seed, status: "writing" as SeedStatus, updatedAt: now() }, ...current.seeds],
+    });
     selectSeed(seedId);
     setWritingStep(0);
     goTab("write");
     showToast("已进入写作苗圃，Memory 已按兴趣分类注入");
+
+    if (KANSHAN_BACKEND_MODE === "gateway") {
+      createWritingSessionBackend({
+        seedId: seed.id,
+        interestId: seed.interestId,
+        articleType: session.articleType,
+        coreClaim: session.coreClaim,
+        tone: session.tone,
+      }).then((backendSession) => {
+        updateData((current) => ({
+          ...seedUpdate(current),
+          writingSession: { ...session, backendSessionId: backendSession.sessionId },
+        }));
+      }).catch((err) => {
+        console.error("Backend session creation failed, using local session", err);
+        updateData(seedUpdate);
+      });
+    } else {
+      updateData(seedUpdate);
+    }
   }
 
   function updateWritingSession(patch: Partial<WritingSession>) {
@@ -1025,17 +1067,47 @@ export function KanshanApp() {
 
     if (KANSHAN_BACKEND_MODE === "gateway") {
       try {
-        // Call backend to create feedback article
-        const backendArticle = await createFeedbackFromSession({
-          writingSessionId: session.sessionId,
-          seedId: seed.id,
-          interestId: seed.interestId,
-          title: seed.possibleAngles[0] ?? seed.title,
-          coreClaim: seed.coreClaim,
-          articleType: session.articleType,
-          publishMode: "mock",
-          publishedAt: new Date().toISOString(),
-        });
+        let backendArticle: FeedbackArticle;
+        if (session.backendSessionId) {
+          // Use backend writing publish/mock endpoint
+          const result = await publishMockBackend(session.backendSessionId, {
+            title: seed.possibleAngles[0] ?? seed.title,
+          });
+          const pa = result.publishedArticle as Record<string, unknown>;
+          backendArticle = {
+            id: (pa?.articleId as string) || articleId,
+            title: (pa?.title as string) || (seed.possibleAngles[0] ?? seed.title),
+            interestId: seed.interestId,
+            linkedSeedId: seed.id,
+            status: "tracking",
+            statusTone: "blue",
+            performanceSummary: "文章已发布，等待读者反馈。",
+            commentInsights: [],
+            memoryAction: "等待反馈分析",
+            metrics: [],
+          };
+        } else {
+          // Fallback: direct feedback creation
+          backendArticle = await createFeedbackFromSession({
+            writingSessionId: session.sessionId,
+            seedId: seed.id,
+            interestId: seed.interestId,
+            title: seed.possibleAngles[0] ?? seed.title,
+            coreClaim: seed.coreClaim,
+            articleType: session.articleType,
+            publishMode: "mock",
+            publishedAt: new Date().toISOString(),
+          });
+        }
+        article = {
+          ...backendArticle,
+          id: backendArticle.id || articleId,
+          statusTone: backendArticle.statusTone || "blue",
+          performanceSummary: backendArticle.performanceSummary || "文章已发布，等待读者反馈。",
+          commentInsights: backendArticle.commentInsights || [],
+          memoryAction: backendArticle.memoryAction || "等待反馈分析",
+          metrics: backendArticle.metrics || [],
+        };
         article = {
           ...backendArticle,
           // Ensure backward-compatible fields exist
@@ -1956,7 +2028,7 @@ function ContentCard({
             <span className="tag green">可沉淀种子</span>
           </div>
           <p>
-            这张卡片当前可写性为 {card.relevanceScore} 分，争议度为 {card.controversyScore} 分。建议先记录立场，再通过"有疑问"把不确定性转成可浇水材料。
+            这张卡片当前可写性为 {card.relevanceScore} 分，争议度为 {card.controversyScore} 分。建议先记录立场，再通过“有疑问”把不确定性转成可浇水材料。
           </p>
         </div>
       ) : null}
@@ -2298,6 +2370,39 @@ function WritingSection({
     savedDraft: false,
     memoryOverride: memory,
   };
+  const effectiveMemory = currentSession.memoryOverride ?? memory;
+
+  function updateSessionMemory(nextMemory: MemorySummary) {
+    updateSession({ memoryOverride: nextMemory });
+    if (session?.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+      updateWritingSessionBackend(session.backendSessionId, { memoryOverride: nextMemory }).catch((err) => {
+        console.error("Backend memory override update failed", err);
+        showToast("本次写作 Memory 已在前端更新，后端同步失败");
+      });
+    }
+  }
+
+  const [showMemoryWriteBackDialog, setShowMemoryWriteBackDialog] = useState(false);
+  const maxAllowedStep = getMaxAllowedWritingStep(currentSession);
+  const nextStepAllowed = step < writingSteps.length - 1 && step + 1 <= maxAllowedStep;
+
+  function goWritingStep(targetStep: number) {
+    if (targetStep <= maxAllowedStep) {
+      setStep(targetStep);
+      return;
+    }
+    showToast(writingStepBlockedMessage(targetStep, currentSession));
+  }
+
+  useEffect(() => {
+    if (step <= maxAllowedStep) return undefined;
+    const timer = window.setTimeout(() => {
+      setStep(maxAllowedStep);
+      showToast(writingStepBlockedMessage(step, currentSession));
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, maxAllowedStep]);
 
   return (
     <section className="section active">
@@ -2312,10 +2417,12 @@ function WritingSection({
           <div className="panel-body stepper">
             {writingSteps.map((item, index) => (
               <button
-                className={`step-item ${index === step ? "active" : ""} ${index < step ? "done" : ""}`}
+                className={`step-item ${index === step ? "active" : ""} ${index < step ? "done" : ""} ${index > maxAllowedStep ? "disabled" : ""}`}
                 key={item.title}
-                onClick={() => setStep(index)}
+                onClick={() => goWritingStep(index)}
                 type="button"
+                disabled={index > maxAllowedStep}
+                title={index > maxAllowedStep ? writingStepBlockedMessage(index, currentSession) : item.desc}
               >
                 <span className="step-num">{index < step ? <Check size={15} /> : index + 1}</span>
                 <span className="step-copy">
@@ -2331,21 +2438,31 @@ function WritingSection({
           <div className="stage-content">
             <MemoryInjection
               baseMemory={baseMemory}
-              memory={memory}
-              onChange={(nextMemory) => updateSession({ memoryOverride: nextMemory })}
+              memory={effectiveMemory}
+              onChange={updateSessionMemory}
               onReset={() => {
-                updateSession({ memoryOverride: baseMemory });
+                updateSessionMemory(baseMemory);
                 showToast("已恢复画像默认 Memory 注入");
               }}
-              onWriteBack={() => {
-                if (confirm(`确认将修改后的 Memory 写入「${memory.interestName}」分类 Memory？`)) {
-                  showToast(`已写入 Memory：${memory.interestName} 分类画像已更新`);
-                }
-              }}
+              onWriteBack={() => setShowMemoryWriteBackDialog(true)}
             />
+            {showMemoryWriteBackDialog && (
+              <ConfirmDialog
+                title="写入 Memory"
+                tagLabel="Memory"
+                tagColor="purple"
+                message={`确认将修改后的 Memory 写入「${effectiveMemory.interestName}」分类 Memory？写入后会影响后续所有写作和推荐。`}
+                confirmLabel="确认写入"
+                onConfirm={() => {
+                  setShowMemoryWriteBackDialog(false);
+                  showToast(`已写入 Memory：${effectiveMemory.interestName} 分类画像已更新`);
+                }}
+                onCancel={() => setShowMemoryWriteBackDialog(false)}
+              />
+            )}
             <WritingStageContent
               seed={seed}
-              memory={memory}
+              memory={effectiveMemory}
               session={currentSession}
               step={step}
               setStep={setStep}
@@ -2360,9 +2477,10 @@ function WritingSection({
               </button>
               <button
                 className="btn primary"
-                disabled={step === writingSteps.length - 1}
-                onClick={() => setStep(Math.min(writingSteps.length - 1, step + 1))}
+                disabled={step === writingSteps.length - 1 || !nextStepAllowed}
+                onClick={() => goWritingStep(Math.min(writingSteps.length - 1, step + 1))}
                 type="button"
+                title={!nextStepAllowed && step < writingSteps.length - 1 ? writingStepBlockedMessage(step + 1, currentSession) : "进入下一步"}
               >
                 下一步
               </button>
@@ -2413,7 +2531,7 @@ function WritingStageContent({
 }: {
   seed: IdeaSeed;
   memory: MemorySummary;
-  session: Pick<WritingSession, "articleType" | "coreClaim" | "tone" | "confirmed" | "adoptedSuggestions" | "draftStatus" | "savedDraft">;
+  session: Pick<WritingSession, "articleType" | "coreClaim" | "tone" | "confirmed" | "adoptedSuggestions" | "draftStatus" | "savedDraft"> & { backendSessionId?: string; memoryOverride?: MemorySummary; blueprint?: WritingBlueprint; draft?: WritingDraft; roundtable?: RoundtableState };
   step: number;
   setStep: Dispatch<SetStateAction<number>>;
   updateSession: (patch: Partial<WritingSession>) => void;
@@ -2421,6 +2539,104 @@ function WritingStageContent({
   publishWriting: () => void;
   showToast: (message: string) => void;
 }) {
+  // Backend state for blueprint and draft (hooks must be at top level)
+  const [blueprintLoading, setBlueprintLoading] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [claimAdjusting, setClaimAdjusting] = useState(false);
+  const [showExperienceInput, setShowExperienceInput] = useState(false);
+  const [experienceText, setExperienceText] = useState("");
+  const [blueprintEditMode, setBlueprintEditMode] = useState(false);
+  const [blueprintEditText, setBlueprintEditText] = useState("");
+  const [blueprintRegenerating, setBlueprintRegenerating] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [showClaimAdjustDialog, setShowClaimAdjustDialog] = useState(false);
+  const [showBlueprintRegenDialog, setShowBlueprintRegenDialog] = useState(false);
+  const backendBlueprint = session.blueprint;
+  const backendDraft = session.draft;
+  const backendBusy = blueprintLoading || draftLoading || claimAdjusting || blueprintRegenerating;
+
+  async function adjustClaimWithBackend(instruction: string, tone?: "balanced" | "sharp" | "steady") {
+    setClaimAdjusting(true);
+    try {
+      const result = await runLlmTaskBackend("answer-seed-question", {
+        seed: { coreClaim: session.coreClaim, title: seed.title, wateringMaterials: seed.wateringMaterials },
+        question: `请根据以下指令改写核心观点。要求：只输出改写后的核心观点本身；不要解释；不要复述原始观点；不要追加括号备注；不要输出列表。\n指令：${instruction}\n原始观点：${session.coreClaim}`,
+      });
+      const adjustedClaim = normalizeAdjustedClaim(result.answer, session.coreClaim, tone ?? session.tone);
+      let replacementBackendSessionId: string | undefined;
+      if (KANSHAN_BACKEND_MODE === "gateway") {
+        const recreated = await createWritingSessionBackend({
+          seedId: seed.id,
+          interestId: seed.interestId,
+          articleType: session.articleType,
+          coreClaim: adjustedClaim,
+          tone: tone ?? session.tone,
+          memoryOverride: session.memoryOverride ?? memory,
+        });
+        replacementBackendSessionId = recreated.sessionId;
+      }
+      updateSession({
+        ...(replacementBackendSessionId ? { backendSessionId: replacementBackendSessionId } : {}),
+        coreClaim: adjustedClaim,
+        tone: tone ?? session.tone,
+        confirmed: false,
+        draftStatus: "claim_confirming",
+        blueprint: undefined,
+        draft: undefined,
+        roundtable: undefined,
+      });
+      showToast("已用 Agent 调整核心观点，请重新确认");
+    } catch (err) {
+      console.error("Claim adjustment failed", err);
+      showToast("观点调整失败，请检查 LLM 服务或稍后重试");
+    } finally {
+      setClaimAdjusting(false);
+    }
+  }
+
+  // Auto-generate blueprint from backend
+  useEffect(() => {
+    if (step === 3 && session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway" && !backendBlueprint && !blueprintLoading) {
+      let cancelled = false;
+      const timer = window.setTimeout(() => {
+        setBlueprintLoading(true);
+        (async () => {
+        try {
+          // Step 1: Confirm claim (idempotent - ignore error if already confirmed or wrong state)
+          await confirmWritingClaimBackend(session.backendSessionId!, {
+            coreClaim: session.coreClaim,
+            articleType: session.articleType,
+            tone: session.tone,
+          }).catch(() => {});
+          // Step 2: Generate blueprint
+          const result = await generateBlueprintBackend(session.backendSessionId!);
+          updateSession({ blueprint: result.blueprint });
+        } catch (genErr) {
+          // Step 3: If generate fails (e.g. already generated), try fetching existing session
+          try {
+            const existing = await gatewayGetWritingSession(session.backendSessionId!);
+            if (existing.blueprint) {
+              updateSession({ blueprint: existing.blueprint });
+            }
+          } catch (fetchErr) {
+            console.error("Blueprint generation and fetch both failed", genErr, fetchErr);
+          }
+        } finally {
+          if (!cancelled) setBlueprintLoading(false);
+        }
+        })();
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, session.backendSessionId, !!backendBlueprint]);
+
+  // Draft is triggered manually via button, not auto-generated
+
   if (step === 0) {
     return (
       <>
@@ -2467,46 +2683,123 @@ function WritingStageContent({
           <div className="action-row">
             <button
               className={`btn primary ${session.confirmed ? "selected" : ""}`}
-              onClick={() => {
-                updateSession({ confirmed: true, draftStatus: "blueprint_ready" });
+              disabled={backendBusy}
+              onClick={async () => {
+                if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+                  try {
+                    const nextSession = await confirmWritingClaimBackend(session.backendSessionId, {
+                      coreClaim: session.coreClaim,
+                      articleType: session.articleType,
+                      tone: session.tone,
+                    });
+                    updateSession({ confirmed: nextSession.confirmed, draftStatus: nextSession.draftStatus });
+                  } catch (err) {
+                    console.error("Backend confirm claim failed", err);
+                    showToast("确认观点失败，请稍后重试");
+                    return;
+                  }
+                } else {
+                  updateSession({ confirmed: true, draftStatus: "blueprint_ready" });
+                }
                 showToast("已确认核心观点");
               }}
               type="button"
             >
-              确认
+              {backendBusy ? "处理中..." : "确认"}
             </button>
             <button
               className="btn ghost"
-              onClick={() => {
-                updateSession({ coreClaim: `${session.coreClaim} 但需要明确它成立的边界。` });
-                showToast("已调整观点边界");
-              }}
+              disabled={claimAdjusting}
+              onClick={() => setShowClaimAdjustDialog(true)}
               type="button"
             >
-              调整观点
-            </button>
-            <button className="btn ghost" onClick={() => updateSession({ tone: "sharp" })} type="button">
-              更犀利一点
-            </button>
-            <button className="btn ghost" onClick={() => updateSession({ tone: "steady" })} type="button">
-              更稳健一点
+              {claimAdjusting ? "调整中..." : "调整观点"}
             </button>
             <button
               className="btn ghost"
-              onClick={() => {
-                addMaterial({
-                  type: "personal_experience",
-                  title: "写作阶段补充个人经历",
-                  content: "用户需要补充一个真实项目场景：代码本身不难，难的是需求边界、状态变化和交付责任。",
-                  sourceLabel: "写作苗圃",
-                  adopted: true,
-                });
+              disabled={claimAdjusting}
+              onClick={async () => {
+                await adjustClaimWithBackend("请将当前观点改写得更犀利、更有锋芒，但不要变成情绪化表达。", "sharp");
               }}
               type="button"
             >
-              补充个人经历
+              {claimAdjusting ? "调整中..." : "更犀利一点"}
+            </button>
+            <button
+              className="btn ghost"
+              disabled={claimAdjusting}
+              onClick={async () => {
+                await adjustClaimWithBackend("请将当前观点改写得更稳健、更谨慎，补足前提边界，但保留明确立场。", "steady");
+              }}
+              type="button"
+            >
+              {claimAdjusting ? "调整中..." : "更稳健一点"}
+            </button>
+            <button
+              className="btn ghost"
+              onClick={() => setShowExperienceInput(!showExperienceInput)}
+              type="button"
+            >
+              {showExperienceInput ? "收起" : "补充个人经历"}
             </button>
           </div>
+          {showExperienceInput && (
+            <div style={{ marginTop: 12, padding: 12, background: "var(--surface-soft)", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>请写下你的个人经历或真实项目场景</label>
+              <textarea
+                className="textarea"
+                style={{ minHeight: 80, fontSize: 13 }}
+                placeholder="例如：去年参与的一个金融数据同步项目中，真正麻烦的不是写代码，而是需求边界不清、状态变化频繁、回滚追责困难..."
+                value={experienceText}
+                onChange={(e) => setExperienceText(e.target.value)}
+              />
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <button
+                  className="btn primary compact"
+                  disabled={!experienceText.trim()}
+                  onClick={() => {
+                    addMaterial({
+                      type: "personal_experience",
+                      title: "个人经历",
+                      content: experienceText.trim(),
+                      sourceLabel: "用户补充",
+                      adopted: true,
+                    });
+                    setExperienceText("");
+                    setShowExperienceInput(false);
+                    showToast("已添加个人经历材料");
+                  }}
+                  type="button"
+                >
+                  添加
+                </button>
+                <button className="btn ghost compact" onClick={() => { setShowExperienceInput(false); setExperienceText(""); }} type="button">
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+          {showClaimAdjustDialog && (
+            <InstructionDialog
+              title="用 AI 调整核心观点"
+              tagLabel="调整观点"
+              tagColor="blue"
+              currentContext={session.coreClaim}
+              placeholder="输入你想如何调整这个观点，例如：补充适用边界、加入反方前提..."
+              confirmLabel="确认调整"
+              presets={[
+                { label: "补充适用边界", value: "请补充这个观点成立的适用边界和前提条件" },
+                { label: "加入反方前提", value: "请加入反方可能的前提假设，使观点更严谨" },
+                { label: "限定适用场景", value: "请限定这个观点的适用场景，避免过度概括" },
+                { label: "增加量化条件", value: "请增加量化或可验证的条件" },
+              ]}
+              onClose={() => setShowClaimAdjustDialog(false)}
+              onConfirm={async (instruction) => {
+                setShowClaimAdjustDialog(false);
+                await adjustClaimWithBackend(instruction);
+              }}
+            />
+          )}
         </div>
       </>
     );
@@ -2523,7 +2816,13 @@ function WritingStageContent({
               className={`card no-hover type-card ${session.articleType === id ? "selected" : ""}`}
               key={id}
               onClick={() => {
-                updateSession({ articleType: id, draftStatus: "blueprint_ready" });
+                updateSession({ articleType: id });
+                if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+                  updateWritingSessionBackend(session.backendSessionId, { articleType: id }).catch((err) => {
+                    console.error("Backend article type update failed", err);
+                    showToast("文章类型已在前端更新，后端同步失败");
+                  });
+                }
                 showToast(`已选择文章类型：${title}`);
               }}
               type="button"
@@ -2543,38 +2842,252 @@ function WritingStageContent({
   }
 
   if (step === 3) {
-    const blueprint = buildWritingBlueprint(seed, memory);
+    const clientBlueprint = buildWritingBlueprint(seed, memory);
+
+    if (blueprintLoading) {
+      return (
+        <>
+          <h2 className="stage-title">论证蓝图</h2>
+          <p className="stage-desc">Agent 正在生成论证蓝图...</p>
+          <div className="draft-box" style={{ textAlign: "center", padding: "48px" }}>
+            <Loader2 className="spin" size={32} />
+            <p style={{ marginTop: 12, color: "var(--muted)" }}>正在调用论证结构 Agent...</p>
+          </div>
+        </>
+      );
+    }
+
+    // Use backend blueprint if available, fall back to client-side
+    const blueprintItems = backendBlueprint
+      ? [
+          { title: "中心论点", items: [backendBlueprint.centralClaim, backendBlueprint.mainThread].filter(Boolean) },
+          ...backendBlueprint.argumentSteps.map((s) => ({ title: s.title, items: s.keyPoints })),
+          { title: "需要回应的反方", items: backendBlueprint.counterArguments },
+          { title: "回应策略", items: [backendBlueprint.responseStrategy].filter(Boolean) },
+        ]
+      : clientBlueprint;
+
+    const editableBlueprint = backendBlueprint ?? clientBlueprintToStructuredBlueprint(session.coreClaim, clientBlueprint);
+    const blueprintText = formatBlueprintForEditing(editableBlueprint);
 
     return (
       <>
         <h2 className="stage-title">论证蓝图</h2>
-        <p className="stage-desc">先把文章骨架搭好，再进入正文。</p>
+        <p className="stage-desc">先把文章骨架搭好，再进入正文。{backendBlueprint ? "（由 Agent 生成）" : ""}</p>
         <div className="draft-box">
           <p>
             <strong>中心观点：</strong>
             <br />
             {session.coreClaim}
           </p>
-          {blueprint.map((item) => (
-            <Blueprint items={item.items} key={item.title} title={item.title} />
-          ))}
-          <ListBlock title="需要回应的反方" items={seed.counterArguments} />
-          <button
-            className="btn primary"
-            onClick={() => {
-              updateSession({ draftStatus: "draft_ready" });
-              showToast("论证蓝图已生成，可进入初稿");
-            }}
-            type="button"
-          >
-            确认蓝图
-          </button>
+
+          {blueprintEditMode ? (
+            <div style={{ margin: "12px 0" }}>
+              <textarea
+                className="textarea"
+                style={{ minHeight: 320, fontSize: 13, lineHeight: 1.7 }}
+                value={blueprintEditText}
+                onChange={(e) => setBlueprintEditText(e.target.value)}
+              />
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <button
+                  className="btn primary compact"
+                  onClick={async () => {
+                    try {
+                      const parsed = parseBlueprintEditText(blueprintEditText, editableBlueprint);
+                      if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+                        const result = await patchBlueprintBackend(session.backendSessionId, parsed);
+                        updateSession({ blueprint: result.blueprint, draftStatus: result.session.draftStatus });
+                      } else {
+                        updateSession({ blueprint: parsed });
+                      }
+                      setBlueprintEditMode(false);
+                      showToast("蓝图已保存");
+                    } catch (err) {
+                      console.error("Blueprint save failed", err);
+                      showToast("蓝图保存失败，请检查文本格式");
+                    }
+                  }}
+                  type="button"
+                >
+                  保存
+                </button>
+                <button className="btn ghost compact" onClick={() => setBlueprintEditMode(false)} type="button">
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {blueprintItems.map((item) => (
+                <Blueprint items={item.items} key={item.title} title={item.title} />
+              ))}
+              <ListBlock title="需要回应的反方" items={seed.counterArguments} />
+            </>
+          )}
+
+          <div className="action-row" style={{ marginTop: 16 }}>
+            {!blueprintEditMode && (
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  setBlueprintEditText(blueprintText);
+                  setBlueprintEditMode(true);
+                }}
+                type="button"
+              >
+                编辑蓝图
+              </button>
+            )}
+            <button
+              className="btn ghost"
+              disabled={blueprintRegenerating}
+              onClick={() => {
+                if (!session.backendSessionId || KANSHAN_BACKEND_MODE !== "gateway") {
+                  showToast("重新生成仅在 gateway 模式下可用");
+                  return;
+                }
+                setShowBlueprintRegenDialog(true);
+              }}
+              type="button"
+            >
+              {blueprintRegenerating ? "生成中..." : "重新生成"}
+            </button>
+            <button
+              className="btn primary"
+              onClick={async () => {
+                if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+                  try {
+                    showToast("正在确认蓝图并生成大纲...");
+                    const confirmed = await confirmBlueprintBackend(session.backendSessionId);
+                    const outlineResult = await generateOutlineBackend(session.backendSessionId);
+                    const outlineConfirmed = await confirmOutlineBackend(session.backendSessionId);
+                    updateSession({
+                      confirmed: confirmed.confirmed ?? session.confirmed,
+                      draftStatus: outlineConfirmed.draftStatus,
+                      blueprint: outlineResult.session.blueprint ?? session.blueprint,
+                    });
+                    showToast("蓝图已确认，大纲已就绪，可进入初稿");
+                  } catch (err) {
+                    console.error("Backend blueprint confirm/outline failed", err);
+                    showToast("确认蓝图失败，请检查后端服务后重试");
+                  }
+                } else {
+                  updateSession({ draftStatus: "draft_ready" });
+                  showToast("论证蓝图已确认，可进入初稿");
+                }
+              }}
+              type="button"
+            >
+              确认蓝图
+            </button>
+          </div>
         </div>
+        {showBlueprintRegenDialog && (
+          <InstructionDialog
+              title="重新生成论证蓝图"
+              tagLabel="重新生成"
+              tagColor="orange"
+              description="可以指定调整方向，也可以直接重新生成。"
+              placeholder="例如：加强反方回应、增加实战案例角度、调整论证顺序..."
+              confirmLabel="重新生成"
+              allowEmpty
+              presets={[
+                { label: "加强反方回应", value: "请加强反方观点的回应策略" },
+                { label: "增加案例角度", value: "请增加实战案例和真实场景的角度" },
+                { label: "调整论证顺序", value: "请调整论证的逻辑顺序，先讲案例再讲理论" },
+                { label: "精简结构", value: "请精简蓝图结构，去掉不关键的部分" },
+              ]}
+              onClose={() => setShowBlueprintRegenDialog(false)}
+              onConfirm={async (instruction) => {
+                setShowBlueprintRegenDialog(false);
+                if (!session.backendSessionId) return;
+                setBlueprintRegenerating(true);
+                try {
+                  const result = await regenerateBlueprintBackend(session.backendSessionId, instruction || undefined);
+                  updateSession({ blueprint: result.blueprint });
+                  showToast("蓝图已重新生成");
+                } catch (err) {
+                  console.error("Blueprint regeneration failed", err);
+                  showToast("重新生成失败");
+                } finally {
+                  setBlueprintRegenerating(false);
+                }
+              }}
+            />
+          )}
       </>
     );
   }
 
   if (step === 4) {
+
+    if (draftLoading) {
+      return (
+        <>
+          <h2 className="stage-title">生成表达初稿</h2>
+          <p className="stage-desc">Agent 正在生成初稿...</p>
+          <div className="draft-box" style={{ textAlign: "center", padding: "48px" }}>
+            <Loader2 className="spin" size={32} />
+            <p style={{ marginTop: 12, color: "var(--muted)" }}>正在调用草稿编辑 Agent...</p>
+          </div>
+        </>
+      );
+    }
+
+    if (backendDraft) {
+      return (
+        <>
+          <h2 className="stage-title">生成表达初稿</h2>
+          <p className="stage-desc">由 Agent 生成的初稿，可编辑后进入圆桌审稿。</p>
+          <div className="draft-box">
+            <div className="tag-row">
+              <span className="tag blue">Agent 生成</span>
+              <span className="tag orange">请人工检查</span>
+            </div>
+            <h2>{backendDraft.title}</h2>
+            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.8, marginTop: 12 }}>{backendDraft.body}</div>
+          </div>
+        </>
+      );
+    }
+
+    // No backend draft yet - show generate button or client-side fallback
+    if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+      return (
+        <>
+          <h2 className="stage-title">生成表达初稿</h2>
+          <p className="stage-desc">点击按钮调用 Agent 生成初稿，基于观点种子和浇水材料。</p>
+          <div className="draft-box" style={{ textAlign: "center", padding: "48px" }}>
+            <p style={{ marginBottom: 16, color: "var(--muted)" }}>蓝图已确认，大纲已就绪，可以生成初稿了。</p>
+            <button
+              className="btn primary"
+              disabled={draftLoading}
+              onClick={async () => {
+                setDraftLoading(true);
+                try {
+                  await confirmBlueprintBackend(session.backendSessionId!).catch(() => undefined);
+                  await generateOutlineBackend(session.backendSessionId!).catch(() => undefined);
+                  await confirmOutlineBackend(session.backendSessionId!).catch(() => undefined);
+                  const result = await generateDraftBackend(session.backendSessionId!);
+                  updateSession({ draft: result.draft, draftStatus: result.session.draftStatus });
+                  showToast("初稿已生成");
+                } catch (err) {
+                  console.error("Backend draft generation failed", err);
+                  showToast("初稿生成失败");
+                } finally {
+                  setDraftLoading(false);
+                }
+              }}
+              type="button"
+            >
+              生成初稿
+            </button>
+          </div>
+        </>
+      );
+    }
+
     return (
       <>
         <h2 className="stage-title">生成表达初稿</h2>
@@ -2590,8 +3103,10 @@ function WritingStageContent({
         <h2 className="stage-title">圆桌审稿会</h2>
         <p className="stage-desc">逻辑压测和人味检查合并为圆桌会议，由不同 Agent 从不同视角评判讨论。点击 Agent 头像可选择发言人。</p>
         <RoundtableDiscussion
-          onComplete={() => {
-            updateSession({ draftStatus: "finalized" });
+          backendSessionId={session.backendSessionId}
+          onSessionPatch={(patch) => updateSession(patch)}
+          onComplete={(adopted) => {
+            updateSession({ draftStatus: "finalized", adoptedSuggestions: adopted });
             setStep(6);
           }}
           showToast={showToast}
@@ -2612,8 +3127,30 @@ function WritingStageContent({
           </div>
           <FinalDraft memory={memory} seed={seed} session={session} />
           <div className="action-row">
-            <button className={`btn primary ${session.draftStatus === "finalized" ? "selected" : ""}`} onClick={() => updateSession({ draftStatus: "finalized" })} type="button">
-              确认定稿
+            <button className={`btn primary ${session.draftStatus === "finalized" ? "selected" : ""}`} disabled={finalizing} onClick={async () => {
+              if (session.draftStatus === "finalized" || session.draftStatus === "published") {
+                showToast("定稿已确认");
+                return;
+              }
+              if (session.backendSessionId && KANSHAN_BACKEND_MODE === "gateway") {
+                setFinalizing(true);
+                try {
+                  const result = await finalizeWritingBackend(session.backendSessionId);
+                  updateSession({ draftStatus: result.session.draftStatus });
+                  showToast("已确认定稿");
+                  return;
+                } catch (err) {
+                  console.error("Backend finalize failed", err);
+                  showToast("确认定稿失败，请稍后重试");
+                  return;
+                } finally {
+                  setFinalizing(false);
+                }
+              }
+              updateSession({ draftStatus: "finalized" });
+              showToast("已确认定稿");
+            }} type="button">
+              {finalizing ? "确认中..." : "确认定稿"}
             </button>
             <button
               className="btn ghost"
@@ -2644,7 +3181,7 @@ function WritingStageContent({
           <li>请补充一个真实经历中的工程场景，避免文章过于抽象。</li>
           <li>请确认文中观点是你认可的表达，不要直接发布未检查版本。</li>
           <li>建议先发布到圈子收集评论，再发布为长文。</li>
-          <li>发布后进入"历史反馈"页面，系统会提取评论中的支持、反对和补充材料。</li>
+          <li>发布后进入“历史反馈”页面，系统会提取评论中的支持、反对和补充材料。</li>
         </ul>
         <div className="action-row">
           <button className="btn primary" onClick={publishWriting} type="button">
@@ -3369,6 +3906,140 @@ function InlineSourcePanel({ source }: { source?: ContentSource }) {
   );
 }
 
+function ConfirmDialog({
+  title,
+  message,
+  tagLabel,
+  tagColor,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  tagLabel?: string;
+  tagColor?: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="overlay">
+      <section className="modal">
+        <div className="modal-header">
+          <div>
+            {tagLabel && <span className={`tag ${tagColor || "blue"}`}>{tagLabel}</span>}
+            <h2>{title}</h2>
+          </div>
+          <button className="icon-btn" onClick={onCancel} type="button" aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body form-grid">
+          <p style={{ color: "var(--text)", fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+          <div className="action-row">
+            <button className="btn primary" onClick={onConfirm} type="button">
+              {confirmLabel || "确认"}
+            </button>
+            <button className="btn ghost" onClick={onCancel} type="button">
+              取消
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function InstructionDialog({
+  title,
+  tagLabel,
+  tagColor,
+  description,
+  placeholder,
+  presets,
+  currentContext,
+  confirmLabel,
+  onClose,
+  onConfirm,
+  allowEmpty,
+}: {
+  title: string;
+  tagLabel: string;
+  tagColor?: string;
+  description?: string;
+  placeholder?: string;
+  presets?: { label: string; value: string }[];
+  currentContext?: string;
+  confirmLabel?: string;
+  onClose: () => void;
+  onConfirm: (instruction: string) => void;
+  allowEmpty?: boolean;
+}) {
+  const [instruction, setInstruction] = useState("");
+
+  return (
+    <div className="overlay">
+      <section className="modal">
+        <div className="modal-header">
+          <div>
+            <span className={`tag ${tagColor || "blue"}`}>{tagLabel}</span>
+            <h2>{title}</h2>
+          </div>
+          <button className="icon-btn" onClick={onClose} type="button" aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body form-grid">
+          {currentContext && (
+            <div className="check-item">
+              <h4><span className="tag purple">当前内容</span></h4>
+              <p>{currentContext}</p>
+            </div>
+          )}
+          {description && <p style={{ color: "var(--muted)", fontSize: 13 }}>{description}</p>}
+          <div className="field">
+            <label>指令</label>
+            <textarea
+              className="textarea"
+              style={{ minHeight: 80 }}
+              placeholder={placeholder || "输入你的指令..."}
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {presets && presets.length > 0 && (
+            <div className="field">
+              <label>快速选择</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {presets.map((p) => (
+                  <button
+                    key={p.label}
+                    className="btn ghost compact"
+                    onClick={() => setInstruction(p.value)}
+                    type="button"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="action-row">
+            <button className="btn primary" disabled={!allowEmpty && !instruction.trim()} onClick={() => onConfirm(instruction.trim())} type="button">
+              {confirmLabel || "确认"}
+            </button>
+            <button className="btn ghost" onClick={onClose} type="button">
+              取消
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function QuestionDialog({
   card,
   onClose,
@@ -3481,7 +4152,7 @@ function QuestionDialog({
               {flowResolved ? (
                 <div className="answer-flow-done">
                   <span className="tag green">流程已结束</span>
-                  <p>当前疑问已经标记解决。后续如果有新问题，可以重新从卡片点击"有疑问"开启新的追问线程。</p>
+                  <p>当前疑问已经标记解决。后续如果有新问题，可以重新从卡片点击“有疑问”开启新的追问线程。</p>
                 </div>
               ) : (
                 <div className="field">
@@ -4119,13 +4790,44 @@ function WateringAnimation() {
   );
 }
 
+const ROUNDTABLE_ROLE_MAP: Record<string, { name: string; avatar: string }> = {
+  logic_reviewer: { name: "逻辑审稿 Agent", avatar: "/images/roundtable/agent-logic_transparent.png" },
+  human_editor: { name: "人味编辑 Agent", avatar: "/images/roundtable/agent-human_transparent.png" },
+  opponent_reader: { name: "反方读者 Agent", avatar: "/images/roundtable/agent-devil_transparent.png" },
+  community_editor: { name: "社区传播 Agent", avatar: "/images/roundtable/agent-spread_transparent.png" },
+  author: { name: "主持人（你）", avatar: "/images/roundtable/host_transparent.png" },
+  system: { name: "系统", avatar: "/images/roundtable/host_transparent.png" },
+};
+
+const ROUNDTABLE_BACKEND_ROLE_BY_UI: Record<string, string> = {
+  logic: "logic_reviewer",
+  human: "human_editor",
+  devil: "opponent_reader",
+  spread: "community_editor",
+};
+
+function collectRoundtableAdoptedSuggestions(state: RoundtableState | null | undefined, currentSuggestions: RoundtableSuggestion[] = []) {
+  const adopted = [
+    ...(state?.adoptedSuggestions ?? []),
+    ...currentSuggestions.filter((item) => item.adopted).map((item) => item.content),
+  ];
+  return Array.from(new Set(adopted.map((item) => item.trim()).filter(Boolean)));
+}
+
 function RoundtableDiscussion({
+  backendSessionId,
+  onSessionPatch,
   onComplete,
   showToast,
 }: {
-  onComplete: () => void;
+  backendSessionId?: string;
+  onSessionPatch?: (patch: Partial<WritingSession>) => void;
+  onComplete: (adoptedSuggestions: string[]) => void;
   showToast: (msg: string) => void;
 }) {
+  const useBackend = !!backendSessionId && KANSHAN_BACKEND_MODE === "gateway";
+
+  // Hardcoded fallback data
   const speakers = [
     { id: "logic", name: "逻辑审稿 Agent", avatar: "/images/roundtable/agent-logic_transparent.png", messages: ['我仔细审阅了这篇文章的论证逻辑。主要问题在于"能力同质化"到"工作流壁垒"之间的推导不够清晰。', "建议在第三段增加一个过渡论证：先说明为什么同质化会导致价格战，再引出工作流壁垒作为差异化竞争的必要条件。"] },
     { id: "human", name: "人味编辑 Agent", avatar: "/images/roundtable/agent-human_transparent.png", messages: ["从内容角度来说，这篇文章的技术分析很扎实，但缺少个人视角和真实案例。", '建议在开头或中间插入一个亲身经历的项目场景，比如"去年我参与的一个项目中，团队遇到了类似的问题..."'] },
@@ -4139,9 +4841,141 @@ function RoundtableDiscussion({
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [hostInput, setHostInput] = useState("");
   const [started, setStarted] = useState(false);
+  const [backendState, setBackendState] = useState<RoundtableState | null>(null);
+  const [backendFailed, setBackendFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<RoundtableSuggestion[]>([]);
+
+  const effectiveUseBackend = useBackend && !backendFailed;
+  const canInteractWithRoundtable = started && !loading;
 
   function addMessage(speaker: string, avatar: string, text: string, isHost = false) {
     setMessages((prev) => [...prev, { speaker, avatar, text, isHost }]);
+  }
+
+  // Map backend turns to display messages
+  function syncBackendTurnsToMessages(state: RoundtableState) {
+    const newMessages: Array<{ speaker: string; avatar: string; text: string; isHost: boolean }> = [];
+    for (const turn of state.turns) {
+      const role = ROUNDTABLE_ROLE_MAP[turn.role] || { name: turn.role, avatar: "/images/roundtable/host_transparent.png" };
+      newMessages.push({
+        speaker: role.name,
+        avatar: role.avatar,
+        text: turn.content,
+        isHost: turn.role === "author",
+      });
+    }
+    setMessages(newMessages);
+    setSuggestions((state.suggestions || []).filter((item) => !item.adopted));
+  }
+
+  function patchFromBackend(result: { session: WritingSession; roundtable: RoundtableState }) {
+    onSessionPatch?.({
+      draftStatus: result.session.draftStatus,
+      roundtable: result.roundtable,
+      adoptedSuggestions: collectRoundtableAdoptedSuggestions(result.roundtable, result.roundtable.suggestions || []),
+    });
+  }
+
+  // --- Backend handlers ---
+  async function handleBackendStart() {
+    if (!backendSessionId) {
+      handleHardcodedStart();
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await startRoundtableBackend(backendSessionId);
+      setBackendState(result.roundtable);
+      syncBackendTurnsToMessages(result.roundtable);
+      patchFromBackend(result);
+      setStarted(true);
+      setSpeakingId(null);
+    } catch (err) {
+      console.error("Backend roundtable failed, falling back to hardcoded", err);
+      setBackendFailed(true);
+      handleHardcodedStart();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleBackendContinue(role?: string) {
+    if (!backendSessionId) return;
+    setLoading(true);
+    try {
+      const result = await continueRoundtableBackend(backendSessionId, {
+        role,
+        conversation: messages,
+      });
+      setBackendState(result.roundtable);
+      syncBackendTurnsToMessages(result.roundtable);
+      patchFromBackend(result);
+    } catch (err) {
+      console.error("Backend roundtable continue failed", err);
+      showToast("Agent 发言失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleBackendAgentSpeak(uiAgentId: string) {
+    if (!started) {
+      showToast("请先点击开始讨论");
+      return;
+    }
+    if (loading) return;
+    const role = ROUNDTABLE_BACKEND_ROLE_BY_UI[uiAgentId] ?? uiAgentId;
+    setSpeakingId(uiAgentId);
+    await handleBackendContinue(role);
+  }
+
+  async function handleBackendSendHost() {
+    if (!hostInput.trim() || !backendSessionId) return;
+    const content = hostInput.trim();
+    setHostInput("");
+    setLoading(true);
+    try {
+      const result = await roundtableAuthorMessageBackend(backendSessionId, content);
+      setBackendState(result.roundtable);
+      syncBackendTurnsToMessages(result.roundtable);
+      patchFromBackend(result);
+    } catch (err) {
+      console.error("Backend roundtable message failed", err);
+      // Still show the message locally
+      addMessage("主持人", "/images/roundtable/host_transparent.png", content, true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleBackendAdopt(suggestionId: string) {
+    if (!backendSessionId) return;
+    try {
+      const result = await adoptSuggestionBackend(backendSessionId, suggestionId);
+      setBackendState(result.roundtable);
+      setSuggestions((result.roundtable.suggestions || []).filter((item) => !item.adopted));
+      patchFromBackend(result);
+      showToast("已采纳建议");
+    } catch (err) {
+      console.error("Backend adopt suggestion failed", err);
+    }
+  }
+
+  function handleBackendEnd() {
+    const adopted = collectRoundtableAdoptedSuggestions(backendState, suggestions);
+    addMessage("系统", "/images/roundtable/host_transparent.png", "讨论结束，进入定稿阶段。");
+    setSpeakingId(null);
+    onComplete(adopted);
+    showToast("圆桌讨论完成，已进入定稿草案");
+  }
+
+  // --- Hardcoded fallback handlers ---
+  function handleHardcodedStart() {
+    setStarted(true);
+    setCurrentTurn(0);
+    addMessage("系统", "/images/roundtable/host_transparent.png", "圆桌审稿会开始，请各位 Agent 依次发表意见。");
+    showNextMessage(0);
   }
 
   function showNextMessage(speakerIdx: number) {
@@ -4156,13 +4990,6 @@ function RoundtableDiscussion({
       setSpeakingId(speaker.id);
       setMessageIndex((prev) => ({ ...prev, [speaker.id]: idx + 1 }));
     }
-  }
-
-  function handleStart() {
-    setStarted(true);
-    setCurrentTurn(0);
-    addMessage("系统", "/images/roundtable/host_transparent.png", "圆桌审稿会开始，请各位 Agent 依次发表意见。");
-    showNextMessage(0);
   }
 
   function handleNext() {
@@ -4196,7 +5023,7 @@ function RoundtableDiscussion({
   function handleEnd() {
     addMessage("系统", "/images/roundtable/host_transparent.png", "讨论结束，进入定稿阶段。");
     setSpeakingId(null);
-    onComplete();
+    onComplete([]);
     showToast("圆桌讨论完成，已进入定稿草案");
   }
 
@@ -4204,14 +5031,17 @@ function RoundtableDiscussion({
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 1.2fr)", gap: "20px", minHeight: "500px" }}>
       <div style={{ background: "linear-gradient(180deg, var(--surface-soft) 0%, var(--surface-strong) 100%)", borderRadius: "var(--radius-xl)", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: "clamp(24px, 8vw, 80px)", width: "100%", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => setSpeakingId("host")}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: started ? "pointer" : "default", opacity: loading ? 0.72 : 1 }} onClick={() => started && !loading && setSpeakingId("host")}>
             <div style={{ position: "relative", width: "clamp(60px, 12vw, 100px)", height: "clamp(60px, 12vw, 100px)" }}>
               <img src="/images/roundtable/host_transparent.png" alt="主持人" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "host" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "host" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
             </div>
             <span style={{ marginTop: "6px", padding: "4px 12px", background: "var(--primary)", color: "#fff", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>主持人（你）</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent("spread")}>
+          <div
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: canInteractWithRoundtable ? "pointer" : "not-allowed", opacity: canInteractWithRoundtable ? 1 : 0.55 }}
+            onClick={() => effectiveUseBackend ? handleBackendAgentSpeak("spread") : (canInteractWithRoundtable ? handleSelectAgent("spread") : showToast("请先点击开始讨论"))}
+          >
             <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
               <img src="/images/roundtable/agent-spread_transparent.png" alt="社区传播" style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === "spread" ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
               {speakingId === "spread" && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
@@ -4224,7 +5054,11 @@ function RoundtableDiscussion({
             const agent = speakers.find((s) => s.id === id)!;
             const labels: Record<string, string> = { logic: "逻辑审稿", human: "人味编辑", devil: "反方读者" };
             return (
-              <div key={id} style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} onClick={() => handleSelectAgent(id)}>
+              <div
+                key={id}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: canInteractWithRoundtable ? "pointer" : "not-allowed", opacity: canInteractWithRoundtable ? 1 : 0.55 }}
+                onClick={() => effectiveUseBackend ? handleBackendAgentSpeak(id) : (canInteractWithRoundtable ? handleSelectAgent(id) : showToast("请先点击开始讨论"))}
+              >
                 <div style={{ position: "relative", width: "clamp(50px, 10vw, 90px)", height: "clamp(50px, 10vw, 90px)" }}>
                   <img src={agent.avatar} alt={labels[id]} style={{ width: "100%", height: "100%", objectFit: "contain", filter: speakingId === id ? "drop-shadow(0 6px 20px rgba(22, 119, 255, 0.4))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.1))", transition: "filter 0.3s" }} />
                   {speakingId === id && <span style={{ position: "absolute", top: "-6px", right: "-10px", fontSize: "16px" }}>💬</span>}
@@ -4253,18 +5087,53 @@ function RoundtableDiscussion({
             </div>
           ))}
         </div>
+        {/* Suggestions panel for backend roundtable */}
+        {effectiveUseBackend && suggestions.length > 0 && (
+          <div style={{ padding: "12px 14px", borderTop: "1px solid var(--line)", background: "#fffbf0", maxHeight: 200, overflowY: "auto" }}>
+            <strong style={{ fontSize: "13px", marginBottom: 8, display: "block" }}>本轮 Agent 建议（点击采纳）</strong>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {suggestions.map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex", gap: 8, alignItems: "center", padding: "6px 10px",
+                    background: s.adopted ? "var(--primary-soft)" : "#fff",
+                    border: `1px solid ${s.adopted ? "var(--primary)" : "var(--line)"}`,
+                    borderRadius: 6, cursor: s.adopted ? "default" : "pointer", fontSize: 12,
+                  }}
+                  onClick={() => !s.adopted && handleBackendAdopt(s.id)}
+                >
+                  <span className={`tag ${s.severity === "high" ? "orange" : s.severity === "medium" ? "blue" : "green"}`} style={{ fontSize: 10, padding: "2px 6px" }}>
+                    {ROUNDTABLE_ROLE_MAP[s.fromRole]?.name?.replace(" Agent", "") || s.fromRole}
+                  </span>
+                  <span style={{ flex: 1 }}>{s.content}</span>
+                  {s.adopted && <span className="tag green" style={{ fontSize: 10 }}>已采纳</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{ padding: "12px 14px", borderTop: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {loading && <Loader2 className="spin" size={16} />}
           {!started ? (
-            <button className="btn primary" onClick={handleStart} type="button">开始讨论</button>
+            <button className="btn primary" onClick={effectiveUseBackend ? handleBackendStart : handleHardcodedStart} type="button" disabled={loading}>
+              {loading ? "正在启动..." : "开始讨论"}
+            </button>
           ) : (
             <>
-              <button className="btn ghost compact" onClick={handleNext} type="button">下一位发言</button>
+              {effectiveUseBackend ? (
+                <button className="btn ghost compact" type="button" disabled>
+                  点击 Agent 头像发言
+                </button>
+              ) : (
+                <button className="btn ghost compact" onClick={handleNext} type="button">下一位发言</button>
+              )}
               <div style={{ flex: 1, display: "flex", gap: "6px", minWidth: "180px" }}>
-                <input type="text" className="input" style={{ height: "34px", fontSize: "13px" }} value={hostInput} onChange={(e) => setHostInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSendHost()} placeholder="输入你的回应..." />
-                <button className="btn primary compact" onClick={handleSendHost} type="button">发送</button>
+                <input type="text" className="input" style={{ height: "34px", fontSize: "13px" }} value={hostInput} onChange={(e) => setHostInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && canInteractWithRoundtable && (effectiveUseBackend ? handleBackendSendHost() : handleSendHost())} placeholder="输入你的回应..." disabled={!canInteractWithRoundtable} />
+                <button className="btn primary compact" onClick={effectiveUseBackend ? handleBackendSendHost : handleSendHost} type="button" disabled={!canInteractWithRoundtable}>发送</button>
               </div>
-              <button className="btn primary compact" onClick={handleEnd} type="button">完成讨论</button>
-            </>
+              <button className="btn primary compact" onClick={effectiveUseBackend ? handleBackendEnd : handleEnd} type="button" disabled={loading}>完成讨论</button>
+</>
           )}
         </div>
       </div>
@@ -4663,6 +5532,43 @@ function toneLabel(tone: "balanced" | "sharp" | "steady") {
   return "平衡但有立场";
 }
 
+function getMaxAllowedWritingStep(session: Pick<WritingSession, "confirmed" | "draftStatus"> & { blueprint?: WritingBlueprint; draft?: WritingDraft }) {
+  let maxStep = 1;
+  if (session.confirmed || session.draftStatus !== "claim_confirming") maxStep = 2;
+  if (session.confirmed) maxStep = Math.max(maxStep, 3);
+  if (["outline_confirmed", "draft_ready", "reviewing", "finalized", "published"].includes(session.draftStatus)) {
+    maxStep = Math.max(maxStep, 4);
+  }
+  if (session.draft || ["draft_ready", "reviewing", "finalized", "published"].includes(session.draftStatus)) {
+    maxStep = Math.max(maxStep, 5);
+  }
+  if (["finalized", "published"].includes(session.draftStatus)) {
+    maxStep = Math.max(maxStep, 6);
+  }
+  if (session.draftStatus === "published") {
+    maxStep = Math.max(maxStep, 7);
+  }
+  return Math.min(maxStep, writingSteps.length - 1);
+}
+
+function writingStepBlockedMessage(step: number, session: Pick<WritingSession, "confirmed" | "draftStatus">) {
+  if (step <= 1) return "可以进入当前步骤";
+  if (!session.confirmed && step >= 2) return "请先在“确认核心观点”中确认你的核心观点";
+  if (step >= 4 && !["outline_confirmed", "draft_ready", "reviewing", "finalized", "published"].includes(session.draftStatus)) {
+    return "请先在“生成论证蓝图”中点击确认蓝图，完成大纲生成";
+  }
+  if (step >= 5 && !["draft_ready", "reviewing", "finalized", "published"].includes(session.draftStatus)) {
+    return "请先生成表达初稿";
+  }
+  if (step >= 6 && !["finalized", "published"].includes(session.draftStatus)) {
+    return "请先完成圆桌审稿会";
+  }
+  if (step >= 7 && session.draftStatus !== "published") {
+    return "请先确认定稿";
+  }
+  return "请先完成前置步骤";
+}
+
 function buildWritingBlueprint(seed: IdeaSeed, memory: MemorySummary) {
   const adoptedMaterials = seed.wateringMaterials.filter((item) => item.adopted);
   const evidence = adoptedMaterials.filter((item) => item.type === "evidence");
@@ -4695,6 +5601,143 @@ function buildWritingBlueprint(seed: IdeaSeed, memory: MemorySummary) {
   ];
 }
 
+function clientBlueprintToStructuredBlueprint(
+  coreClaim: string,
+  items: Array<{ title: string; items: string[] }>,
+): WritingBlueprint {
+  const [first, ...rest] = items;
+  return {
+    centralClaim: coreClaim,
+    mainThread: first?.items?.[0] ?? `围绕"${coreClaim}"展开论证。`,
+    argumentSteps: rest.map((item, index) => ({
+      id: `arg-client-${index + 1}`,
+      title: item.title,
+      purpose: "展开论证",
+      keyPoints: item.items,
+    })),
+    counterArguments: [],
+    responseStrategy: "先承认反方边界，再说明自己的判断适用范围。",
+    personalExperienceNeeded: [],
+    riskNotes: ["发布前需要人工检查事实、立场和 AI 辅助声明。"],
+  };
+}
+
+function formatBlueprintForEditing(blueprint: WritingBlueprint): string {
+  const lines = [
+    `核心观点：${blueprint.centralClaim}`,
+    `主线：${blueprint.mainThread}`,
+    "",
+    "论证步骤：",
+  ];
+  blueprint.argumentSteps.forEach((step, index) => {
+    lines.push(`${index + 1}. ${step.title}`);
+    lines.push(`目的：${step.purpose}`);
+    step.keyPoints.forEach((point) => lines.push(`- ${point}`));
+    lines.push("");
+  });
+  lines.push("反方质疑：");
+  (blueprint.counterArguments.length ? blueprint.counterArguments : [""]).forEach((item) => {
+    if (item) lines.push(`- ${item}`);
+  });
+  lines.push("", `回应策略：${blueprint.responseStrategy}`, "", "需要个人经验：");
+  blueprint.personalExperienceNeeded.forEach((item) => lines.push(`- ${item}`));
+  lines.push("", "风险提醒：");
+  blueprint.riskNotes.forEach((item) => lines.push(`- ${item}`));
+  return lines.join("\n");
+}
+
+function parseBlueprintEditText(text: string, fallback: WritingBlueprint): WritingBlueprint {
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const next: WritingBlueprint = {
+    centralClaim: fallback.centralClaim,
+    mainThread: fallback.mainThread,
+    argumentSteps: [],
+    counterArguments: [],
+    responseStrategy: fallback.responseStrategy,
+    personalExperienceNeeded: [],
+    riskNotes: [],
+  };
+  let mode: "steps" | "counter" | "experience" | "risk" | null = null;
+  let currentStep: WritingBlueprint["argumentSteps"][number] | null = null;
+
+  function commitStep() {
+    if (currentStep) {
+      next.argumentSteps.push({
+        ...currentStep,
+        keyPoints: currentStep.keyPoints.length ? currentStep.keyPoints : ["补充这一节的关键论据"],
+      });
+      currentStep = null;
+    }
+  }
+
+  for (const line of lines) {
+    if (!line) continue;
+    if (line.startsWith("核心观点：") || line.startsWith("核心观点:")) {
+      next.centralClaim = line.replace(/^核心观点[：:]/, "").trim() || next.centralClaim;
+      continue;
+    }
+    if (line.startsWith("主线：") || line.startsWith("主线:")) {
+      next.mainThread = line.replace(/^主线[：:]/, "").trim() || next.mainThread;
+      continue;
+    }
+    if (line === "论证步骤：") {
+      commitStep();
+      mode = "steps";
+      continue;
+    }
+    if (line === "反方质疑：") {
+      commitStep();
+      mode = "counter";
+      continue;
+    }
+    if (line.startsWith("回应策略：") || line.startsWith("回应策略:")) {
+      commitStep();
+      mode = null;
+      next.responseStrategy = line.replace(/^回应策略[：:]/, "").trim() || next.responseStrategy;
+      continue;
+    }
+    if (line === "需要个人经验：") {
+      commitStep();
+      mode = "experience";
+      continue;
+    }
+    if (line === "风险提醒：") {
+      commitStep();
+      mode = "risk";
+      continue;
+    }
+    const stepMatch = line.match(/^\d+[.、]\s*(.+)$/);
+    if (mode === "steps" && stepMatch) {
+      commitStep();
+      currentStep = {
+        id: createId("arg", stepMatch[1]),
+        title: stepMatch[1].trim(),
+        purpose: "展开论证",
+        keyPoints: [],
+      };
+      continue;
+    }
+    if (mode === "steps" && currentStep && (line.startsWith("目的：") || line.startsWith("目的:"))) {
+      currentStep.purpose = line.replace(/^目的[：:]/, "").trim() || currentStep.purpose;
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      const value = line.slice(2).trim();
+      if (!value) continue;
+      if (mode === "steps" && currentStep) currentStep.keyPoints.push(value);
+      if (mode === "counter") next.counterArguments.push(value);
+      if (mode === "experience") next.personalExperienceNeeded.push(value);
+      if (mode === "risk") next.riskNotes.push(value);
+    }
+  }
+  commitStep();
+  if (!next.argumentSteps.length) next.argumentSteps = fallback.argumentSteps;
+  if (!next.counterArguments.length) next.counterArguments = fallback.counterArguments;
+  if (!next.personalExperienceNeeded.length) next.personalExperienceNeeded = fallback.personalExperienceNeeded;
+  if (!next.riskNotes.length) next.riskNotes = fallback.riskNotes;
+  return next;
+}
+
 function materialLines(materials: WateringMaterial[], fallback: string[]) {
   const lines = materials.slice(0, 2).map((item) => `${item.title}：${compactText(item.content, 42)}`);
   return lines.length ? lines : fallback;
@@ -4702,6 +5745,36 @@ function materialLines(materials: WateringMaterial[], fallback: string[]) {
 
 function compactText(text: string, maxLength: number) {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function normalizeAdjustedClaim(rawAnswer: unknown, currentClaim: string, tone: WritingSession["tone"]) {
+  const raw = String(rawAnswer ?? "").trim();
+  const cleaned = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-*•\d.、\s]+/, ""))
+    .filter(Boolean)
+    .find((line) => line.length > 0)
+    ?.replace(/^(核心观点|改写后的观点|观点|答案|调整后)[：:]\s*/, "")
+    .replace(/^["“”]+|["“”]+$/g, "")
+    .trim();
+
+  const looksLikeGenericAnswer =
+    !cleaned ||
+    cleaned.includes("请根据以下指令") ||
+    cleaned.includes("原始观点") ||
+    cleaned.includes("这个问题可以先拆成") ||
+    cleaned.includes("当前回答是") ||
+    cleaned.includes("需要补一条") ||
+    cleaned.length > 180;
+
+  if (!looksLikeGenericAnswer) return cleaned;
+  if (tone === "sharp") {
+    return `真正需要警惕的不是表面的争论，而是：${currentClaim}`;
+  }
+  if (tone === "steady") {
+    return `在限定场景下，我倾向于认为：${currentClaim}`;
+  }
+  return currentClaim;
 }
 
 function draftLead(seed: IdeaSeed, session: Pick<WritingSession, "coreClaim" | "tone">, memory: MemorySummary) {

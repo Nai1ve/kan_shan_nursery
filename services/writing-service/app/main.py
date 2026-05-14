@@ -112,6 +112,17 @@ def confirm_claim(session_id: str, payload: dict[str, Any] | None = None) -> dic
         raise
 
 
+@app.post("/writing/sessions/{session_id}/claim/adjust")
+def adjust_claim(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        result = service.adjust_claim(session_id, payload)
+        logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "adjust_claim"})
+        return result
+    except Exception as error:
+        handle_error(error)
+        raise
+
+
 # ------------------------------------------------------------------
 # Blueprint
 # ------------------------------------------------------------------
@@ -253,9 +264,9 @@ def roundtable_message(session_id: str, payload: dict[str, Any]) -> dict[str, An
 
 
 @app.post("/writing/sessions/{session_id}/roundtable/continue")
-def continue_roundtable(session_id: str) -> dict[str, Any]:
+def continue_roundtable(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
-        result = service.continue_roundtable(session_id)
+        result = service.continue_roundtable(session_id, payload)
         logger.info("writing_state_transition", extra={"sessionId": session_id, "action": "continue_roundtable"})
         return result
     except Exception as error:

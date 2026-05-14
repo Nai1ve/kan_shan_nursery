@@ -69,6 +69,32 @@ class WritingLlmClient:
             },
         )
 
+    def adjust_claim(
+        self,
+        seed: dict[str, Any],
+        memory: dict[str, Any],
+        instruction: str,
+        tone: str,
+    ) -> dict[str, Any]:
+        return self._call(
+            "answer-seed-question",
+            {
+                "taskType": "answer-seed-question",
+                "input": {
+                    "seed": seed,
+                    "memory": memory,
+                    "question": (
+                        "请根据用户指令改写核心观点。只返回一条可直接替换到写作页面的核心观点，"
+                        "不要解释过程，不要输出列表。\n"
+                        f"用户指令：{instruction}\n"
+                        f"目标基调：{tone}"
+                    ),
+                },
+                "promptVersion": "v1",
+                "schemaVersion": "v1",
+            },
+        )
+
     def generate_outline(
         self,
         blueprint: dict[str, Any],
@@ -118,6 +144,10 @@ class WritingLlmClient:
         seed: dict[str, Any],
         draft: dict[str, Any],
         memory: dict[str, Any],
+        *,
+        requested_role: str | None = None,
+        conversation_context: list[dict[str, Any]] | None = None,
+        host_instruction: str | None = None,
     ) -> dict[str, Any]:
         return self._call(
             "roundtable-review",
@@ -127,6 +157,9 @@ class WritingLlmClient:
                     "seed": seed,
                     "draft": draft,
                     "memory": memory,
+                    "requestedRole": requested_role,
+                    "conversationContext": conversation_context or [],
+                    "hostInstruction": host_instruction or "",
                 },
                 "promptVersion": "v1",
                 "schemaVersion": "v1",
